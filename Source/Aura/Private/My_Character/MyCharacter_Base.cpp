@@ -15,6 +15,16 @@ AMyCharacter_Base::AMyCharacter_Base()
 
 }
 
+UAbilitySystemComponent* AMyCharacter_Base::GetAbilitySystemComponent() const
+{
+	return  AbilitySystemComponent;
+}
+
+UAttributeSet* AMyCharacter_Base::GetAttributeSet() const
+{
+	return AttributeSet;
+}
+
 // Called when the game starts or when spawned
 void AMyCharacter_Base::BeginPlay()
 {
