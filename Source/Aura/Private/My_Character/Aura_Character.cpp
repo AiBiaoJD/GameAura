@@ -5,6 +5,7 @@
 
 #include "Camera/CameraComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "My_Controler/My_AuraPlayerState.h"
 
 AAura_Character::AAura_Character()
 {
@@ -22,3 +23,32 @@ AAura_Character::AAura_Character()
     bUseControllerRotationYaw = false;
     bUseControllerRotationRoll = false;
 }
+
+void AAura_Character::PossessedBy(AController* NewController)
+{
+	Super::PossessedBy(NewController);
+    //服务器端初始化InitAbilityActorInfo
+    My_InitAbilityActorInfo();
+  
+}
+
+void AAura_Character::OnRep_PlayerState()
+{
+	Super::OnRep_PlayerState();
+    //客户端初始化InitAbilityActorInfo
+    My_InitAbilityActorInfo();
+
+}
+
+void AAura_Character::My_InitAbilityActorInfo()
+{
+    //Init ability actor info for sever
+    AMy_AuraPlayerState* AuraPlayerState = GetPlayerState<AMy_AuraPlayerState>();
+    check(AuraPlayerState);
+    AuraPlayerState->GetAbilitySystemComponent()->InitAbilityActorInfo(AuraPlayerState, this);
+
+    //把PlayerState中的AbilitySystemComponent组件赋值给Aura_Character,避免野指针
+    AbilitySystemComponent = AuraPlayerState->GetAbilitySystemComponent();
+    AttributeSet = AuraPlayerState->GetAttributeSet();
+}
+

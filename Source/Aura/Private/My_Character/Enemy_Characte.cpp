@@ -44,3 +44,9 @@ AEnemy_Characte::AEnemy_Characte()
 	AttributeSet = CreateDefaultSubobject<UMy_AuraAttributeSet>("AttributeSet");
 
 }
+
+void AEnemy_Characte::BeginPlay()
+{
+	Super::BeginPlay();
+	AbilitySystemComponent->InitAbilityActorInfo(this, this);
+}
