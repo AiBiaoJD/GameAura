@@ -3,8 +3,15 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "AbilitySystemComponent.h"
 #include "AttributeSet.h"
 #include "My_AuraAttributeSet.generated.h"
+
+#define ATTRIBUTE_ACCESSORS(ClassName, PropertyName) \
+ 	GAMEPLAYATTRIBUTE_PROPERTY_GETTER(ClassName, PropertyName) \
+ 	GAMEPLAYATTRIBUTE_VALUE_GETTER(PropertyName) \
+ 	GAMEPLAYATTRIBUTE_VALUE_SETTER(PropertyName) \
+ 	GAMEPLAYATTRIBUTE_VALUE_INITTER(PropertyName)
 
 /**
  *
@@ -25,16 +32,26 @@ public:
 
 	//ReplicatedUsing = OnRep_Health,属性更新时执行回调函数
 	//血量
-	UPROPERTY(BlueprintReadOnly,ReplicatedUsing = OnRep_Health, Category= "Health")
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_Health, Category = "Health")
 	FGameplayAttributeData Health;
+	//宏定义
+	ATTRIBUTE_ACCESSORS(UMy_AuraAttributeSet, Health);
+
+	//Max血量
 	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_MaxHealth, Category = "MaxHealth")
 	FGameplayAttributeData MaxHealth;
+	ATTRIBUTE_ACCESSORS(UMy_AuraAttributeSet, MaxHealth);
+
 
 	//蓝量
-	UPROPERTY(BlueprintReadOnly, ReplicatedUsing= OnRep_Mana, Category="Mana")
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_Mana, Category = "Mana")
 	FGameplayAttributeData Mana;
-	UPROPERTY(BlueprintReadOnly, ReplicatedUsing=OnRep_MaxMana, Category= "MaxMana")
+	ATTRIBUTE_ACCESSORS(UMy_AuraAttributeSet, Mana);
+
+	//Max蓝量
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_MaxMana, Category = "MaxMana")
 	FGameplayAttributeData MaxMana;
+	ATTRIBUTE_ACCESSORS(UMy_AuraAttributeSet, MaxMana);
 
 	UFUNCTION()
 	void OnRep_Health(const FGameplayAttributeData& OldHealth) const;
