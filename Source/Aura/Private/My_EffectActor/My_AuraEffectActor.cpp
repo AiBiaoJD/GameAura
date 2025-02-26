@@ -14,11 +14,15 @@ AMy_AuraEffectActor::AMy_AuraEffectActor()
 	Mesh = CreateDefaultSubobject<UStaticMeshComponent>("Mesh");
 	SetRootComponent(Mesh);
 	Sphere = CreateDefaultSubobject<USphereComponent>("Sphere");
-	Sphere->SetupAttachment(GetRootComponent());
+	Sphere->SetupAttachment(GetRootComponent()); 
 }
 
 void AMy_AuraEffectActor::OnOverLap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
+	if (!OtherActor || !OtherComp)
+	{
+		return;
+	}
 	//ASC定义了接口IAbilitySystemInterface，来获取Actor的ASC
 	if (IAbilitySystemInterface* ASCInterface = Cast<IAbilitySystemInterface>(OtherActor))
 	{
