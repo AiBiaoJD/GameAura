@@ -81,10 +81,14 @@ void AMy_Aura_Controller::BeginPlay()
 
 	//子系统
 	UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(GetLocalPlayer());
-	check(Subsystem);
+	//其他客户端的subsystem是空，不能用check，因为是合理的，直接跳过
+	if (Subsystem)
+	{
+		//子系统关联输入上下文
+		Subsystem->AddMappingContext(AuraContext, 0);
+	}
 
-	//子系统关联输入上下文
-	Subsystem->AddMappingContext(AuraContext, 0);
+
 
 	//鼠标设置
 	bShowMouseCursor = true;

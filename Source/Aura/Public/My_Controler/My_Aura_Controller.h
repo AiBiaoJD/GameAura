@@ -34,6 +34,7 @@ private:
 
 	void CursorTrace();
 
+	//TObjectPtr 只能用于 UObject 的派生类，不能用于接口，所以这里不用Tobject建立指针
 	IMy_Enemy_Interface* LastEnemyInterface = nullptr;
 	IMy_Enemy_Interface* ThisEnemyInterface = nullptr;
 
