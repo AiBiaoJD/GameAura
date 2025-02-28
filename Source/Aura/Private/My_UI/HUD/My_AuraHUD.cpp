@@ -25,7 +25,11 @@ void AMy_AuraHUD::InitOverlay(APlayerController* PC, APlayerState* PS, UAbilityS
 	//这样就可以使用下面的函数在蓝图中了，当widget设置了他的widgetController就触发
 	//UFUNCTION(BlueprintImplementableEvent)
 	//void WidgetControllerSet();
+	//上面这个Widget函数动态绑定到WidgetController的委托中
 	OverlayWidget->SetWidgetController(OverlayWidgetController);
+
+	//绑定完成后，widgetController就可以广播数据了
+	OverlayWidgetController->BroadcastInitiaValues();
 
 	OverlayWidget->AddToViewport();
 

@@ -10,3 +10,7 @@ void UMy_AuraWidgetController::SetWidgetControllerParams(const FMY_WidgetControl
 	AbilitySystemComponent = WCParams.AbilitySystemComponent;
 	AttributeSet = WCParams.AttributeSet;
 }
+
+void UMy_AuraWidgetController::BroadcastInitiaValues()
+{
+}

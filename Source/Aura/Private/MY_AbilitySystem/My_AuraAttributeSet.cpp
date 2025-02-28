@@ -9,10 +9,10 @@ UMy_AuraAttributeSet::UMy_AuraAttributeSet()
 {
 
 	//∫Í∂®“ÂºÚªØ∞ÊGAMEPLAYATTRIBUTE_VALUE_INITTER(PropertyName)
-	InitHealth(200.0f);
-	InitMaxHealth(300.f);
-	InitMana(150.f);
-	InitMaxMana(150.f);
+	InitHealth(100.0f);
+	InitMaxHealth(0100.f);
+	InitMana(60.f);
+	InitMaxMana(100.f);
 }
 
 void UMy_AuraAttributeSet::GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const
