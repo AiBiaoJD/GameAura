@@ -12,6 +12,8 @@ void UMy_OverlayWidgetController::BroadcastInitiaValues()
 	// 触发委托，通知所有绑定的函数
 	OnHealthChanged.Broadcast(AuraAttributeSet->GetHealth());
 	OnMaxHealthChanged.Broadcast(AuraAttributeSet->GetMaxHealth());
+	OnManaChanged.Broadcast(AuraAttributeSet->GetMana());
+	OnMaxManaChanged.Broadcast(AuraAttributeSet->GetMaxMana());
 
 }
 
@@ -22,9 +24,14 @@ void UMy_OverlayWidgetController::BindCallbacksToDependencies()
 	//生命值改变函数添加到委托
 	AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(AuraAttributeSet->GetHealthAttribute()).AddUObject(this, &UMy_OverlayWidgetController::HealthChanged);
 
-
 	//最大生命值改变函数添加到委托
 	AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(AuraAttributeSet->GetMaxHealthAttribute()).AddUObject(this, &UMy_OverlayWidgetController::MaxHealthChanged);
+
+	//法力值改变函数添加到委托
+	AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(AuraAttributeSet->GetManaAttribute()).AddUObject(this, &UMy_OverlayWidgetController::ManaChanged);
+
+	//最大法力值改变函数添加到委托
+	AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(AuraAttributeSet->GetMaxManaAttribute()).AddUObject(this, &UMy_OverlayWidgetController::MaxManaChanged);
 }
 
 void UMy_OverlayWidgetController::HealthChanged(const FOnAttributeChangeData& Date) const
@@ -37,5 +44,15 @@ void UMy_OverlayWidgetController::HealthChanged(const FOnAttributeChangeData& Da
 void UMy_OverlayWidgetController::MaxHealthChanged(const FOnAttributeChangeData& Date) const
 {
 	OnMaxHealthChanged.Broadcast(Date.NewValue);
+}
+
+void UMy_OverlayWidgetController::ManaChanged(const FOnAttributeChangeData& Data) const
+{
+	OnManaChanged.Broadcast(Data.NewValue);
+}
+
+void UMy_OverlayWidgetController::MaxManaChanged(const FOnAttributeChangeData& Data) const
+{
+	OnMaxManaChanged.Broadcast(Data.NewValue);
 
 }

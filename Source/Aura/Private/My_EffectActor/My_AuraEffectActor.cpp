@@ -23,6 +23,7 @@ void AMy_AuraEffectActor::OnOverLap(UPrimitiveComponent* OverlappedComponent, AA
 	{
 		return;
 	}
+	
 	//ASC定义了接口IAbilitySystemInterface，来获取Actor的ASC
 	if (IAbilitySystemInterface* ASCInterface = Cast<IAbilitySystemInterface>(OtherActor))
 	{
@@ -35,8 +36,16 @@ void AMy_AuraEffectActor::OnOverLap(UPrimitiveComponent* OverlappedComponent, AA
 				//强制转换为非const，为了后面的sethealth
 				//todo:不建议怎么做后面进行修改
 				UMy_AuraAttributeSet* MuteAttributesSet = const_cast<UMy_AuraAttributeSet*>(AuraAttributeSet);
-				MuteAttributesSet->SetHealth(AuraAttributeSet->GetHealth() + 50.0f);
 
+				const TArray<FName>& MyTags = this->Tags;
+				if (MyTags.Contains("HealthPotion"))
+				{
+					MuteAttributesSet->SetHealth(AuraAttributeSet->GetHealth() + 50.0f);
+				}
+				if (MyTags.Contains("ManaPotion"))
+				{
+					MuteAttributesSet->SetMana(AuraAttributeSet->GetMana() + 50.0f);
+				}
 				Destroy();
 			}
 		}
