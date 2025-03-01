@@ -15,6 +15,8 @@ UCLASS()
 class AURA_API AMy_AuraHUD : public AHUD
 {
 	GENERATED_BODY()
+
+
 public:
 	UPROPERTY()
 	TObjectPtr<UMy_AuraUserWidget> OverlayWidget;

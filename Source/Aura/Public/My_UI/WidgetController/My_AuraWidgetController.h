@@ -52,6 +52,9 @@ public:
 
 	//控制器广播数据给widget
 	virtual void BroadcastInitiaValues();
+
+	//ATTribute属性改变，委托调用的回调函数
+	virtual void BindCallbacksToDependencies();
 protected:
 	UPROPERTY(BlueprintReadOnly, Category="WidgetController")
 	TObjectPtr<APlayerController> PlayerController;

@@ -14,3 +14,7 @@ void UMy_AuraWidgetController::SetWidgetControllerParams(const FMY_WidgetControl
 void UMy_AuraWidgetController::BroadcastInitiaValues()
 {
 }
+
+void UMy_AuraWidgetController::BindCallbacksToDependencies()
+{
+}

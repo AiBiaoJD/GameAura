@@ -19,7 +19,11 @@ void AMy_AuraHUD::InitOverlay(APlayerController* PC, APlayerState* PS, UAbilityS
 	{
 		OverlayWidgetController = NewObject<UMy_OverlayWidgetController>(this, OverlayWidgetControllerClass);
 		OverlayWidgetController->SetWidgetControllerParams(WidgetControllerParams);
+
+		//OverlayWidgetController创建好，就可以绑定回调函数(委托)来检查ATTribute变量改变
+		OverlayWidgetController->BindCallbacksToDependencies();
 	}
+
 
 	//关联OverlayWidget和OverlayWidgetController
 	//这样就可以使用下面的函数在蓝图中了，当widget设置了他的widgetController就触发

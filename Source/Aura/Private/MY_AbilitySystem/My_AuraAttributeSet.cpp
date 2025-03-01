@@ -9,9 +9,9 @@ UMy_AuraAttributeSet::UMy_AuraAttributeSet()
 {
 
 	//∫Í∂®“ÂºÚªØ∞ÊGAMEPLAYATTRIBUTE_VALUE_INITTER(PropertyName)
-	InitHealth(100.0f);
-	InitMaxHealth(0100.f);
-	InitMana(60.f);
+	InitHealth(50.0f);
+	InitMaxHealth(100.f);
+	InitMana(50.f);
 	InitMaxMana(100.f);
 }
 

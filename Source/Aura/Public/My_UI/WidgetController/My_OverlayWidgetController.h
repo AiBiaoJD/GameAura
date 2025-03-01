@@ -22,9 +22,16 @@ class AURA_API UMy_OverlayWidgetController : public UMy_AuraWidgetController
 public:
 	virtual void BroadcastInitiaValues() override;
 
+	virtual void BindCallbacksToDependencies() override;
+
 	UPROPERTY(BlueprintAssignable, Category = "GAS|Attibutes")
 	FOnHealthChangedSignature OnHealthChanged;
 
 	UPROPERTY(BlueprintAssignable, Category = "GAS|Attibutes")
 	FOnMaxHealthChangedSignature OnMaxHealthChanged;
+
+protected:
+	void HealthChanged(const FOnAttributeChangeData& Date) const;
+	void MaxHealthChanged(const FOnAttributeChangeData& Date) const ;
+
 };
