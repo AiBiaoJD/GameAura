@@ -21,9 +21,9 @@ void AMy_AuraEffectActor::BeginPlay()
 
 }
 
-void AMy_AuraEffectActor::ApplyEffectToTarget(AActor* Target, TSubclassOf<UGameplayEffect> GameplayEffectClass)
+void AMy_AuraEffectActor::ApplyEffectToTarget(AActor* TargetActor, TSubclassOf<UGameplayEffect> GameplayEffectClass)
 {
-	UAbilitySystemComponent* TargetASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Target);
+	UAbilitySystemComponent* TargetASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(TargetActor);
 	//ApplyEffectToTarget()主要使用在碰撞检测中，如果target没有ASC直接返回
 	if (TargetASC == nullptr) return;
 	//这个GameplayEffectClass在蓝图设置，没设置报错
@@ -39,7 +39,6 @@ void AMy_AuraEffectActor::ApplyEffectToTarget(AActor* Target, TSubclassOf<UGamep
 
 	//使用FGameplayEffectSpec给Actor
 	TargetASC->ApplyGameplayEffectSpecToSelf(*EffectSpecHandle.Data.Get());
-
 }
 
 
