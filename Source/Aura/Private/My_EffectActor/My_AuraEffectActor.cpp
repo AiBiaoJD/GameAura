@@ -3,66 +3,43 @@
 
 #include "My_EffectActor/My_AuraEffectActor.h"
 
+#include "AbilitySystemBlueprintLibrary.h"
 #include "AbilitySystemComponent.h"
-#include "AbilitySystemInterface.h"
-#include "MY_AbilitySystem/My_AuraAttributeSet.h"
 
 AMy_AuraEffectActor::AMy_AuraEffectActor()
 {
 	PrimaryActorTick.bCanEverTick = false;
 
-	Mesh = CreateDefaultSubobject<UStaticMeshComponent>("Mesh");
-	SetRootComponent(Mesh);
-	Sphere = CreateDefaultSubobject<USphereComponent>("Sphere");
-	Sphere->SetupAttachment(GetRootComponent()); 
+	SetRootComponent(CreateDefaultSubobject<USceneComponent>("SceneRoot"));
 }
 
-void AMy_AuraEffectActor::OnOverLap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
-{
-	if (!OtherActor || !OtherComp)
-	{
-		return;
-	}
-	
-	//ASC定义了接口IAbilitySystemInterface，来获取Actor的ASC
-	if (IAbilitySystemInterface* ASCInterface = Cast<IAbilitySystemInterface>(OtherActor))
-	{
-		UAbilitySystemComponent* ASC = ASCInterface->GetAbilitySystemComponent();
-		if (ASC)
-		{
-			const UMy_AuraAttributeSet* AuraAttributeSet = Cast<UMy_AuraAttributeSet>(ASC->GetAttributeSet(UMy_AuraAttributeSet::StaticClass()));
-			if (AuraAttributeSet)
-			{
-				//强制转换为非const，为了后面的sethealth
-				//todo:不建议怎么做后面进行修改
-				UMy_AuraAttributeSet* MuteAttributesSet = const_cast<UMy_AuraAttributeSet*>(AuraAttributeSet);
-
-				const TArray<FName>& MyTags = this->Tags;
-				if (MyTags.Contains("HealthPotion"))
-				{
-					MuteAttributesSet->SetHealth(AuraAttributeSet->GetHealth() + 50.0f);
-				}
-				if (MyTags.Contains("ManaPotion"))
-				{
-					MuteAttributesSet->SetMana(AuraAttributeSet->GetMana() + 50.0f);
-				}
-				Destroy();
-			}
-		}
-	}
-
-}
-
-void AMy_AuraEffectActor::EndOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
-{
-}
 
 void AMy_AuraEffectActor::BeginPlay()
 {
 	Super::BeginPlay();
 
-	Sphere->OnComponentBeginOverlap.AddDynamic(this, &AMy_AuraEffectActor::OnOverLap);
-	Sphere->OnComponentEndOverlap.AddDynamic(this, &AMy_AuraEffectActor::EndOverlap);
+
+}
+
+void AMy_AuraEffectActor::ApplyEffectToTarget(AActor* Target, TSubclassOf<UGameplayEffect> GameplayEffectClass)
+{
+	UAbilitySystemComponent* TargetASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Target);
+	//ApplyEffectToTarget()主要使用在碰撞检测中，如果target没有ASC直接返回
+	if (TargetASC == nullptr) return;
+	//这个GameplayEffectClass在蓝图设置，没设置报错
+	check(GameplayEffectClass);
+
+
+	//创建EffectContextHandle,用来封装EffectContext相关信息
+	FGameplayEffectContextHandle EffectContext = TargetASC->MakeEffectContext();
+	EffectContext.AddSourceObject(this);
+
+	//创建FGameplayEffectSpec，一种动态的Effect，可以修改之后再apply给Actor
+	FGameplayEffectSpecHandle EffectSpecHandle = TargetASC->MakeOutgoingSpec(GameplayEffectClass, 1.0f, EffectContext);
+
+	//使用FGameplayEffectSpec给Actor
+	TargetASC->ApplyGameplayEffectSpecToSelf(*EffectSpecHandle.Data.Get());
+
 }
 
 
