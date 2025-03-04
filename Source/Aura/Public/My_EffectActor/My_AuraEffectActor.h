@@ -9,7 +9,7 @@
 
 //Effect启用的规则
 UENUM(BlueprintType)
-enum class EEffectApplicationPolicy
+enum class My_EEffectApplicationPolicy
 {
 	ApplyOnOverlap,
 	ApplyOnEndOverlap,
@@ -19,7 +19,7 @@ enum class EEffectApplicationPolicy
 //Effect移除的规则
 //Instant 和 Duration 自动移除，只有Infinite需要手动移除
 UENUM(BlueprintType)
-enum class EEffectRemovePolicy
+enum class My_EEffectRemovePolicy
 {
 	RemoveOnEndOverlap,
 	DoNotRemove
@@ -57,24 +57,28 @@ protected:
 	TSubclassOf<UGameplayEffect> InstantGameplayEffectClass;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Applied Effects")
-	EEffectApplicationPolicy InstantEffectApplicationPolicy = EEffectApplicationPolicy::DoNotApply;
+	My_EEffectApplicationPolicy InstantEffectApplicationPolicy = My_EEffectApplicationPolicy::DoNotApply;
 
 	//Duration Effect
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Applied Effects")
 	TSubclassOf<UGameplayEffect> DurationGameplayEffectClass;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Applied Effects")
-	EEffectApplicationPolicy DurationEffectApplicationPolicy = EEffectApplicationPolicy::DoNotApply;
+	My_EEffectApplicationPolicy DurationEffectApplicationPolicy = My_EEffectApplicationPolicy::DoNotApply;
 
 	//Infinite Effect
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Applied Effects")
 	TSubclassOf<UGameplayEffect> InfiniteGameplayEffectClass;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Applied Effects")
-	EEffectApplicationPolicy InfiniteEffectApplicationPolicy = EEffectApplicationPolicy::DoNotApply;
+	My_EEffectApplicationPolicy InfiniteEffectApplicationPolicy = My_EEffectApplicationPolicy::DoNotApply;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Applied Effects")
-	EEffectRemovePolicy InfiniteEffectRemovePolicy = EEffectRemovePolicy::RemoveOnEndOverlap;
+	My_EEffectRemovePolicy InfiniteEffectRemovePolicy = My_EEffectRemovePolicy::RemoveOnEndOverlap;
+
+	//键值对，为了移除Infinite Effect,保存Active Effect Handle和Actor的对应关系
+	//一个Effect被多个Actor激活，会创建多个Hand，比如Hand1，Hand2..
+	TMap<UAbilitySystemComponent*, FActiveGameplayEffectHandle> ActorToActiveEffect_Map;
 private:
 
 };

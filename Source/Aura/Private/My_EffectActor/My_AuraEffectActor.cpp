@@ -38,34 +38,78 @@ void AMy_AuraEffectActor::ApplyEffectToTarget(AActor* TargetActor, TSubclassOf<U
 	FGameplayEffectSpecHandle EffectSpecHandle = TargetASC->MakeOutgoingSpec(GameplayEffectClass, 1.0f, EffectContext);
 
 	//使用FGameplayEffectSpec给Actor
-	TargetASC->ApplyGameplayEffectSpecToSelf(*EffectSpecHandle.Data.Get());
+	const FActiveGameplayEffectHandle ActiveEffectHandle = TargetASC->ApplyGameplayEffectSpecToSelf(*EffectSpecHandle.Data.Get());
+
+	//通过EffectSpecHandle判断Effect是什么类型，Instant，Infinite，HasDuration
+	bool IsInfinite = EffectSpecHandle.Data.Get()->Def.Get()->DurationPolicy == EGameplayEffectDurationType::Infinite;
+
+	//如果是Infinite,把ActiveGameplayEffectHandle和这个TargetASC联系起来方便后面删除
+	if (IsInfinite&& InfiniteEffectRemovePolicy == My_EEffectRemovePolicy::RemoveOnEndOverlap)
+	{
+		ActorToActiveEffect_Map.Add(TargetASC, ActiveEffectHandle);
+	}
 }
 
 //各种Effect在覆盖时启用
 void AMy_AuraEffectActor::OnOverlap(AActor* TargetActor)
 {
-	if (InstantEffectApplicationPolicy == EEffectApplicationPolicy::ApplyOnOverlap)
+	if (InstantEffectApplicationPolicy == My_EEffectApplicationPolicy::ApplyOnOverlap)
 	{
 		ApplyEffectToTarget(TargetActor, InstantGameplayEffectClass);
 	}
 
-	if (DurationEffectApplicationPolicy == EEffectApplicationPolicy::ApplyOnOverlap)
+	if (DurationEffectApplicationPolicy == My_EEffectApplicationPolicy::ApplyOnOverlap)
 	{
 		ApplyEffectToTarget(TargetActor, DurationGameplayEffectClass);
 	}
+
+	if (InfiniteEffectApplicationPolicy == My_EEffectApplicationPolicy::ApplyOnOverlap)
+	{
+		ApplyEffectToTarget(TargetActor, InfiniteGameplayEffectClass);
+	}
+
 }
 
 //各种Effect在覆盖结束启用
 void AMy_AuraEffectActor::OnEndOverlap(AActor* TargetActor)
 {
-	if (InstantEffectApplicationPolicy == EEffectApplicationPolicy::ApplyOnEndOverlap)
+	if (InstantEffectApplicationPolicy == My_EEffectApplicationPolicy::ApplyOnEndOverlap)
 	{
 		ApplyEffectToTarget(TargetActor, InstantGameplayEffectClass);
 	}
 
-	if (DurationEffectApplicationPolicy == EEffectApplicationPolicy::ApplyOnEndOverlap)
+	if (DurationEffectApplicationPolicy == My_EEffectApplicationPolicy::ApplyOnEndOverlap)
 	{
 		ApplyEffectToTarget(TargetActor, DurationGameplayEffectClass);
+	}
+	if (InfiniteEffectApplicationPolicy == My_EEffectApplicationPolicy::ApplyOnEndOverlap)
+	{
+		ApplyEffectToTarget(TargetActor, InfiniteGameplayEffectClass);
+	}
+
+	if (InfiniteEffectRemovePolicy == My_EEffectRemovePolicy::RemoveOnEndOverlap)
+	{
+		UAbilitySystemComponent* TargetASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(TargetActor);
+		if (TargetASC == nullptr) return;
+
+		TArray<UAbilitySystemComponent*> HandToRemove;
+		for (auto m : ActorToActiveEffect_Map)
+		{
+			//当前TargetASC处于移除对中
+			if (TargetASC == m.Key)
+			{
+				//移除Infinite Effect
+				TargetASC->RemoveActiveGameplayEffect(m.Value, 1);
+
+				//不能在for(auto:)循环中删除这个键值对,保存先后面删除
+				HandToRemove.Add(TargetASC);
+			}
+		}
+
+		for (auto& c : HandToRemove)
+		{
+			ActorToActiveEffect_Map.FindAndRemoveChecked(c);
+		}
 	}
 }
 
