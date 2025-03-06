@@ -40,8 +40,13 @@ void UMy_AuraAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribut
 	if (Attribute == GetManaAttribute())
 	{
 		NewValue = FMath::Clamp(NewValue, 0.0f, GetMaxMana());
-	}
+	} 
 	
+}
+
+void UMy_AuraAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffectModCallbackData& Data)
+{
+	Super::PostGameplayEffectExecute(Data);
 }
 
 void UMy_AuraAttributeSet::OnRep_Health(const FGameplayAttributeData& OldHealth) const
