@@ -79,6 +79,9 @@ protected:
 	//键值对，为了移除Infinite Effect,保存Active Effect Handle和Actor的对应关系
 	//一个Effect被多个Actor激活，会创建多个Hand，比如Hand1，Hand2..
 	TMap<UAbilitySystemComponent*, FActiveGameplayEffectHandle> ActorToActiveEffect_Map;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Applied Effects")
+	float ActorLevel = 1.0f;
 private:
 
 };

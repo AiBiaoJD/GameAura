@@ -17,8 +17,6 @@ AMy_AuraEffectActor::AMy_AuraEffectActor()
 void AMy_AuraEffectActor::BeginPlay()
 {
 	Super::BeginPlay();
-
-
 }
 
 void AMy_AuraEffectActor::ApplyEffectToTarget(AActor* TargetActor, TSubclassOf<UGameplayEffect> GameplayEffectClass)
@@ -35,7 +33,7 @@ void AMy_AuraEffectActor::ApplyEffectToTarget(AActor* TargetActor, TSubclassOf<U
 	EffectContext.AddSourceObject(this);
 
 	//创建FGameplayEffectSpec，一种动态的Effect，可以修改之后再apply给Actor
-	FGameplayEffectSpecHandle EffectSpecHandle = TargetASC->MakeOutgoingSpec(GameplayEffectClass, 1.0f, EffectContext);
+	FGameplayEffectSpecHandle EffectSpecHandle = TargetASC->MakeOutgoingSpec(GameplayEffectClass, ActorLevel, EffectContext);
 
 	//使用FGameplayEffectSpec给Actor
 	const FActiveGameplayEffectHandle ActiveEffectHandle = TargetASC->ApplyGameplayEffectSpecToSelf(*EffectSpecHandle.Data.Get());
