@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "My_UI/Widget/My_AuraUserWidget.h"
 #include "My_UI/WidgetController/My_AuraWidgetController.h"
 #include "My_OverlayWidgetController.generated.h"
 
@@ -14,7 +15,24 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnMaxHealthChangedSignature, float,
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnManaChangedSignature, float, NewMana);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnMaxManaChangedSignature, float, NewMaxMana);
 
+//这个结构主要信息显示到屏幕
+USTRUCT(BlueprintType)
+struct FMy_UIWidgetRow : public FTableRowBase
+{
+	GENERATED_BODY()
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	FGameplayTag MessageTag = FGameplayTag();
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	FText Message = FText();
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	TSubclassOf<UMy_AuraUserWidget> MessageWidget;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	UTexture2D* Image = nullptr;
+};
 /**
  *
  */
@@ -40,6 +58,10 @@ public:
 	FOnMaxManaChangedSignature OnMaxManaChanged;
 
 protected:
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Widget Data")
+	TObjectPtr<UDataTable> MessageWidgetDataTable;
+
 	void HealthChanged(const FOnAttributeChangeData& Date) const;
 	void MaxHealthChanged(const FOnAttributeChangeData& Date) const ;
 	void ManaChanged(const FOnAttributeChangeData& Data) const;
