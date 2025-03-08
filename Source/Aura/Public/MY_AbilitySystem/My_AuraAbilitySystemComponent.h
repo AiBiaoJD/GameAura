@@ -6,6 +6,7 @@
 #include "AbilitySystem/AuraAbilitySystemComponent.h"
 #include "My_AuraAbilitySystemComponent.generated.h"
 
+DECLARE_MULTICAST_DELEGATE_OneParam(FMy_EffectAssetTags, const FGameplayTagContainer& /*AssetTags*/)
 /**
  *
  */
@@ -16,6 +17,7 @@ class AURA_API UMy_AuraAbilitySystemComponent : public UAuraAbilitySystemCompone
 public:
 	void AbilityActorInfoSet();
 
+	FMy_EffectAssetTags EffectAssetTags;
 protected:
 
 	//OnGameplayEffectAppliedDelegateToSelf 委托的回调函数,需要进行绑定

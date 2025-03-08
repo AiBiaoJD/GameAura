@@ -14,10 +14,10 @@ void UMy_AuraAbilitySystemComponent::EffectApplied(UAbilitySystemComponent* Abil
 {
 	FGameplayTagContainer TagContainer;
 	EffectSpec.GetAllAssetTags(TagContainer);
-	for (const FGameplayTag& Tag : TagContainer)
-	{
-		//TODO:广播Tag到WidgetController
-		const FString Msg = FString::Printf(TEXT("GE Tag: %s"), *Tag.ToString());
-		GEngine->AddOnScreenDebugMessage(-1, 8, FColor::Blue,Msg);
-	}
+
+	//使用委托进行TagContainer的广播,这样WidgetController就可以接受到
+	//这样My_ASC不知道WidgetController,而WidgetController知道ASC
+	EffectAssetTags.Broadcast(TagContainer);
+
+	
 }

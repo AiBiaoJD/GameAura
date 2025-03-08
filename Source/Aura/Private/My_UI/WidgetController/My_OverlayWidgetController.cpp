@@ -3,6 +3,7 @@
 
 #include "My_UI/WidgetController/My_OverlayWidgetController.h"
 
+#include "MY_AbilitySystem/My_AuraAbilitySystemComponent.h"
 #include "MY_AbilitySystem/My_AuraAttributeSet.h"
 
 void UMy_OverlayWidgetController::BroadcastInitiaValues()
@@ -32,6 +33,19 @@ void UMy_OverlayWidgetController::BindCallbacksToDependencies()
 
 	//最大法力值改变函数添加到委托
 	AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(AuraAttributeSet->GetMaxManaAttribute()).AddUObject(this, &UMy_OverlayWidgetController::MaxManaChanged);
+
+	//绑定ASC的委托
+	Cast<UMy_AuraAbilitySystemComponent>(AbilitySystemComponent)->EffectAssetTags.AddLambda(
+		[](const FGameplayTagContainer& AssetTags)
+		{
+			for (const FGameplayTag& Tag : AssetTags)
+			{
+				const FString Msg = FString::Printf(TEXT("GE Tag: %s"), *Tag.ToString());
+				GEngine->AddOnScreenDebugMessage(-1, 8, FColor::Blue, Msg);
+			}
+		}
+	);
+
 }
 
 void UMy_OverlayWidgetController::HealthChanged(const FOnAttributeChangeData& Date) const
