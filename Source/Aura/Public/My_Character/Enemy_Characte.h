@@ -21,4 +21,6 @@ public:
 	AEnemy_Characte();
 protected:
 	virtual  void BeginPlay() override;
+
+	virtual  void My_InitAbilityActorInfo() override;
 };

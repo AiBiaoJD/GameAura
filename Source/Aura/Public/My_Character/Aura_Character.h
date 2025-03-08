@@ -20,5 +20,7 @@ public:
 	virtual void PossessedBy(AController* NewController) override;
 	virtual void OnRep_PlayerState() override;
 private:
-	void My_InitAbilityActorInfo();
+
+	//初始化HUD和相关ASC委托的绑定
+	virtual void My_InitAbilityActorInfo() override;
 };

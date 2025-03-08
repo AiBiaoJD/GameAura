@@ -32,3 +32,7 @@ void AMyCharacter_Base::BeginPlay()
 	
 }
 
+void AMyCharacter_Base:: My_InitAbilityActorInfo()
+{
+}
+

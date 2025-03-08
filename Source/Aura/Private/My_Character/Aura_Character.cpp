@@ -5,6 +5,7 @@
 
 #include "Camera/CameraComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "MY_AbilitySystem/My_AuraAbilitySystemComponent.h"
 #include "My_Controler/My_AuraPlayerState.h"
 #include "My_Controler/My_Aura_Controller.h"
 #include "My_UI/HUD/My_AuraHUD.h"
@@ -49,6 +50,9 @@ void AAura_Character::My_InitAbilityActorInfo()
 	check(AuraPlayerState);
 	AuraPlayerState->GetAbilitySystemComponent()->InitAbilityActorInfo(AuraPlayerState, this);
 
+	//当AbilityActorInfo设置后,就使用AbilityActorinfoSet(),进行代码耦合
+	Cast<UMy_AuraAbilitySystemComponent>(AuraPlayerState->GetAbilitySystemComponent())->AbilityActorInfoSet();
+
 	//把PlayerState中的AbilitySystemComponent组件赋值给Aura_Character,避免野指针
 	AbilitySystemComponent = AuraPlayerState->GetAbilitySystemComponent();
 	AttributeSet = AuraPlayerState->GetAttributeSet();
@@ -65,6 +69,8 @@ void AAura_Character::My_InitAbilityActorInfo()
 			AuraHUD->InitOverlay(Aura_Controller, AuraPlayerState, AbilitySystemComponent, AttributeSet);
 		}
 	}
+
+
 }
 
 

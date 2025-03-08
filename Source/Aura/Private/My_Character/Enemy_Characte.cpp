@@ -48,5 +48,13 @@ AEnemy_Characte::AEnemy_Characte()
 void AEnemy_Characte::BeginPlay()
 {
 	Super::BeginPlay();
+
+	My_InitAbilityActorInfo();
+}
+
+void AEnemy_Characte::My_InitAbilityActorInfo()
+{
 	AbilitySystemComponent->InitAbilityActorInfo(this, this);
+	Cast<UMy_AuraAbilitySystemComponent>(AbilitySystemComponent)->AbilityActorInfoSet();
+
 }
