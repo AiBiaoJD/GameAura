@@ -13,7 +13,6 @@ AMy_AuraEffectActor::AMy_AuraEffectActor()
 	SetRootComponent(CreateDefaultSubobject<USceneComponent>("SceneRoot"));
 }
 
-
 void AMy_AuraEffectActor::BeginPlay()
 {
 	Super::BeginPlay();
