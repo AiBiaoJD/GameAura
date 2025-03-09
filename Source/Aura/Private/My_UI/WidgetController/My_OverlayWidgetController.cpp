@@ -10,7 +10,7 @@ void UMy_OverlayWidgetController::BroadcastInitiaValues()
 {
 	const UMy_AuraAttributeSet* AuraAttributeSet = CastChecked<UMy_AuraAttributeSet>(AttributeSet);
 
-	// 触发委托，通知所有绑定的函数
+	//---------更新UI使用广播委托,传给Widget--------------
 	OnHealthChanged.Broadcast(AuraAttributeSet->GetHealth());
 	OnMaxHealthChanged.Broadcast(AuraAttributeSet->GetMaxHealth());
 	OnManaChanged.Broadcast(AuraAttributeSet->GetMana());
@@ -21,6 +21,7 @@ void UMy_OverlayWidgetController::BroadcastInitiaValues()
 //ATTributeSet里面属性发生改变，调用的回调函数
 void UMy_OverlayWidgetController::BindCallbacksToDependencies()
 {
+	//---------属性改变使用ASC的绑定委托,传给ASC--------------
 	const UMy_AuraAttributeSet* AuraAttributeSet = CastChecked<UMy_AuraAttributeSet>(AttributeSet);
 	//生命值改变函数添加到委托
 	AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(AuraAttributeSet->GetHealthAttribute()).AddUObject(this, &UMy_OverlayWidgetController::HealthChanged);
@@ -34,17 +35,27 @@ void UMy_OverlayWidgetController::BindCallbacksToDependencies()
 	//最大法力值改变函数添加到委托
 	AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(AuraAttributeSet->GetMaxManaAttribute()).AddUObject(this, &UMy_OverlayWidgetController::MaxManaChanged);
 
-	//绑定ASC的委托
+
+	//---------Effect Applied使用ASC的绑定委托,传给My_ASC--------------
 	Cast<UMy_AuraAbilitySystemComponent>(AbilitySystemComponent)->EffectAssetTags.AddLambda(
 		[this](const FGameplayTagContainer& AssetTags)
 		{
 			for (const FGameplayTag& Tag : AssetTags)
 			{
-				const FString Msg = FString::Printf(TEXT("GE Tag: %s"), *Tag.ToString());
-				GEngine->AddOnScreenDebugMessage(-1, 8, FColor::Blue, Msg);
+				//"Message.HealthPotion".MatchesTag("Message") will return True, "
+				//Message".MatchesTag("Message.HealthPotion") will return False
+				//************ Message Tag ****************
+				FGameplayTag MessageTag = FGameplayTag::RequestGameplayTag(FName("My_Message"));
+				if (Tag.MatchesTag(MessageTag))
+				{
+					//获取数据表标签为Tag的Row
+					const FMy_UIWidgetRow* Row = GetDataTableRowByTag<FMy_UIWidgetRow>(MessageWidgetDataTable, Tag);
 
-				//获取数据表标签为Tag的Row
-				FMy_UIWidgetRow* Row = GetDataTableRowByTag<FMy_UIWidgetRow>(MessageWidgetDataTable, Tag);
+
+					//---------广播DataTable的row使用广播委托,传给Widget--------------
+					OnMessageWidgetRow.Broadcast(*Row);
+				}
+
 
 			}
 		}
