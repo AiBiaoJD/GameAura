@@ -15,6 +15,8 @@ class AURA_API UMy_AuraAbilitySystemComponent : public UAuraAbilitySystemCompone
 {
 	GENERATED_BODY()
 public:
+	UMy_AuraAbilitySystemComponent();
+
 	void AbilityActorInfoSet();
 
 	FMy_EffectAssetTags EffectAssetTags;

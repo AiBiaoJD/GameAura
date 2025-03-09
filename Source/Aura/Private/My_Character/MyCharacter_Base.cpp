@@ -6,7 +6,9 @@
 // Sets default values
 AMyCharacter_Base::AMyCharacter_Base()
 {
- 	
+	bReplicates = true;
+	bNetLoadOnClient = true;
+
 	PrimaryActorTick.bCanEverTick = false;
 
 	Weapon = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("Weapon"));

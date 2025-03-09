@@ -35,7 +35,6 @@ void UMy_OverlayWidgetController::BindCallbacksToDependencies()
 	//最大法力值改变函数添加到委托
 	AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(AuraAttributeSet->GetMaxManaAttribute()).AddUObject(this, &UMy_OverlayWidgetController::MaxManaChanged);
 
-
 	//---------Effect Applied使用ASC的绑定委托,传给My_ASC--------------
 	Cast<UMy_AuraAbilitySystemComponent>(AbilitySystemComponent)->EffectAssetTags.AddLambda(
 		[this](const FGameplayTagContainer& AssetTags)
@@ -49,7 +48,7 @@ void UMy_OverlayWidgetController::BindCallbacksToDependencies()
 				if (Tag.MatchesTag(MessageTag))
 				{
 					//获取数据表标签为Tag的Row
-				const FMy_UIWidgetRow* Row = GetDataTableRowByTag<FMy_UIWidgetRow>(MessageWidgetDataTable, Tag);
+					const FMy_UIWidgetRow* Row = GetDataTableRowByTag<FMy_UIWidgetRow>(MessageWidgetDataTable, Tag);
 
 
 					//---------广播DataTable的row使用广播委托,传给Widget--------------

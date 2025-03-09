@@ -3,6 +3,11 @@
 
 #include "MY_AbilitySystem/My_AuraAbilitySystemComponent.h"
 
+UMy_AuraAbilitySystemComponent::UMy_AuraAbilitySystemComponent()
+{
+	SetIsReplicated(true);
+}
+
 //在Character_Base的SetAbilityActorInfo()函数中调用
 void UMy_AuraAbilitySystemComponent::AbilityActorInfoSet()
 {
