@@ -49,7 +49,7 @@ void UMy_OverlayWidgetController::BindCallbacksToDependencies()
 				if (Tag.MatchesTag(MessageTag))
 				{
 					//获取数据表标签为Tag的Row
-					const FMy_UIWidgetRow* Row = GetDataTableRowByTag<FMy_UIWidgetRow>(MessageWidgetDataTable, Tag);
+				const FMy_UIWidgetRow* Row = GetDataTableRowByTag<FMy_UIWidgetRow>(MessageWidgetDataTable, Tag);
 
 
 					//---------广播DataTable的row使用广播委托,传给Widget--------------

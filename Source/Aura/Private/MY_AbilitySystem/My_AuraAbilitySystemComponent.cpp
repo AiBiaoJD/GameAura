@@ -6,7 +6,7 @@
 //在Character_Base的SetAbilityActorInfo()函数中调用
 void UMy_AuraAbilitySystemComponent::AbilityActorInfoSet()
 {
-	//一旦Actorinfo设置好,就可以对ASC的委托进行绑定
+	//-------一旦Actorinfo设置好,就可以对ASC的委托进行绑定-----------------
 	OnGameplayEffectAppliedDelegateToSelf.AddUObject(this, &UMy_AuraAbilitySystemComponent::EffectApplied);
 }
 
