@@ -36,12 +36,16 @@ void UMy_OverlayWidgetController::BindCallbacksToDependencies()
 
 	//绑定ASC的委托
 	Cast<UMy_AuraAbilitySystemComponent>(AbilitySystemComponent)->EffectAssetTags.AddLambda(
-		[](const FGameplayTagContainer& AssetTags)
+		[this](const FGameplayTagContainer& AssetTags)
 		{
 			for (const FGameplayTag& Tag : AssetTags)
 			{
 				const FString Msg = FString::Printf(TEXT("GE Tag: %s"), *Tag.ToString());
 				GEngine->AddOnScreenDebugMessage(-1, 8, FColor::Blue, Msg);
+
+				//获取数据表标签为Tag的Row
+				FMy_UIWidgetRow* Row = GetDataTableRowByTag<FMy_UIWidgetRow>(MessageWidgetDataTable, Tag);
+
 			}
 		}
 	);
