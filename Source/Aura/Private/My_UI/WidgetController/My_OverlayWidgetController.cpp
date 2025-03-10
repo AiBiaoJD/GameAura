@@ -24,16 +24,29 @@ void UMy_OverlayWidgetController::BindCallbacksToDependencies()
 	//---------属性改变使用ASC的绑定委托,传给ASC--------------
 	const UMy_AuraAttributeSet* AuraAttributeSet = CastChecked<UMy_AuraAttributeSet>(AttributeSet);
 	//生命值改变函数添加到委托
-	AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(AuraAttributeSet->GetHealthAttribute()).AddUObject(this, &UMy_OverlayWidgetController::HealthChanged);
+	AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(AuraAttributeSet->GetHealthAttribute()).AddLambda([this](const FOnAttributeChangeData& Date)
+		{
+			OnHealthChanged.Broadcast(Date.NewValue);
+		});
 
 	//最大生命值改变函数添加到委托
-	AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(AuraAttributeSet->GetMaxHealthAttribute()).AddUObject(this, &UMy_OverlayWidgetController::MaxHealthChanged);
+	AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(AuraAttributeSet->GetMaxHealthAttribute()).AddLambda([this](const FOnAttributeChangeData& Date)
+		{
+			OnMaxHealthChanged.Broadcast(Date.NewValue);
+
+		});
 
 	//法力值改变函数添加到委托
-	AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(AuraAttributeSet->GetManaAttribute()).AddUObject(this, &UMy_OverlayWidgetController::ManaChanged);
+	AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(AuraAttributeSet->GetManaAttribute()).AddLambda([this](const FOnAttributeChangeData& Data)
+		{
+			OnManaChanged.Broadcast(Data.NewValue);
+		});
 
 	//最大法力值改变函数添加到委托
-	AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(AuraAttributeSet->GetMaxManaAttribute()).AddUObject(this, &UMy_OverlayWidgetController::MaxManaChanged);
+	AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(AuraAttributeSet->GetMaxManaAttribute()).AddLambda([this](const FOnAttributeChangeData& Data)
+		{
+			OnMaxManaChanged.Broadcast(Data.NewValue);
+		});
 
 	//---------Effect Applied使用ASC的绑定委托,传给My_ASC--------------
 	Cast<UMy_AuraAbilitySystemComponent>(AbilitySystemComponent)->EffectAssetTags.AddLambda(
@@ -62,25 +75,5 @@ void UMy_OverlayWidgetController::BindCallbacksToDependencies()
 
 }
 
-void UMy_OverlayWidgetController::HealthChanged(const FOnAttributeChangeData& Date) const
-{
-	//NewNewValue是FOnAttributeChangeData结构的一个变量
-	//为什么这个变量是Health，因为GetGameplayAttributeValueChangeDelegate委托绑定了Health
-	OnHealthChanged.Broadcast(Date.NewValue);
-}
 
-void UMy_OverlayWidgetController::MaxHealthChanged(const FOnAttributeChangeData& Date) const
-{
-	OnMaxHealthChanged.Broadcast(Date.NewValue);
-}
 
-void UMy_OverlayWidgetController::ManaChanged(const FOnAttributeChangeData& Data) const
-{
-	OnManaChanged.Broadcast(Data.NewValue);
-}
-
-void UMy_OverlayWidgetController::MaxManaChanged(const FOnAttributeChangeData& Data) const
-{
-	OnMaxManaChanged.Broadcast(Data.NewValue);
-
-}
