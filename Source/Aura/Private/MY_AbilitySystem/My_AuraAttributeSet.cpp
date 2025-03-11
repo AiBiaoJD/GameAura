@@ -12,10 +12,10 @@ UMy_AuraAttributeSet::UMy_AuraAttributeSet()
 {
 
 	//宏定义简化版GAMEPLAYATTRIBUTE_VALUE_INITTER(PropertyName)
-	InitHealth(10.0f);
-	InitMaxHealth(100.f);
-	InitMana(10.f);
-	InitMaxMana(100.f);
+	InitHealth(280.0f);
+
+	InitMana(200.f);
+
 }
 
 //服务器通知客户端各种ATTribute的更新情况
@@ -44,6 +44,7 @@ void UMy_AuraAttributeSet::GetLifetimeReplicatedProps(TArray<class FLifetimeProp
 	DOREPLIFETIME_CONDITION_NOTIFY(UMy_AuraAttributeSet, ManaRegeneration, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UMy_AuraAttributeSet, Mana, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UMy_AuraAttributeSet, MaxMana, COND_None, REPNOTIFY_Always);
+
 
 	//---- Third Attribute -----
 	DOREPLIFETIME_CONDITION_NOTIFY(UMy_AuraAttributeSet, BlockChance, COND_None, REPNOTIFY_Always);

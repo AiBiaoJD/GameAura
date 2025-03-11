@@ -72,7 +72,7 @@ void AAura_Character::My_InitAbilityActorInfo()
 
 
 	//4.使用Effect初始化Aura的PrimaryAttribute
-	InitializePrimaryATTribute();
+	InitializeDefaultAttribute();
 }
 
 

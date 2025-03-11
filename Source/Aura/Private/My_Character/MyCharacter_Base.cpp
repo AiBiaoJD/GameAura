@@ -39,17 +39,25 @@ void AMyCharacter_Base::My_InitAbilityActorInfo()
 }
 
 
-//用Effect只设置Aura的Attribute，所以可以在Aura类中去使用
-void AMyCharacter_Base::InitializePrimaryATTribute() const
+void AMyCharacter_Base::ApplyEffectToSelf(TSubclassOf<UGameplayEffect> GamePlayEffect, float Level)const
 {
-	check(GetAbilitySystemComponent());
-	check(DefaultPrimaryAttributeEffectClass);
+	/*check(GetAbilitySystemComponent());
+	check(GamePlayEffect);*/
+	if (GetAbilitySystemComponent() && GamePlayEffect)
 	{
 		const FGameplayEffectContextHandle ContextHandle = GetAbilitySystemComponent()->MakeEffectContext();
 
-		const FGameplayEffectSpecHandle EffectSpecHandle = GetAbilitySystemComponent()->MakeOutgoingSpec(DefaultPrimaryAttributeEffectClass, 1.0f, ContextHandle);
+		const FGameplayEffectSpecHandle EffectSpecHandle = GetAbilitySystemComponent()->MakeOutgoingSpec(GamePlayEffect, Level, ContextHandle);
 
 		GetAbilitySystemComponent()->ApplyGameplayEffectSpecToTarget(*EffectSpecHandle.Data.Get(), GetAbilitySystemComponent());
-
 	}
+
 }
+
+void AMyCharacter_Base::InitializeDefaultAttribute()const
+{
+	ApplyEffectToSelf(DefaultPrimaryAttributeEffectClass, 1.0f);
+	ApplyEffectToSelf(DefaultSecondAttributeEffectClass, 1.0f);
+
+}
+
