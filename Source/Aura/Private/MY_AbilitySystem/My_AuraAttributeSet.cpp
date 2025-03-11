@@ -18,15 +18,25 @@ UMy_AuraAttributeSet::UMy_AuraAttributeSet()
 	InitMaxMana(100.f);
 }
 
+//服务器通知客户端各种ATTribute的更新情况
 void UMy_AuraAttributeSet::GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
 	//Replicate 无条件的复制，总是有调用OnRep，即时相同
+	DOREPLIFETIME_CONDITION_NOTIFY(UMy_AuraAttributeSet, Strength, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UMy_AuraAttributeSet, Intelligence, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UMy_AuraAttributeSet, Resilience, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UMy_AuraAttributeSet, VIgor, COND_None, REPNOTIFY_Always);
+
+
+
 	DOREPLIFETIME_CONDITION_NOTIFY(UMy_AuraAttributeSet, Health, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UMy_AuraAttributeSet, MaxHealth, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UMy_AuraAttributeSet, Mana, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UMy_AuraAttributeSet, MaxMana, COND_None, REPNOTIFY_Always);
+
+
 }
 
 //在ATTribute修改之前进行相关处理，主要避免Attribute里面的数据非法，属于Attribute核心逻辑
@@ -120,7 +130,7 @@ void UMy_AuraAttributeSet::OnRep_Health(const FGameplayAttributeData& OldHealth)
 }
 void UMy_AuraAttributeSet::OnRep_MaxHealth(const FGameplayAttributeData& OldMaxHealth) const
 {
-	GAMEPLAYATTRIBUTE_REPNOTIFY(UMy_AuraAttributeSet, Health, OldMaxHealth);
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UMy_AuraAttributeSet, MaxHealth, OldMaxHealth);
 }
 
 void UMy_AuraAttributeSet::OnRep_Mana(const FGameplayAttributeData& OldMana) const
@@ -131,5 +141,29 @@ void UMy_AuraAttributeSet::OnRep_Mana(const FGameplayAttributeData& OldMana) con
 void UMy_AuraAttributeSet::OnRep_MaxMana(const FGameplayAttributeData& OldMaxMana) const
 {
 	GAMEPLAYATTRIBUTE_REPNOTIFY(UMy_AuraAttributeSet, MaxMana, OldMaxMana);
+}
+
+void UMy_AuraAttributeSet::OnRep_Strength(const FGameplayAttributeData& OldStrength) const
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UMy_AuraAttributeSet, Strength, OldStrength);
+
+}
+
+void UMy_AuraAttributeSet::OnRep_Intelligence(const FGameplayAttributeData& OldIntelligence) const
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UMy_AuraAttributeSet, Intelligence, OldIntelligence);
+
+}
+
+void UMy_AuraAttributeSet::OnRep_Resilience(const FGameplayAttributeData& OldResilience) const
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UMy_AuraAttributeSet, Resilience, OldResilience);
+
+}
+
+void UMy_AuraAttributeSet::OnRep_VIgor(const FGameplayAttributeData& OldVIgor) const
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UMy_AuraAttributeSet, VIgor, OldVIgor);
+
 }
 
