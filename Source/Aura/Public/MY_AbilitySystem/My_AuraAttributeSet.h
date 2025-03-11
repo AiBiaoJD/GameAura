@@ -13,6 +13,13 @@
  	GAMEPLAYATTRIBUTE_VALUE_SETTER(PropertyName) \
  	GAMEPLAYATTRIBUTE_VALUE_INITTER(PropertyName)
 
+/*
+ *属性宏定义可以使用或者不用
+#define DEFINE_ATTRIBUTE(AttributeName, CategoryName) \
+UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_##AttributeName, Category = CategoryName) \
+FGameplayAttributeData AttributeName; \
+ATTRIBUTE_ACCESSORS(UMy_AuraAttributeSet, AttributeName);
+*/
 
 //保存PostGameplayEffectExecute()调用后里面的数据，包括Effect的Source和Target等
 USTRUCT()
@@ -21,7 +28,7 @@ struct FMy_EffectProperties
 	GENERATED_BODY()
 	FMy_EffectProperties()
 	{
-		
+
 	}
 
 	//Effect上下文
@@ -38,7 +45,7 @@ struct FMy_EffectProperties
 	AController* SourceController = nullptr;
 
 	UPROPERTY()
-	ACharacter* SourceCharacter= nullptr;
+	ACharacter* SourceCharacter = nullptr;
 
 	//Target
 	UPROPERTY()
@@ -79,32 +86,104 @@ public:
 	virtual void PostGameplayEffectExecute(const struct FGameplayEffectModCallbackData& Data) override;
 
 	/*
-	 *Primary Attribute
+	 *Primary Attribute:主要属性
 	 */
 
-	//力量
+	 //力量:提升物理攻击力
 	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_Strength, Category = "Primary Attribute")
 	FGameplayAttributeData Strength;
 	ATTRIBUTE_ACCESSORS(UMy_AuraAttributeSet, Strength);
 
-	//智力
+	//智力:提升法术攻击力
 	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_Intelligence, Category = "Primary Attribute")
 	FGameplayAttributeData Intelligence;
 	ATTRIBUTE_ACCESSORS(UMy_AuraAttributeSet, Intelligence);
 
-	//伤害抗性
+	//抗性:提高防御减免和防御穿透
 	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_Resilience, Category = "Primary Attribute")
 	FGameplayAttributeData Resilience;
 	ATTRIBUTE_ACCESSORS(UMy_AuraAttributeSet, Resilience);
 
-	//增强生命值
+	//活力:提高生命值等相关
 	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_VIgor, Category = "Primary Attribute")
 	FGameplayAttributeData VIgor;
 	ATTRIBUTE_ACCESSORS(UMy_AuraAttributeSet, VIgor);
 
+
 	/*
-	 *Vital Attributes
+	 *Second Attribute;二级属性
 	 */
+
+	 //----------1.基于抗性Resilience属性生成----------
+
+	 //护甲:主要减少受到的伤害百分比,并提高Block Chance的概率(受到伤害减半)和敌人的暴击伤害
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_Armor, Category = "Second Attribute")
+	FGameplayAttributeData Armor;
+	ATTRIBUTE_ACCESSORS(UMy_AuraAttributeSet, Armor);
+
+
+	//护甲穿透:攻击时忽略敌人部分护甲值,并提高暴击几率
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_ArmorPenetration, Category = "Second Attribute")
+	FGameplayAttributeData ArmorPenetration;
+	ATTRIBUTE_ACCESSORS(UMy_AuraAttributeSet, ArmorPenetration);
+
+	//----------2.基于活力Vigor属性生成----------
+
+	//每秒治疗量:每秒自动回复值
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_HealthRegeneration, Category = "Second Attribute")
+	FGameplayAttributeData HealthRegeneration;
+	ATTRIBUTE_ACCESSORS(UMy_AuraAttributeSet, HealthRegeneration);
+
+	//Max血量:也是二级属性受Vigor控制
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_MaxHealth, Category = "Vital Attribute")
+	FGameplayAttributeData MaxHealth;
+	ATTRIBUTE_ACCESSORS(UMy_AuraAttributeSet, MaxHealth);
+
+	//----------3.基于智力intelligence属性生成----------
+
+	//每秒蓝量回复值:每秒蓝量自动回复值
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_ManaRegeneration, Category = "Second Attribute")
+	FGameplayAttributeData ManaRegeneration;
+	ATTRIBUTE_ACCESSORS(UMy_AuraAttributeSet, ManaRegeneration);
+
+	//Max蓝量:也是二级属性受Intelligence控制
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_MaxMana, Category = "Vital Attribute")
+	FGameplayAttributeData MaxMana;
+	ATTRIBUTE_ACCESSORS(UMy_AuraAttributeSet, MaxMana);
+
+
+	/*
+	 *Third  Attribute;三级属性
+	 */
+
+	 //----------1.基于护甲Armor属性生成----------
+
+	//伤害减半几率:受到伤害减半的概率
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_BlockChance, Category = "Third Attribute")
+	FGameplayAttributeData BlockChance;
+	ATTRIBUTE_ACCESSORS(UMy_AuraAttributeSet, BlockChance);
+
+	//暴击伤害减少:减少受到的暴击伤害百分比
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_CriticalHitResistance, Category = "Third Attribute")
+	FGameplayAttributeData CriticalHitResistance;
+	ATTRIBUTE_ACCESSORS(UMy_AuraAttributeSet, CriticalHitResistance);
+
+	//----------2.基于护甲穿透ArmorPenetration属性生成----------
+
+	//暴击几率:造成2倍伤害的几率
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_CriticalHitChance, Category = "Third Attribute")
+	FGameplayAttributeData CriticalHitChance;
+	ATTRIBUTE_ACCESSORS(UMy_AuraAttributeSet, CriticalHitChance);
+
+	//暴击伤害:造成2倍伤害+百分比
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_CriticalHitDamage, Category = "Third Attribute")
+	FGameplayAttributeData CriticalHitDamage;
+	ATTRIBUTE_ACCESSORS(UMy_AuraAttributeSet, CriticalHitDamage);
+
+
+	/*
+	*Vital Attributes:核心属性
+	*/
 
 	//ReplicatedUsing = OnRep_Health,属性更新时执行回调函数
 	//血量
@@ -113,21 +192,10 @@ public:
 	//宏定义
 	ATTRIBUTE_ACCESSORS(UMy_AuraAttributeSet, Health);
 
-	//Max血量
-	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_MaxHealth, Category = "Vital Attribute")
-	FGameplayAttributeData MaxHealth;
-	ATTRIBUTE_ACCESSORS(UMy_AuraAttributeSet, MaxHealth);
-
-
 	//蓝量
 	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_Mana, Category = "Vital Attribute")
 	FGameplayAttributeData Mana;
 	ATTRIBUTE_ACCESSORS(UMy_AuraAttributeSet, Mana);
-
-	//Max蓝量
-	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_MaxMana, Category = "Vital Attribute")
-	FGameplayAttributeData MaxMana;
-	ATTRIBUTE_ACCESSORS(UMy_AuraAttributeSet, MaxMana);
 
 
 	UFUNCTION()
@@ -153,6 +221,30 @@ public:
 
 	UFUNCTION()
 	void OnRep_VIgor(const FGameplayAttributeData& OldVIgor) const;
+
+	UFUNCTION()
+	void OnRep_Armor(const FGameplayAttributeData& OldArmor) const;
+
+	UFUNCTION()
+	void OnRep_ArmorPenetration(const FGameplayAttributeData& OldArmorPenetration) const;
+
+	UFUNCTION()
+	void OnRep_BlockChance(const FGameplayAttributeData& OldBlockChance) const;
+
+	UFUNCTION()
+	void OnRep_CriticalHitResistance(const FGameplayAttributeData& OldCriticalHitResistance) const;
+
+	UFUNCTION()
+	void OnRep_CriticalHitChance(const FGameplayAttributeData& OldCriticalHitChance) const;
+
+	UFUNCTION()
+	void OnRep_CriticalHitDamage(const FGameplayAttributeData& OldCriticalHitDamage) const;
+
+	UFUNCTION()
+	void OnRep_HealthRegeneration(const FGameplayAttributeData& OldHealthRegeneration) const;
+
+	UFUNCTION()
+	void OnRep_ManaRegeneration(const FGameplayAttributeData& OldManaRegeneration) const;
 private:
 	void SetEffectProperty(const struct FGameplayEffectModCallbackData& Data, FMy_EffectProperties& Props) const;
 };

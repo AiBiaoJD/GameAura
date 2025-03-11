@@ -24,19 +24,32 @@ void UMy_AuraAttributeSet::GetLifetimeReplicatedProps(TArray<class FLifetimeProp
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
 	//Replicate 无条件的复制，总是有调用OnRep，即时相同
+	//---- Primary ATTribute -----
 	DOREPLIFETIME_CONDITION_NOTIFY(UMy_AuraAttributeSet, Strength, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UMy_AuraAttributeSet, Intelligence, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UMy_AuraAttributeSet, Resilience, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UMy_AuraAttributeSet, VIgor, COND_None, REPNOTIFY_Always);
 
 
-
+	//---- Vital ATTribute -----
 	DOREPLIFETIME_CONDITION_NOTIFY(UMy_AuraAttributeSet, Health, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UMy_AuraAttributeSet, MaxHealth, COND_None, REPNOTIFY_Always);
+	
+
+
+	//---- Second Attribute -----
+	DOREPLIFETIME_CONDITION_NOTIFY(UMy_AuraAttributeSet, Armor, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UMy_AuraAttributeSet, ArmorPenetration, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UMy_AuraAttributeSet, HealthRegeneration, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UMy_AuraAttributeSet, ManaRegeneration, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UMy_AuraAttributeSet, Mana, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UMy_AuraAttributeSet, MaxMana, COND_None, REPNOTIFY_Always);
 
-
+	//---- Third Attribute -----
+	DOREPLIFETIME_CONDITION_NOTIFY(UMy_AuraAttributeSet, BlockChance, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UMy_AuraAttributeSet, CriticalHitResistance, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UMy_AuraAttributeSet, CriticalHitChance, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UMy_AuraAttributeSet, CriticalHitDamage, COND_None, REPNOTIFY_Always);
 }
 
 //在ATTribute修改之前进行相关处理，主要避免Attribute里面的数据非法，属于Attribute核心逻辑
@@ -164,6 +177,52 @@ void UMy_AuraAttributeSet::OnRep_Resilience(const FGameplayAttributeData& OldRes
 void UMy_AuraAttributeSet::OnRep_VIgor(const FGameplayAttributeData& OldVIgor) const
 {
 	GAMEPLAYATTRIBUTE_REPNOTIFY(UMy_AuraAttributeSet, VIgor, OldVIgor);
+
+}
+
+void UMy_AuraAttributeSet::OnRep_Armor(const FGameplayAttributeData& OldArmor) const
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UMy_AuraAttributeSet, Armor, OldArmor);
+}
+
+void UMy_AuraAttributeSet::OnRep_ArmorPenetration(const FGameplayAttributeData& OldArmorPenetration) const
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UMy_AuraAttributeSet, ArmorPenetration, OldArmorPenetration);
+
+}
+
+void UMy_AuraAttributeSet::OnRep_BlockChance(const FGameplayAttributeData& OldBlockChance) const
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UMy_AuraAttributeSet, BlockChance, OldBlockChance);
+
+}
+
+void UMy_AuraAttributeSet::OnRep_CriticalHitResistance(const FGameplayAttributeData& OldCriticalHitResistance) const
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UMy_AuraAttributeSet, CriticalHitResistance, OldCriticalHitResistance);
+
+}
+
+void UMy_AuraAttributeSet::OnRep_CriticalHitChance(const FGameplayAttributeData& OldCriticalHitChance) const
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UMy_AuraAttributeSet, CriticalHitChance, OldCriticalHitChance);
+}
+
+void UMy_AuraAttributeSet::OnRep_CriticalHitDamage(const FGameplayAttributeData& OldCriticalHitDamage) const
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UMy_AuraAttributeSet, CriticalHitDamage, OldCriticalHitDamage);
+
+}
+
+void UMy_AuraAttributeSet::OnRep_HealthRegeneration(const FGameplayAttributeData& OldHealthRegeneration) const
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UMy_AuraAttributeSet, HealthRegeneration, OldHealthRegeneration);
+
+}
+
+void UMy_AuraAttributeSet::OnRep_ManaRegeneration(const FGameplayAttributeData& OldManaRegeneration) const
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UMy_AuraAttributeSet, ManaRegeneration, OldManaRegeneration);
 
 }
 
