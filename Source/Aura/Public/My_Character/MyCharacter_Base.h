@@ -8,7 +8,7 @@
 
 
 UCLASS(ABSTRACT)
-class AURA_API AMyCharacter_Base : public ACharacter,public IAbilitySystemInterface
+class AURA_API AMyCharacter_Base : public ACharacter, public IAbilitySystemInterface
 {
 	GENERATED_BODY()
 
@@ -36,4 +36,9 @@ protected:
 
 	virtual void My_InitAbilityActorInfo();
 
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "ATTribute")
+	TSubclassOf<UGameplayEffect> DefaultPrimaryAttributeEffectClass;
+
+	void InitializePrimaryATTribute() const;
 };

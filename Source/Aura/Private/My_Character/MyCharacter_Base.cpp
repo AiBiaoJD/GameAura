@@ -31,10 +31,25 @@ UAttributeSet* AMyCharacter_Base::GetAttributeSet() const
 void AMyCharacter_Base::BeginPlay()
 {
 	Super::BeginPlay();
-	
+
 }
 
-void AMyCharacter_Base:: My_InitAbilityActorInfo()
+void AMyCharacter_Base::My_InitAbilityActorInfo()
 {
 }
 
+
+//用Effect只设置Aura的Attribute，所以可以在Aura类中去使用
+void AMyCharacter_Base::InitializePrimaryATTribute() const
+{
+	check(GetAbilitySystemComponent());
+	check(DefaultPrimaryAttributeEffectClass);
+	{
+		const FGameplayEffectContextHandle ContextHandle = GetAbilitySystemComponent()->MakeEffectContext();
+
+		const FGameplayEffectSpecHandle EffectSpecHandle = GetAbilitySystemComponent()->MakeOutgoingSpec(DefaultPrimaryAttributeEffectClass, 1.0f, ContextHandle);
+
+		GetAbilitySystemComponent()->ApplyGameplayEffectSpecToTarget(*EffectSpecHandle.Data.Get(), GetAbilitySystemComponent());
+
+	}
+}
