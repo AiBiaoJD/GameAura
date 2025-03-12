@@ -19,6 +19,10 @@ public:
 	AAura_Character();
 	virtual void PossessedBy(AController* NewController) override;
 	virtual void OnRep_PlayerState() override;
+
+	/** Combat interface **/
+	virtual int32 GetPlayerLevel() override;
+	/** end Combat interface **/
 private:
 
 	//初始化HUD和相关ASC委托的绑定

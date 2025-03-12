@@ -25,6 +25,11 @@ void AEnemy_Characte::UnHighlightActor()
 
 }
 
+int32 AEnemy_Characte::GetPlayerLevel()
+{
+	return Level;
+}
+
 AEnemy_Characte::AEnemy_Characte()
 {
 	/*

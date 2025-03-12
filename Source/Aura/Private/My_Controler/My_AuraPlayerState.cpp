@@ -36,6 +36,7 @@ UAttributeSet* AMy_AuraPlayerState::GetAttributeSet() const
 	return AttributeSet;
 }
 
+
 void AMy_AuraPlayerState::OnRep_Level(int32 OldLevel)
 {
 }

@@ -4,11 +4,14 @@
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemInterface.h"
 #include "GameFramework/Character.h"
+#include "Interaction/CombatInterface.h"
+#include "My_Interraction/My_CombatInterface.h"
 #include "MyCharacter_Base.generated.h"
 
 
 UCLASS(ABSTRACT)
-class AURA_API AMyCharacter_Base : public ACharacter, public IAbilitySystemInterface
+class AURA_API AMyCharacter_Base : public ACharacter, public IAbilitySystemInterface,public
+IMy_CombatInterface
 {
 	GENERATED_BODY()
 
