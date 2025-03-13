@@ -41,8 +41,7 @@ void AMyCharacter_Base::My_InitAbilityActorInfo()
 
 void AMyCharacter_Base::ApplyEffectToSelf(TSubclassOf<UGameplayEffect> GamePlayEffect, float Level)const
 {
-	/*check(GetAbilitySystemComponent());
-	check(GamePlayEffect);*/
+
 	if (GetAbilitySystemComponent() && GamePlayEffect)
 	{
 		FGameplayEffectContextHandle ContextHandle = GetAbilitySystemComponent()->MakeEffectContext();
@@ -59,6 +58,6 @@ void AMyCharacter_Base::InitializeDefaultAttribute()const
 {
 	ApplyEffectToSelf(DefaultPrimaryAttributeEffectClass, 1.0f);
 	ApplyEffectToSelf(DefaultSecondAttributeEffectClass, 1.0f);
-
+	ApplyEffectToSelf(InitVitalAttributeEffectClass, 1.0f);
 }
 

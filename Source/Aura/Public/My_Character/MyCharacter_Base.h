@@ -40,6 +40,7 @@ protected:
 	virtual void My_InitAbilityActorInfo();
 
 
+	//Effect 初始化相关属性
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Attribute")
 	TSubclassOf<UGameplayEffect> DefaultPrimaryAttributeEffectClass;
 
@@ -47,6 +48,8 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Attribute")
 	TSubclassOf<UGameplayEffect> DefaultSecondAttributeEffectClass;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Attribute")
+	TSubclassOf<UGameplayEffect> InitVitalAttributeEffectClass;
 
 	void ApplyEffectToSelf(TSubclassOf<UGameplayEffect> GamePlayEffect, float Level) const;
 	void InitializeDefaultAttribute() const;
