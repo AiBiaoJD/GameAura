@@ -45,9 +45,10 @@ void AMyCharacter_Base::ApplyEffectToSelf(TSubclassOf<UGameplayEffect> GamePlayE
 	check(GamePlayEffect);*/
 	if (GetAbilitySystemComponent() && GamePlayEffect)
 	{
-		const FGameplayEffectContextHandle ContextHandle = GetAbilitySystemComponent()->MakeEffectContext();
+		FGameplayEffectContextHandle ContextHandle = GetAbilitySystemComponent()->MakeEffectContext();
+		ContextHandle.AddSourceObject(this);
 
-		const FGameplayEffectSpecHandle EffectSpecHandle = GetAbilitySystemComponent()->MakeOutgoingSpec(GamePlayEffect, Level, ContextHandle);
+		FGameplayEffectSpecHandle EffectSpecHandle = GetAbilitySystemComponent()->MakeOutgoingSpec(GamePlayEffect, Level, ContextHandle);
 
 		GetAbilitySystemComponent()->ApplyGameplayEffectSpecToTarget(*EffectSpecHandle.Data.Get(), GetAbilitySystemComponent());
 	}
