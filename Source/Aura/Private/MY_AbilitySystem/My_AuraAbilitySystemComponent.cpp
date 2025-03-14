@@ -16,8 +16,6 @@ void UMy_AuraAbilitySystemComponent::AbilityActorInfoSet()
 	//-------一旦Actorinfo设置好,就可以对ASC的委托进行绑定-----------------
 	OnGameplayEffectAppliedDelegateToSelf.AddUObject(this, &UMy_AuraAbilitySystemComponent::EffectApplied);
 
-	const FMy_AuraGameplayTags GameplayTags = FMy_AuraGameplayTags::GetInstance();
-	GEngine->AddOnScreenDebugMessage(-1, 8.0f, FColor::Blue, GameplayTags.My_Attribute_Secondary_Armor.ToString());
 }
 
 void UMy_AuraAbilitySystemComponent::EffectApplied(UAbilitySystemComponent* AbilitySystemComponent, const FGameplayEffectSpec& EffectSpec, FActiveGameplayEffectHandle ActiveGameplayEffectHandle)
