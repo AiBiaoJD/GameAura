@@ -18,17 +18,21 @@ class AURA_API AMy_AuraHUD : public AHUD
 
 
 public:
-	UPROPERTY()
-	TObjectPtr<UMy_AuraUserWidget> OverlayWidget;
+	UMy_OverlayWidgetController* GetOverlayWidgetController(const FMY_WidgetControllerParams& WCParams);
 
 
 	//为了初始化OverlayWidgetController，我们需要传入FWidgetControllerParams结构体
 	//之后使用OverlayWidgetController来初始化OverlayWidget，而Beginplay()不可以传参数
 	//所以新建一个函数来传参数，不使用BeginPLay
 	void InitOverlay(APlayerController* PC, APlayerState* PS, UAbilitySystemComponent* ASC, UAttributeSet* AS);
+
+	
 protected:
-	virtual void BeginPlay() override;
+
 private:
+	UPROPERTY()
+	TObjectPtr<UMy_AuraUserWidget> OverlayWidget;
+
 	UPROPERTY(EditAnywhere)
 	TSubclassOf<UMy_AuraUserWidget> OverlayWidgetClass;
 

@@ -18,12 +18,17 @@ class AURA_API UMy_AttributeMenuWidgetController : public UMy_AuraWidgetControll
 
 public:
 
+	//控制器广播数据给widget
+	virtual void BroadcastInitiaValues();
+
+	//ATTribute属性改变，委托调用的回调函数
+	virtual void BindCallbacksToDependencies();
 
 
 protected:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Widget Data")
-	TObjectPtr<UMy_Attributeinfo>WidgetDataAsset;
+	TObjectPtr<UMy_Attributeinfo> WidgetDataAsset;
 
 private:
 };
