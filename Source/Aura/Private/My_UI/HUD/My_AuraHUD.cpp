@@ -18,6 +18,18 @@ UMy_OverlayWidgetController* AMy_AuraHUD::GetOverlayWidgetController(const FMY_W
 	return  OverlayWidgetController;
 }
 
+UMy_AttributeMenuWidgetController* AMy_AuraHUD::GetMenuWidgetController(const FMY_WidgetControllerParams& WCParams)
+{
+	if (MenuWidgetController == nullptr)
+	{
+		MenuWidgetController = NewObject<UMy_AttributeMenuWidgetController>(this, MenuWidgetControllerClass);
+		MenuWidgetController->SetWidgetControllerParams(WCParams);
+		MenuWidgetController->BindCallbacksToDependencies();
+	}
+	return MenuWidgetController;
+}
+
+
 void AMy_AuraHUD::InitOverlay(APlayerController* PC, APlayerState* PS, UAbilitySystemComponent* ASC, UAttributeSet* AS)
 {
 	checkf(OverlayWidgetClass, TEXT("Overlay Widget Class unInit, fill out MY_BP_AuraHUD"));
