@@ -7,7 +7,7 @@
 #include "My_Controler/My_AuraPlayerState.h"
 #include "My_UI/HUD/My_AuraHUD.h"
 
-UMy_OverlayWidgetController* UMy_AuraAbilitySystemLibrary::GetOverlayWidgetController(const UObject* WorldContextObject)
+UMy_OverlayWidgetController* UMy_AuraAbilitySystemLibrary::My_GetOverlayWidgetController(const UObject* WorldContextObject)
 {
 	if (APlayerController* PC = UGameplayStatics::GetPlayerController(WorldContextObject, 0))
 	{
@@ -24,10 +24,10 @@ UMy_OverlayWidgetController* UMy_AuraAbilitySystemLibrary::GetOverlayWidgetContr
 	return nullptr;
 }
 
-UMy_AttributeMenuWidgetController* UMy_AuraAbilitySystemLibrary::GetMenuWidgetController(
+UMy_AttributeMenuWidgetController* UMy_AuraAbilitySystemLibrary::My_GetMenuWidgetController(
 	const UObject* WorldContextObject)
 {
-	if (APlayerController* PC = UGameplayStatics::GetPlayerController(WorldContextObject,0))
+	if (APlayerController* PC = UGameplayStatics::GetPlayerController(WorldContextObject, 0))
 	{
 		if (AMy_AuraHUD* AuraHUD = Cast<AMy_AuraHUD>(PC->GetHUD()))
 		{

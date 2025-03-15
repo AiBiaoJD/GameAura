@@ -50,6 +50,7 @@ public:
 	void SetWidgetControllerParams(const FMY_WidgetControllerParams& WCParams);
 
 	//控制器广播数据给widget
+	UFUNCTION(BlueprintCallable)
 	virtual void BroadcastInitiaValues();
 
 	//ATTribute属性改变，委托调用的回调函数

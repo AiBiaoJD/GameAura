@@ -48,19 +48,19 @@ public:
 
 	virtual void BindCallbacksToDependencies() override;
 
-	UPROPERTY(BlueprintAssignable, Category = "GAS|Attibutes")
+	UPROPERTY(BlueprintAssignable, Category = "My_GAS|Attibutes")
 	FMy_OnAttributeChangedSignature OnHealthChanged;
 
-	UPROPERTY(BlueprintAssignable, Category = "GAS|Attibutes")
+	UPROPERTY(BlueprintAssignable, Category = "My_GAS|Attibutes")
 	FMy_OnAttributeChangedSignature OnMaxHealthChanged;
 
-	UPROPERTY(BlueprintAssignable, Category = "GAS|Attibutes")
+	UPROPERTY(BlueprintAssignable, Category = "My_GAS|Attibutes")
 	FMy_OnAttributeChangedSignature OnManaChanged;
 
-	UPROPERTY(BlueprintAssignable, Category = "GAS|Attibutes")
+	UPROPERTY(BlueprintAssignable, Category = "My_GAS|Attibutes")
 	FMy_OnAttributeChangedSignature OnMaxManaChanged;
 
-	UPROPERTY(BlueprintAssignable, Category = "GAS|Message")
+	UPROPERTY(BlueprintAssignable, Category = "My_GAS|Message")
 	FMy_MessageWidgetRowSignature OnMessageWidgetRow;
 
 protected:

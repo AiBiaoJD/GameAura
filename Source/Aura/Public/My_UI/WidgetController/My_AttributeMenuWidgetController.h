@@ -7,6 +7,8 @@
 #include "My_UI/WidgetController/My_AuraWidgetController.h"
 #include "My_AttributeMenuWidgetController.generated.h"
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FMy_OnAttributeInfoSignature, const FMy_AuraAttributeInfo&, info);
+
 /**
  *
  */
@@ -24,11 +26,12 @@ public:
 	//ATTribute属性改变，委托调用的回调函数
 	virtual void BindCallbacksToDependencies();
 
-
+	UPROPERTY(BlueprintAssignable, Category = "My_GAS|Attibutes")
+	FMy_OnAttributeInfoSignature OnAttributeInfo;
 protected:
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Widget Data")
-	TObjectPtr<UMy_Attributeinfo> WidgetDataAsset;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Attribute DataAsset")
+	TObjectPtr<UMy_Attributeinfo> AttributeDA;
 
 private:
 };
