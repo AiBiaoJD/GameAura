@@ -3,7 +3,6 @@
 
 #include "My_UI/WidgetController/My_AttributeMenuWidgetController.h"
 
-#include "My_AuraGamePlayTags_Singleton.h"
 #include "MY_AbilitySystem/My_AuraAttributeSet.h"
 
 void UMy_AttributeMenuWidgetController::BroadcastInitiaValues()
@@ -12,12 +11,14 @@ void UMy_AttributeMenuWidgetController::BroadcastInitiaValues()
 
 	check(AttributeDA);
 
-	//从DataAsset中查找Tag,DataAsset是继承自UMy_Attributeinfo
-	FMy_AuraAttributeInfo info = AttributeDA->FindAttributeinfoFormTag(FMy_AuraGameplayTags::GetInstance().My_Attribute_Primary_Strength);
+	for (auto& Pair : AS->M_TagsToAttribute)
+	{
+		FMy_AuraAttributeInfo Info = AttributeDA->FindAttributeinfoFormTag(Pair.Key);
+		Info.AttributeValue = Pair.Value.Execute().GetNumericValue(AS);
 
-	info.AttributeValue = AS->GetStrength();
+		OnAttributeInfo.Broadcast(Info);
+	}
 
-	OnAttributeInfo.Broadcast(info);
 }
 
 void UMy_AttributeMenuWidgetController::BindCallbacksToDependencies()

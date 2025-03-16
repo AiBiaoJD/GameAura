@@ -5,16 +5,21 @@
 
 #include "AbilitySystemBlueprintLibrary.h"
 #include "GameplayEffectExtension.h"
+#include "My_AuraGamePlayTags_Singleton.h"
 #include "GameFramework/Character.h"
 #include "Net/UnrealNetwork.h"
 
 UMy_AuraAttributeSet::UMy_AuraAttributeSet()
 {
+	const FMy_AuraGameplayTags& GameplayTags = FMy_AuraGameplayTags::GetInstance();
+	FMy_AttributeSignature OnStrength;
+	OnStrength.BindStatic(GetStrengthAttribute);
+	M_TagsToAttribute.Add(GameplayTags.My_Attribute_Primary_Strength, OnStrength);
 
-	//∫Í∂®“ÂºÚªØ∞ÊGAMEPLAYATTRIBUTE_VALUE_INITTER(PropertyName)
-	InitHealth(280.0f);
 
-	InitMana(200.f);
+	FMy_AttributeSignature OnIntelligence;
+	OnIntelligence.BindStatic(GetIntelligenceAttribute);
+	M_TagsToAttribute.Add(GameplayTags.My_Attribute_Primary_Intelligence, OnIntelligence);
 
 }
 

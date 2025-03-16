@@ -13,13 +13,7 @@
  	GAMEPLAYATTRIBUTE_VALUE_SETTER(PropertyName) \
  	GAMEPLAYATTRIBUTE_VALUE_INITTER(PropertyName)
 
-/*
- *属性宏定义可以使用或者不用
-#define DEFINE_ATTRIBUTE(AttributeName, CategoryName) \
-UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_##AttributeName, Category = CategoryName) \
-FGameplayAttributeData AttributeName; \
-ATTRIBUTE_ACCESSORS(UMy_AuraAttributeSet, AttributeName);
-*/
+DECLARE_DELEGATE_RetVal(FGameplayAttribute, FMy_AttributeSignature);
 
 //保存PostGameplayEffectExecute()调用后里面的数据，包括Effect的Source和Target等
 USTRUCT()
@@ -84,6 +78,10 @@ public:
 	virtual void PostAttributeChange(const FGameplayAttribute& Attribute, float OldValue, float NewValue) override;
 
 	virtual void PostGameplayEffectExecute(const struct FGameplayEffectModCallbackData& Data) override;
+
+
+	//Tag 和 有返回值的委托
+	TMap<FGameplayTag, FMy_AttributeSignature> M_TagsToAttribute;
 
 	/*
 	 *Primary Attribute:主要属性
