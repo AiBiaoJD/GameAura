@@ -13,6 +13,12 @@
  	GAMEPLAYATTRIBUTE_VALUE_SETTER(PropertyName) \
  	GAMEPLAYATTRIBUTE_VALUE_INITTER(PropertyName)
 
+// typedef is specific to the FgameplayAttribute(), But TStaticFuncPtr is general to any static
+
+// typedef  TBaseStaticDelegateInstance<FGameplayAttribute(), FDefaultTSDelegateUserPolicy>::FFuncPtr FMy_AttributeFuncPtr;
+template<class T>
+using TMy_StaticFuncPtr = typename TBaseStaticDelegateInstance<T, FDefaultTSDelegateUserPolicy>::FFuncPtr;
+
 
 //保存PostGameplayEffectExecute()调用后里面的数据，包括Effect的Source和Target等
 USTRUCT()
@@ -80,9 +86,10 @@ public:
 
 
 	//Tag 和 有返回值的委托
-	TMap<FGameplayTag, TBaseStaticDelegateInstance<FGameplayAttribute(), FDefaultTSDelegateUserPolicy>::FFuncPtr> M_TagsToAttribute;
 
-	TBaseStaticDelegateInstance<FGameplayAttribute(), FDefaultTSDelegateUserPolicy>::FFuncPtr FuncPtr;
+	TMap<FGameplayTag, TMy_StaticFuncPtr<FGameplayAttribute()>> M_TagsToAttribute;
+
+
 
 	/*
 	 *Primary Attribute:主要属性

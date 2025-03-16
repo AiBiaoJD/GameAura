@@ -14,11 +14,11 @@ UMy_AuraAttributeSet::UMy_AuraAttributeSet()
 	const FMy_AuraGameplayTags& GameplayTags = FMy_AuraGameplayTags::GetInstance();
 
 	M_TagsToAttribute.Add(GameplayTags.My_Attribute_Primary_Strength, GetStrengthAttribute);
-
-
 	M_TagsToAttribute.Add(GameplayTags.My_Attribute_Primary_Intelligence, GetIntelligenceAttribute);
+	M_TagsToAttribute.Add(GameplayTags.My_Attribute_Primary_Resilience, GetResilienceAttribute);
+	M_TagsToAttribute.Add(GameplayTags.My_Attribute_Primary_VIgor, GetVIgorAttribute);
 
-
+	
 }
 
 //服务器通知客户端各种ATTribute的更新情况
