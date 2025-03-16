@@ -12,6 +12,7 @@
 UMy_AuraAttributeSet::UMy_AuraAttributeSet()
 {
 	const FMy_AuraGameplayTags& GameplayTags = FMy_AuraGameplayTags::GetInstance();
+
 	FMy_AttributeSignature OnStrength;
 	OnStrength.BindStatic(GetStrengthAttribute);
 	M_TagsToAttribute.Add(GameplayTags.My_Attribute_Primary_Strength, OnStrength);
