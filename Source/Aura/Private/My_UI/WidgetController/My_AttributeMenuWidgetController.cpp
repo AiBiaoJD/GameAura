@@ -32,6 +32,7 @@ void UMy_AttributeMenuWidgetController::BindCallbacksToDependencies()
 	}
 }
 
+
 void UMy_AttributeMenuWidgetController::BroadAttributeInfo(const FGameplayTag& Tag, const FGameplayAttribute& Attribute)
 {
 	FMy_AuraAttributeInfo Info = AttributeDA->FindAttributeinfoFormTag(Tag);
