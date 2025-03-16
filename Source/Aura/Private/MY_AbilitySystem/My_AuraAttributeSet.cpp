@@ -13,14 +13,11 @@ UMy_AuraAttributeSet::UMy_AuraAttributeSet()
 {
 	const FMy_AuraGameplayTags& GameplayTags = FMy_AuraGameplayTags::GetInstance();
 
-	FMy_AttributeSignature OnStrength;
-	OnStrength.BindStatic(GetStrengthAttribute);
-	M_TagsToAttribute.Add(GameplayTags.My_Attribute_Primary_Strength, OnStrength);
+	M_TagsToAttribute.Add(GameplayTags.My_Attribute_Primary_Strength, GetStrengthAttribute);
 
 
-	FMy_AttributeSignature OnIntelligence;
-	OnIntelligence.BindStatic(GetIntelligenceAttribute);
-	M_TagsToAttribute.Add(GameplayTags.My_Attribute_Primary_Intelligence, OnIntelligence);
+	M_TagsToAttribute.Add(GameplayTags.My_Attribute_Primary_Intelligence, GetIntelligenceAttribute);
+
 
 }
 

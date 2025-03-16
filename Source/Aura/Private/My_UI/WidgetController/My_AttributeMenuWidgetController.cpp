@@ -14,8 +14,7 @@ void UMy_AttributeMenuWidgetController::BroadcastInitiaValues()
 	for (auto& Pair : AS->M_TagsToAttribute)
 	{
 		FMy_AuraAttributeInfo Info = AttributeDA->FindAttributeinfoFormTag(Pair.Key);
-		Info.AttributeValue = Pair.Value.Execute().GetNumericValue(AS);
-
+		Info.AttributeValue = Pair.Value().GetNumericValue(AS);
 		OnAttributeInfo.Broadcast(Info);
 	}
 

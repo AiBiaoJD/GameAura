@@ -13,7 +13,6 @@
  	GAMEPLAYATTRIBUTE_VALUE_SETTER(PropertyName) \
  	GAMEPLAYATTRIBUTE_VALUE_INITTER(PropertyName)
 
-DECLARE_DELEGATE_RetVal(FGameplayAttribute, FMy_AttributeSignature);
 
 //保存PostGameplayEffectExecute()调用后里面的数据，包括Effect的Source和Target等
 USTRUCT()
@@ -81,7 +80,9 @@ public:
 
 
 	//Tag 和 有返回值的委托
-	TMap<FGameplayTag, FMy_AttributeSignature> M_TagsToAttribute;
+	TMap<FGameplayTag, TBaseStaticDelegateInstance<FGameplayAttribute(), FDefaultTSDelegateUserPolicy>::FFuncPtr> M_TagsToAttribute;
+
+	TBaseStaticDelegateInstance<FGameplayAttribute(), FDefaultTSDelegateUserPolicy>::FFuncPtr FuncPtr;
 
 	/*
 	 *Primary Attribute:主要属性
