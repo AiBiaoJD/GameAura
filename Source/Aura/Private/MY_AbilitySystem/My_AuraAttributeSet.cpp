@@ -13,11 +13,23 @@ UMy_AuraAttributeSet::UMy_AuraAttributeSet()
 {
 	const FMy_AuraGameplayTags& GameplayTags = FMy_AuraGameplayTags::GetInstance();
 
+	// Ìí¼Ó Primary Attributes
 	M_TagsToAttribute.Add(GameplayTags.My_Attribute_Primary_Strength, GetStrengthAttribute);
 	M_TagsToAttribute.Add(GameplayTags.My_Attribute_Primary_Intelligence, GetIntelligenceAttribute);
 	M_TagsToAttribute.Add(GameplayTags.My_Attribute_Primary_Resilience, GetResilienceAttribute);
 	M_TagsToAttribute.Add(GameplayTags.My_Attribute_Primary_VIgor, GetVIgorAttribute);
 
+	// Ìí¼Ó Secondary Attributes
+	M_TagsToAttribute.Add(GameplayTags.My_Attribute_Secondary_Armor, GetArmorAttribute);
+	M_TagsToAttribute.Add(GameplayTags.My_Attribute_Secondary_ArmorPenetration, GetArmorPenetrationAttribute);
+	M_TagsToAttribute.Add(GameplayTags.My_Attribute_Secondary_HealthRegeneration, GetHealthRegenerationAttribute);
+	M_TagsToAttribute.Add(GameplayTags.My_Attribute_Secondary_ManaRegeneration, GetManaRegenerationAttribute);
+	M_TagsToAttribute.Add(GameplayTags.My_Attribute_Secondary_MaxMana, GetMaxManaAttribute);
+	M_TagsToAttribute.Add(GameplayTags.My_Attribute_Secondary_MaxHealth, GetMaxHealthAttribute);
+	M_TagsToAttribute.Add(GameplayTags.My_Attribute_Secondary_BlockChance, GetBlockChanceAttribute);
+	M_TagsToAttribute.Add(GameplayTags.My_Attribute_Secondary_CriticalHitResistance, GetCriticalHitResistanceAttribute);
+	M_TagsToAttribute.Add(GameplayTags.My_Attribute_Secondary_CriticalHitChance, GetCriticalHitChanceAttribute);
+	M_TagsToAttribute.Add(GameplayTags.My_Attribute_Secondary_CriticalHitDamage, GetCriticalHitDamageAttribute);
 	
 }
 

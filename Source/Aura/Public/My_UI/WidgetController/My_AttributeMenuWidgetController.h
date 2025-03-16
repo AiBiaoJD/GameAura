@@ -34,4 +34,6 @@ protected:
 	TObjectPtr<UMy_Attributeinfo> AttributeDA;
 
 private:
+
+	void BroadAttributeInfo(const FGameplayTag& Tag, const FGameplayAttribute& Attribute);
 };
