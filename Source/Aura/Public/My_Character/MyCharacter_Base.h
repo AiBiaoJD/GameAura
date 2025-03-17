@@ -4,7 +4,6 @@
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemInterface.h"
 #include "GameFramework/Character.h"
-#include "Interaction/CombatInterface.h"
 #include "My_Interraction/My_CombatInterface.h"
 #include "MyCharacter_Base.generated.h"
 
