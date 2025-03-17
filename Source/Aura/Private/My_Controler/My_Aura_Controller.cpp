@@ -115,7 +115,7 @@ void AMy_Aura_Controller::SetupInputComponent()
 void AMy_Aura_Controller::Move(const FInputActionValue& InputActionValue)
 {
 	const FVector2D InputAxisVector = InputActionValue.Get<FVector2D>();
-	//UE_LOG(LogTemp, Warning, TEXT("InputAxisVector: X=%f, Y=%f"), InputAxisVector.X, InputAxisVector.Y);
+	
 
 	const FRotator Rotation = GetControlRotation();
 	const FRotator YawRotation(0.0f, Rotation.Yaw, 0.0f);

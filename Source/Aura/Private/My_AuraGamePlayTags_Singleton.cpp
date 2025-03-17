@@ -11,6 +11,9 @@ FMy_AuraGameplayTags FMy_AuraGameplayTags::GameplayTagsInstance;
 
 void FMy_AuraGameplayTags::InitializeNativeGameplayTags()
 {
+	/*
+	 * Primary Attribute Tag
+	 */
     // Strength: Increases physical damage.
     GameplayTagsInstance.My_Attribute_Primary_Strength = UGameplayTagsManager::Get().AddNativeGameplayTag(FName("My_Attribute.Primary.Strength"), FString("Increases physical damage."));
 
@@ -25,7 +28,9 @@ void FMy_AuraGameplayTags::InitializeNativeGameplayTags()
 
 
 
-
+    /*
+     * SecondaryAttribute Tag
+     */
     // Armor: Reduces damage taken by a percentage and increases Block Chance (halves damage taken) and reduces critical damage from enemies.
     GameplayTagsInstance.My_Attribute_Secondary_Armor = UGameplayTagsManager::Get().AddNativeGameplayTag(FName("My_Attribute.Secondary.Armor"), FString("Reduces damage taken by a percentage and increases Block Chance (halves damage taken) and reduces critical damage from enemies."));
 
@@ -55,4 +60,17 @@ void FMy_AuraGameplayTags::InitializeNativeGameplayTags()
 
     // Critical Hit Damage: Increases damage dealt by critical hits.
     GameplayTagsInstance.My_Attribute_Secondary_CriticalHitDamage = UGameplayTagsManager::Get().AddNativeGameplayTag(FName("My_Attribute.Secondary.CriticalHitDamage"), FString("Increases damage dealt by critical hits."));
+
+    /*
+    * Input Tag
+    */
+
+    GameplayTagsInstance.My_InputTag_LMB = UGameplayTagsManager::Get().AddNativeGameplayTag(FName("My_InputTag.LMB"), FString("Left Mouse Button Input."));
+    GameplayTagsInstance.My_InputTag_RMB = UGameplayTagsManager::Get().AddNativeGameplayTag(FName("My_InputTag.RMB"), FString("Right Mouse Button Input."));
+    GameplayTagsInstance.My_InputTag_1 = UGameplayTagsManager::Get().AddNativeGameplayTag(FName("My_InputTag.1"), FString("Input for Key 1."));
+    GameplayTagsInstance.My_InputTag_2 = UGameplayTagsManager::Get().AddNativeGameplayTag(FName("My_InputTag.2"), FString("Input for Key 2."));
+    GameplayTagsInstance.My_InputTag_3 = UGameplayTagsManager::Get().AddNativeGameplayTag(FName("My_InputTag.3"), FString("Input for Key 3."));
+    GameplayTagsInstance.My_InputTag_4 = UGameplayTagsManager::Get().AddNativeGameplayTag(FName("My_InputTag.4"), FString("Input for Key 4."));
+    GameplayTagsInstance.My_InputTag_5 = UGameplayTagsManager::Get().AddNativeGameplayTag(FName("My_InputTag.5"), FString("Input for Key 5."));
+
 }
