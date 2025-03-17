@@ -30,8 +30,13 @@ AAura_Character::AAura_Character()
 void AAura_Character::PossessedBy(AController* NewController)
 {
 	Super::PossessedBy(NewController);
+
     //服务器端初始化InitAbilityActorInfo
     My_InitAbilityActorInfo();
+
+	//初始化角色Ability
+	AddCharacterAbilities();
+
   
 }
 

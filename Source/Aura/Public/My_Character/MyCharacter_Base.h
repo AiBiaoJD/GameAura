@@ -10,8 +10,8 @@
 
 
 UCLASS(ABSTRACT)
-class AURA_API AMyCharacter_Base : public ACharacter, public IAbilitySystemInterface,public
-IMy_CombatInterface
+class AURA_API AMyCharacter_Base : public ACharacter, public IAbilitySystemInterface, public
+	IMy_CombatInterface
 {
 	GENERATED_BODY()
 
@@ -53,4 +53,10 @@ protected:
 
 	void ApplyEffectToSelf(TSubclassOf<UGameplayEffect> GamePlayEffect, float Level) const;
 	void InitializeDefaultAttribute() const;
+
+	// Ability初始化相关
+	void AddCharacterAbilities();
+private:
+	UPROPERTY(EditAnywhere, Category = "My_Abilities")
+	TArray<TSubclassOf<UGameplayAbility>> StartupAbility;
 };

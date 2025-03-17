@@ -29,3 +29,13 @@ void UMy_AuraAbilitySystemComponent::EffectApplied(UAbilitySystemComponent* Abil
 
 
 }
+
+
+void UMy_AuraAbilitySystemComponent::AddCharacterAbilitiesFromASC(const TArray<TSubclassOf<UGameplayAbility>>& StartupAbility)
+{
+	for (auto& Ability: StartupAbility)
+	{
+		FGameplayAbilitySpec AbilitySpec =  FGameplayAbilitySpec(Ability, 1);
+		GiveAbilityAndActivateOnce(AbilitySpec);
+	}
+}

@@ -20,6 +20,8 @@ public:
 	void AbilityActorInfoSet();
 
 	FMy_EffectAssetTags EffectAssetTags;
+
+	void AddCharacterAbilitiesFromASC(const TArray<TSubclassOf<UGameplayAbility>>& StartupAbility);
 protected:
 
 	//OnGameplayEffectAppliedDelegateToSelf 委托的回调函数,需要进行绑定

@@ -3,6 +3,8 @@
 
 #include "My_Character/MyCharacter_Base.h"
 
+#include "MY_AbilitySystem/My_AuraAbilitySystemComponent.h"
+
 // Sets default values
 AMyCharacter_Base::AMyCharacter_Base()
 {
@@ -59,5 +61,16 @@ void AMyCharacter_Base::InitializeDefaultAttribute()const
 	ApplyEffectToSelf(DefaultPrimaryAttributeEffectClass, 1.0f);
 	ApplyEffectToSelf(DefaultSecondAttributeEffectClass, 1.0f);
 	ApplyEffectToSelf(InitVitalAttributeEffectClass, 1.0f);
+}
+
+void AMyCharacter_Base::AddCharacterAbilities()
+{
+	// Ability添加到服务器,replicate到客户端
+	if (!HasAuthority()) return;
+
+	UMy_AuraAbilitySystemComponent* ASC = CastChecked<UMy_AuraAbilitySystemComponent>(AbilitySystemComponent);
+
+	ASC->AddCharacterAbilitiesFromASC(StartupAbility);
+
 }
 
