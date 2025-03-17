@@ -31,6 +31,15 @@ inline void UMy_AuraEnhancedInputComponent::BindAbilityAction(const UMy_AuraInpu
 	{
 		if (Temp.InputAction && Temp.InputTag.IsValid())
 		{
+			if (PressedFunc)
+			{
+				BindAction(Temp.InputAction, ETriggerEvent::Started, Object, PressedFunc, Temp.InputTag);
+			}
+			if (ReleaseFunc)
+			{
+				BindAction(Temp.InputAction, ETriggerEvent::Completed, Object, ReleaseFunc, Temp.InputTag);
+			}
+
 			if (HeldFunc)
 			{
 				BindAction(Temp.InputAction, ETriggerEvent::Triggered, Object, HeldFunc, Temp.InputTag);

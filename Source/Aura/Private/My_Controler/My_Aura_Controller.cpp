@@ -5,6 +5,7 @@
 
 #include "EnhancedInputSubsystems.h"
 #include "EnhancedInputComponent.h"
+#include "My_Input/My_AuraEnhancedInputComponent.h"
 #include "My_Interraction/My_Enemy_Interface.h"
 
 AMy_Aura_Controller::AMy_Aura_Controller()
@@ -106,10 +107,13 @@ void AMy_Aura_Controller::BeginPlay()
 void AMy_Aura_Controller::SetupInputComponent()
 {
 	Super::SetupInputComponent();
-	UEnhancedInputComponent* EnhancedInputComponent = CastChecked<UEnhancedInputComponent>(InputComponent);
+
+	UMy_AuraEnhancedInputComponent* AuraInputComponent = CastChecked<UMy_AuraEnhancedInputComponent>(InputComponent);
 
 	//处理input Action,将设备输入绑定到input Action,在设备输入调用函数Move
-	EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &AMy_Aura_Controller::Move);
+	AuraInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &AMy_Aura_Controller::Move);
+
+	AuraInputComponent->BindAbilityAction(InputConfig, this, &ThisClass::AbilityInputTagPressed, &ThisClass::AbilityInputTagReleased, &ThisClass::AbilityInputTagHeld);
 }
 
 void AMy_Aura_Controller::Move(const FInputActionValue& InputActionValue)
@@ -131,5 +135,21 @@ void AMy_Aura_Controller::Move(const FInputActionValue& InputActionValue)
 		ControlledPawn->AddMovementInput(RightdDir, InputAxisVector.X);
 	}
 
+}
+
+
+void AMy_Aura_Controller::AbilityInputTagPressed(FGameplayTag InputTag)
+{
+	GEngine->AddOnScreenDebugMessage(1, 3.f, FColor::Red, InputTag.ToString());
+}
+
+void AMy_Aura_Controller::AbilityInputTagReleased(FGameplayTag InputTag)
+{
+	GEngine->AddOnScreenDebugMessage(2, 3.f, FColor::Blue, InputTag.ToString());
+}
+
+void AMy_Aura_Controller::AbilityInputTagHeld(FGameplayTag InputTag)
+{
+	GEngine->AddOnScreenDebugMessage(3, 3.f, FColor::Green, InputTag.ToString());
 }
 
