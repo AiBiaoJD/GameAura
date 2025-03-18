@@ -24,8 +24,32 @@ AMy_Aura_Controller::AMy_Aura_Controller()
 void AMy_Aura_Controller::PlayerTick(float DeltaTime)
 {
 	Super::PlayerTick(DeltaTime);
+
 	CursorTrace();
 
+	AutoRun();
+
+}
+
+void AMy_Aura_Controller::AutoRun()
+{
+	APawn* ControlledPawn = GetPawn();
+	if (ControlledPawn && bAutoRunning)
+	{
+		/*
+		 * 当LMB的Release回调函数,正确设置Spline和bAutoRunning为真,启动自动寻路
+		 */
+		const FVector LocationOnSpline = Spline->FindLocationClosestToWorldLocation(ControlledPawn->GetActorLocation(), ESplineCoordinateSpace::World);
+		const FVector Direction = Spline->FindDirectionClosestToWorldLocation(LocationOnSpline, ESplineCoordinateSpace::World);
+		ControlledPawn->AddMovementInput(Direction);
+
+		const float DistanceToDestination = (LocationOnSpline - CachedDestination).Length();
+		if (DistanceToDestination <= AutoRunningAcceptanceRadius)
+		{
+			bAutoRunning = false;
+		}
+
+	}
 }
 
 //检查鼠标点击物体的一些函数
@@ -219,18 +243,41 @@ void AMy_Aura_Controller::AbilityInputTagReleased(FGameplayTag InputTag)
 		APawn* ControlledPawn = GetPawn();
 		if (FollowTime <= ShortPressThreshold && ControlledPawn)
 		{
+			// 获取导航系统
+			UNavigationSystemV1* NavSystem = FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld());
+			if (!NavSystem) return;
+
+			// 查找路径
 			if (UNavigationPath* NavigationPath = UNavigationSystemV1::FindPathToLocationSynchronously(this, ControlledPawn->GetActorLocation(), CachedDestination))
 			{
+				// 清除旧的 Spline 点
 				Spline->ClearSplinePoints();
+
+				// 遍历路径点并添加到 Spline
 				for (const FVector& PathLoc : NavigationPath->PathPoints)
 				{
 					Spline->AddSplinePoint(PathLoc, ESplineCoordinateSpace::World);
-					DrawDebugSphere(GetWorld(), PathLoc, 8.f, 8.f, FColor::Blue, false, 2.0f);
+					DrawDebugSphere(GetWorld(), PathLoc, 8.f, 8.f, FColor::Blue, false, 2.0f); // 绘制路径点
 				}
-				bAutoRunning = true;
 
+				// 绘制路径线
+				for (int32 i = 0; i < NavigationPath->PathPoints.Num() - 1; i++)
+				{
+					FVector StartPoint = NavigationPath->PathPoints[i];
+					FVector EndPoint = NavigationPath->PathPoints[i + 1];
+					DrawDebugLine(GetWorld(), StartPoint, EndPoint, FColor::Green, false, 2.0f, 0, 2.0f); // 绘制路径线
+				}
+
+				// 更新目标点为路径的最后一个点
+				CachedDestination = NavigationPath->PathPoints[NavigationPath->PathPoints.Num() - 1];
+				bAutoRunning = true;
+			}
+			else
+			{
+				UE_LOG(LogTemp, Warning, TEXT("No valid path found!"));
 			}
 		}
+
 		FollowTime = 0.0f;
 		bTargeting = false;
 
@@ -247,3 +294,5 @@ UMy_AuraAbilitySystemComponent* AMy_Aura_Controller::GetAuraASC()
 	}
 	return AuraAbilitySystemComponent;
 }
+
+
