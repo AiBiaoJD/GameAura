@@ -146,33 +146,31 @@ void AMy_Aura_Controller::Move(const FInputActionValue& InputActionValue)
 
 void AMy_Aura_Controller::AbilityInputTagPressed(FGameplayTag InputTag)
 {
-	bTargeting = ThisActor ? true : false;
-	bAutoRunning = false;
+	if (InputTag.MatchesTagExact(FMy_AuraGameplayTags::GetInstance().My_InputTag_LMB))
+	{
+		bTargeting = ThisActor ? true : false;
+		bAutoRunning = false;
+	}
+
+	
 }
 
 
 void AMy_Aura_Controller::AbilityInputTagHeld(FGameplayTag InputTag)
 {
-
-	if (GetAuraASC() == nullptr) return;
-	GetAuraASC()->AbilityInputTagHeld(InputTag);
-}
-
-void AMy_Aura_Controller::AbilityInputTagReleased(FGameplayTag InputTag)
-{
 	// 不是左键点击
 	if (!InputTag.MatchesTagExact(FMy_AuraGameplayTags::GetInstance().My_InputTag_LMB))
 	{
 		if (GetAuraASC() == nullptr) return;
-		GetAuraASC()->AbilityInputTagReleased(InputTag);
+		GetAuraASC()->AbilityInputTagHeld(InputTag);
 		return;
 	}
 
-	// 左键点击敌人,除非相应Ability
+	// 左键点击敌人,激活相应Ability
 	if (bTargeting)
 	{
 		if (GetAuraASC() == nullptr) return;
-		GetAuraASC()->AbilityInputTagReleased(InputTag);
+		GetAuraASC()->AbilityInputTagHeld(InputTag);
 	}
 	// 左键点击地面,进行移动
 	else
@@ -191,6 +189,16 @@ void AMy_Aura_Controller::AbilityInputTagReleased(FGameplayTag InputTag)
 			ControlledPawn->AddMovementInput(Direction);
 		}
 	}
+
+}
+
+void AMy_Aura_Controller::AbilityInputTagReleased(FGameplayTag InputTag)
+{
+
+	if (GetAuraASC() == nullptr) return;
+	GetAuraASC()->AbilityInputTagReleased(InputTag);
+
+	
 }
 
 
