@@ -4,6 +4,7 @@
 #include "MY_AbilitySystem/My_AuraAbilitySystemComponent.h"
 
 #include "My_AuraGamePlayTags_Singleton.h"
+#include "MY_AbilitySystem/Ability/My_AuraGameplayAbilityBase.h"
 
 UMy_AuraAbilitySystemComponent::UMy_AuraAbilitySystemComponent()
 {
@@ -30,12 +31,54 @@ void UMy_AuraAbilitySystemComponent::EffectApplied(UAbilitySystemComponent* Abil
 
 }
 
-
+/*
+ * 在角色初始化时,给能力添加Tag
+ */
 void UMy_AuraAbilitySystemComponent::AddCharacterAbilitiesFromASC(const TArray<TSubclassOf<UGameplayAbility>>& StartupAbility)
 {
-	for (auto& Ability: StartupAbility)
+	for (auto& Ability : StartupAbility)
 	{
-		FGameplayAbilitySpec AbilitySpec =  FGameplayAbilitySpec(Ability, 1);
-		GiveAbilityAndActivateOnce(AbilitySpec);
+		FGameplayAbilitySpec AbilitySpec = FGameplayAbilitySpec(Ability, 1);
+
+		if (const UMy_AuraGameplayAbilityBase* AuraAbility = Cast<UMy_AuraGameplayAbilityBase>(AbilitySpec.Ability))
+		{
+			AbilitySpec.DynamicAbilityTags.AddTag(AuraAbility->StartUpInputTag);
+			GiveAbility(AbilitySpec);
+		}
 	}
 }
+
+/*
+ * 当PlayerController 按下/放开 按键会激活下面的函数
+ * 根据inputTag激活对应的能力
+ */
+void UMy_AuraAbilitySystemComponent::AbilityInputTagHeld(const FGameplayTag InputTag)
+{
+	if (!InputTag.IsValid()) return;
+
+	for (FGameplayAbilitySpec& AbilitySpec : GetActivatableAbilities())
+	{
+		if (AbilitySpec.DynamicAbilityTags.HasTagExact(InputTag))
+		{
+			AbilitySpecInputPressed(AbilitySpec);
+			if (!AbilitySpec.IsActive())
+			{
+				TryActivateAbility(AbilitySpec.Handle);
+			}
+		}
+	}
+}
+
+void UMy_AuraAbilitySystemComponent::AbilityInputTagReleased(const FGameplayTag InputTag)
+{
+	if (!InputTag.IsValid()) return;
+
+	for (FGameplayAbilitySpec& AbilitySpec : GetActivatableAbilities())
+	{
+		if (AbilitySpec.DynamicAbilityTags.HasTagExact(InputTag))
+		{
+			AbilitySpecInputReleased(AbilitySpec);
+		}
+	}
+}
+

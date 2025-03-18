@@ -3,14 +3,19 @@
 
 #include "My_Controler/My_Aura_Controller.h"
 
+#include "AbilitySystemBlueprintLibrary.h"
 #include "EnhancedInputSubsystems.h"
 #include "EnhancedInputComponent.h"
+#include "My_AuraGamePlayTags_Singleton.h"
 #include "My_Input/My_AuraEnhancedInputComponent.h"
 #include "My_Interraction/My_Enemy_Interface.h"
 
 AMy_Aura_Controller::AMy_Aura_Controller()
 {
 	bReplicates = true;
+
+	Spline = CreateDefaultSubobject<USplineComponent>("Spline");
+
 }
 
 void AMy_Aura_Controller::PlayerTick(float DeltaTime)
@@ -28,9 +33,9 @@ void AMy_Aura_Controller::CursorTrace()
 	if (!CursorHit.bBlockingHit) return;
 
 	// 保存上一帧的接口对象
-	LastEnemyInterface = ThisEnemyInterface;
+	LastActor = ThisActor;
 	// 将当前帧检测到的 Actor 转换为接口
-	ThisEnemyInterface = Cast<IMy_Enemy_Interface>(CursorHit.GetActor());
+	ThisActor = Cast<IMy_Enemy_Interface>(CursorHit.GetActor());
 
 	/*
 	 *1. last = null, this = null, do nothing
@@ -39,12 +44,12 @@ void AMy_Aura_Controller::CursorTrace()
 	 *4. last = valid  this = valid last!= this,no hi last ,  hi this
 	 *5. last = valid  this = valid last == this,do nothing
 	 */
-	if (LastEnemyInterface == nullptr)
+	if (LastActor == nullptr)
 	{
-		if (ThisEnemyInterface != nullptr)
+		if (ThisActor != nullptr)
 		{
 			//2
-			ThisEnemyInterface->HighlightActor();
+			ThisActor->HighlightActor();
 		}
 		else
 		{
@@ -53,18 +58,18 @@ void AMy_Aura_Controller::CursorTrace()
 	}
 	else
 	{
-		if (ThisEnemyInterface == nullptr)
+		if (ThisActor == nullptr)
 		{
 			//3
-			LastEnemyInterface->UnHighlightActor();
+			LastActor->UnHighlightActor();
 		}
 		else
 		{
 			//4
-			if (LastEnemyInterface != ThisEnemyInterface)
+			if (LastActor != ThisActor)
 			{
-				LastEnemyInterface->UnHighlightActor();
-				ThisEnemyInterface->UnHighlightActor();
+				LastActor->UnHighlightActor();
+				ThisActor->UnHighlightActor();
 			}
 			else
 			{
@@ -74,6 +79,7 @@ void AMy_Aura_Controller::CursorTrace()
 	}
 
 }
+
 
 void AMy_Aura_Controller::BeginPlay()
 {
@@ -119,7 +125,7 @@ void AMy_Aura_Controller::SetupInputComponent()
 void AMy_Aura_Controller::Move(const FInputActionValue& InputActionValue)
 {
 	const FVector2D InputAxisVector = InputActionValue.Get<FVector2D>();
-	
+
 
 	const FRotator Rotation = GetControlRotation();
 	const FRotator YawRotation(0.0f, Rotation.Yaw, 0.0f);
@@ -140,16 +146,60 @@ void AMy_Aura_Controller::Move(const FInputActionValue& InputActionValue)
 
 void AMy_Aura_Controller::AbilityInputTagPressed(FGameplayTag InputTag)
 {
-	GEngine->AddOnScreenDebugMessage(1, 3.f, FColor::Red, InputTag.ToString());
+	bTargeting = ThisActor ? true : false;
+	bAutoRunning = false;
+}
+
+
+void AMy_Aura_Controller::AbilityInputTagHeld(FGameplayTag InputTag)
+{
+
+	if (GetAuraASC() == nullptr) return;
+	GetAuraASC()->AbilityInputTagHeld(InputTag);
 }
 
 void AMy_Aura_Controller::AbilityInputTagReleased(FGameplayTag InputTag)
 {
-	GEngine->AddOnScreenDebugMessage(2, 3.f, FColor::Blue, InputTag.ToString());
+	// 不是左键点击
+	if (!InputTag.MatchesTagExact(FMy_AuraGameplayTags::GetInstance().My_InputTag_LMB))
+	{
+		if (GetAuraASC() == nullptr) return;
+		GetAuraASC()->AbilityInputTagReleased(InputTag);
+		return;
+	}
+
+	// 左键点击敌人,除非相应Ability
+	if (bTargeting)
+	{
+		if (GetAuraASC() == nullptr) return;
+		GetAuraASC()->AbilityInputTagReleased(InputTag);
+	}
+	// 左键点击地面,进行移动
+	else
+	{
+		FollowTime += GetWorld()->GetDeltaSeconds();
+
+		FHitResult Hit;
+		if (GetHitResultUnderCursor(ECC_Visibility, false, Hit))
+		{
+			CachedDestination = Hit.Location;
+
+		}
+		if (APawn* ControlledPawn = GetPawn())
+		{
+			FVector Direction = (CachedDestination - ControlledPawn->GetActorLocation()).GetSafeNormal();
+			ControlledPawn->AddMovementInput(Direction);
+		}
+	}
 }
 
-void AMy_Aura_Controller::AbilityInputTagHeld(FGameplayTag InputTag)
+
+// 确保只cast一次,避免在InputAction回调函数,每帧调用
+UMy_AuraAbilitySystemComponent* AMy_Aura_Controller::GetAuraASC()
 {
-	GEngine->AddOnScreenDebugMessage(3, 3.f, FColor::Green, InputTag.ToString());
+	if (AuraAbilitySystemComponent == nullptr)
+	{
+		AuraAbilitySystemComponent = Cast<UMy_AuraAbilitySystemComponent>(UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(GetPawn()));
+	}
+	return AuraAbilitySystemComponent;
 }
-

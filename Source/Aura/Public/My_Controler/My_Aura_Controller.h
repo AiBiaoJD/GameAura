@@ -5,6 +5,8 @@
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerController.h"
 #include "InputMappingContext.h"
+#include "Components/SplineComponent.h"
+#include "MY_AbilitySystem/My_AuraAbilitySystemComponent.h"
 #include "My_Input/My_AuraInputConfig.h"
 #include "My_Interraction/My_Enemy_Interface.h"
 #include "My_Aura_Controller.generated.h"
@@ -34,8 +36,8 @@ private:
 	void Move(const FInputActionValue& InputActionValue);
 
 	void AbilityInputTagPressed(FGameplayTag InputTag);
-	void AbilityInputTagReleased(FGameplayTag InputTag);
 	void AbilityInputTagHeld(FGameplayTag InputTag);
+	void AbilityInputTagReleased(FGameplayTag InputTag);
 
 
 	/*
@@ -44,13 +46,34 @@ private:
 	void CursorTrace();
 
 	//TObjectPtr 只能用于 UObject 的派生类，不能用于接口，所以这里不用Tobject建立指针
-	IMy_Enemy_Interface* LastEnemyInterface = nullptr;
-	IMy_Enemy_Interface* ThisEnemyInterface = nullptr;
+	IMy_Enemy_Interface* LastActor = nullptr;
+	IMy_Enemy_Interface* ThisActor = nullptr;
 
 	/*
-	 * AbilityInput部分
+	 * AbilityInput
 	 */
 	UPROPERTY(EditAnywhere, Category = "My_Input")
 	TObjectPtr<UMy_AuraInputConfig> InputConfig;
 
+	UPROPERTY()
+	TObjectPtr<UMy_AuraAbilitySystemComponent> AuraAbilitySystemComponent;
+
+	UMy_AuraAbilitySystemComponent* GetAuraASC();
+
+
+	/*
+	 * ClickToMove
+	 */
+
+	FVector CachedDestination = FVector::Zero();
+	float FollowTime = 0.f;
+	bool bAutoRunning = false;
+	bool bTargeting = false;					//鼠标是否点击敌人，用来处理鼠标左键多种Ability
+	float ShortPressThreshold = 0.5f;			//短按的阀值
+
+	UPROPERTY(EditDefaultsOnly)
+	float AutoRunningAcceptanceRadius = 50.0f; //自动寻路停止距离
+
+	UPROPERTY(VisibleAnywhere)
+	TObjectPtr<USplineComponent> Spline;
 };

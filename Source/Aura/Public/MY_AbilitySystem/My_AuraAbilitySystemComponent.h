@@ -21,7 +21,14 @@ public:
 
 	FMy_EffectAssetTags EffectAssetTags;
 
+	// Character添加能力
 	void AddCharacterAbilitiesFromASC(const TArray<TSubclassOf<UGameplayAbility>>& StartupAbility);
+
+
+	// PlayerController激活能力
+	void AbilityInputTagHeld(const FGameplayTag InputTag);
+	void AbilityInputTagReleased(const FGameplayTag InputTag);
+
 protected:
 
 	//OnGameplayEffectAppliedDelegateToSelf 委托的回调函数,需要进行绑定
