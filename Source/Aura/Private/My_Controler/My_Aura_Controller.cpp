@@ -7,6 +7,8 @@
 #include "EnhancedInputSubsystems.h"
 #include "EnhancedInputComponent.h"
 #include "My_AuraGamePlayTags_Singleton.h"
+#include "NavigationPath.h"
+#include "NavigationSystem.h"
 #include "My_Input/My_AuraEnhancedInputComponent.h"
 #include "My_Interraction/My_Enemy_Interface.h"
 
@@ -15,8 +17,9 @@ AMy_Aura_Controller::AMy_Aura_Controller()
 	bReplicates = true;
 
 	Spline = CreateDefaultSubobject<USplineComponent>("Spline");
-
 }
+
+
 
 void AMy_Aura_Controller::PlayerTick(float DeltaTime)
 {
@@ -152,7 +155,6 @@ void AMy_Aura_Controller::AbilityInputTagPressed(FGameplayTag InputTag)
 		bAutoRunning = false;
 	}
 
-	
 }
 
 
@@ -166,13 +168,14 @@ void AMy_Aura_Controller::AbilityInputTagHeld(FGameplayTag InputTag)
 		return;
 	}
 
+
 	// 左键点击敌人,激活相应Ability
 	if (bTargeting)
 	{
 		if (GetAuraASC() == nullptr) return;
 		GetAuraASC()->AbilityInputTagHeld(InputTag);
 	}
-	// 左键点击地面,进行移动
+	// 左键长按地面,进行移动
 	else
 	{
 		FollowTime += GetWorld()->GetDeltaSeconds();
@@ -194,11 +197,44 @@ void AMy_Aura_Controller::AbilityInputTagHeld(FGameplayTag InputTag)
 
 void AMy_Aura_Controller::AbilityInputTagReleased(FGameplayTag InputTag)
 {
+	// 不是左键点击
+	if (!InputTag.MatchesTagExact(FMy_AuraGameplayTags::GetInstance().My_InputTag_LMB))
+	{
+		if (GetAuraASC() == nullptr) return;
+		GetAuraASC()->AbilityInputTagReleased(InputTag);
+		return;
+	}
 
-	if (GetAuraASC() == nullptr) return;
-	GetAuraASC()->AbilityInputTagReleased(InputTag);
 
-	
+	// 左键点击敌人,激活相应Ability
+	if (bTargeting)
+	{
+		if (GetAuraASC() == nullptr) return;
+		GetAuraASC()->AbilityInputTagReleased(InputTag);
+	}
+	// 左键点击地面松手,进行移动
+	else
+	{
+
+		APawn* ControlledPawn = GetPawn();
+		if (FollowTime <= ShortPressThreshold && ControlledPawn)
+		{
+			if (UNavigationPath* NavigationPath = UNavigationSystemV1::FindPathToLocationSynchronously(this, ControlledPawn->GetActorLocation(), CachedDestination))
+			{
+				Spline->ClearSplinePoints();
+				for (const FVector& PathLoc : NavigationPath->PathPoints)
+				{
+					Spline->AddSplinePoint(PathLoc, ESplineCoordinateSpace::World);
+					DrawDebugSphere(GetWorld(), PathLoc, 8.f, 8.f, FColor::Blue, false, 2.0f);
+				}
+				bAutoRunning = true;
+
+			}
+		}
+		FollowTime = 0.0f;
+		bTargeting = false;
+
+	}
 }
 
 
