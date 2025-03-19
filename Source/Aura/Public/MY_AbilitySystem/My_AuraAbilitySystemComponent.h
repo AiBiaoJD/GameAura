@@ -31,6 +31,11 @@ public:
 
 protected:
 
-	//OnGameplayEffectAppliedDelegateToSelf 委托的回调函数,需要进行绑定
-	void EffectApplied(UAbilitySystemComponent* AbilitySystemComponent, const FGameplayEffectSpec& EffectSpec, FActiveGameplayEffectHandle ActiveGameplayEffectHandle);
+	/*
+	 * OnGameplayEffectAppliedDelegateToSelf 委托是只在服务器调用回调函数
+	 * 因此客户端不调用这个回调函数,采用RPC解决
+	 * RPC:服务器调用客户端函数，客户端执行函数
+	 */
+	UFUNCTION(Client, Reliable)
+	void ClientEffectApplied(UAbilitySystemComponent* AbilitySystemComponent, const FGameplayEffectSpec& EffectSpec, FActiveGameplayEffectHandle ActiveGameplayEffectHandle);
 };

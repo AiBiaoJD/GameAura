@@ -44,7 +44,7 @@ private:
 	 * 鼠标高亮部分
 	 */
 	void CursorTrace();
-
+	FHitResult CursorHit;
 	//TObjectPtr 只能用于 UObject 的派生类，不能用于接口，所以这里不用Tobject建立指针
 	IMy_Enemy_Interface* LastActor = nullptr;
 	IMy_Enemy_Interface* ThisActor = nullptr;

@@ -2,7 +2,6 @@
 
 
 #include "My_Controler/My_Aura_Controller.h"
-
 #include "AbilitySystemBlueprintLibrary.h"
 #include "EnhancedInputSubsystems.h"
 #include "EnhancedInputComponent.h"
@@ -15,20 +14,14 @@
 AMy_Aura_Controller::AMy_Aura_Controller()
 {
 	bReplicates = true;
-
 	Spline = CreateDefaultSubobject<USplineComponent>("Spline");
 }
-
-
 
 void AMy_Aura_Controller::PlayerTick(float DeltaTime)
 {
 	Super::PlayerTick(DeltaTime);
-
 	CursorTrace();
-
 	AutoRun();
-
 }
 
 void AMy_Aura_Controller::AutoRun()
@@ -55,7 +48,6 @@ void AMy_Aura_Controller::AutoRun()
 //检查鼠标点击物体的一些函数
 void AMy_Aura_Controller::CursorTrace()
 {
-	FHitResult CursorHit;
 	GetHitResultUnderCursor(ECC_Visibility, false, CursorHit);
 	if (!CursorHit.bBlockingHit) return;
 
@@ -64,47 +56,11 @@ void AMy_Aura_Controller::CursorTrace()
 	// 将当前帧检测到的 Actor 转换为接口
 	ThisActor = Cast<IMy_Enemy_Interface>(CursorHit.GetActor());
 
-	/*
-	 *1. last = null, this = null, do nothing
-	 *2. last = null  this = valid hightlight
-	 *3. last = valid  this = null no hightlight
-	 *4. last = valid  this = valid last!= this,no hi last ,  hi this
-	 *5. last = valid  this = valid last == this,do nothing
-	 */
-	if (LastActor == nullptr)
+	if (LastActor != ThisActor)
 	{
-		if (ThisActor != nullptr)
-		{
-			//2
-			ThisActor->HighlightActor();
-		}
-		else
-		{
-			//1
-		}
+		if (LastActor) LastActor->UnHighlightActor();
+		if (ThisActor) ThisActor->HighlightActor();
 	}
-	else
-	{
-		if (ThisActor == nullptr)
-		{
-			//3
-			LastActor->UnHighlightActor();
-		}
-		else
-		{
-			//4
-			if (LastActor != ThisActor)
-			{
-				LastActor->UnHighlightActor();
-				ThisActor->UnHighlightActor();
-			}
-			else
-			{
-				//5
-			}
-		}
-	}
-
 }
 
 
@@ -121,7 +77,6 @@ void AMy_Aura_Controller::BeginPlay()
 		//子系统关联输入上下文
 		Subsystem->AddMappingContext(AuraContext, 0);
 	}
-
 
 
 	//鼠标设置
@@ -153,7 +108,6 @@ void AMy_Aura_Controller::Move(const FInputActionValue& InputActionValue)
 {
 	const FVector2D InputAxisVector = InputActionValue.Get<FVector2D>();
 
-
 	const FRotator Rotation = GetControlRotation();
 	const FRotator YawRotation(0.0f, Rotation.Yaw, 0.0f);
 
@@ -178,7 +132,6 @@ void AMy_Aura_Controller::AbilityInputTagPressed(FGameplayTag InputTag)
 		bTargeting = ThisActor ? true : false;
 		bAutoRunning = false;
 	}
-
 }
 
 
@@ -187,29 +140,20 @@ void AMy_Aura_Controller::AbilityInputTagHeld(FGameplayTag InputTag)
 	// 不是左键点击
 	if (!InputTag.MatchesTagExact(FMy_AuraGameplayTags::GetInstance().My_InputTag_LMB))
 	{
-		if (GetAuraASC() == nullptr) return;
-		GetAuraASC()->AbilityInputTagHeld(InputTag);
+		if (GetAuraASC()) GetAuraASC()->AbilityInputTagHeld(InputTag);
 		return;
 	}
-
 
 	// 左键点击敌人,激活相应Ability
 	if (bTargeting)
 	{
-		if (GetAuraASC() == nullptr) return;
-		GetAuraASC()->AbilityInputTagHeld(InputTag);
+		if (GetAuraASC()) GetAuraASC()->AbilityInputTagHeld(InputTag);
 	}
-	// 左键长按地面,进行移动
+	// 左键长按地面,进行移动F
 	else
 	{
 		FollowTime += GetWorld()->GetDeltaSeconds();
-
-		FHitResult Hit;
-		if (GetHitResultUnderCursor(ECC_Visibility, false, Hit))
-		{
-			CachedDestination = Hit.Location;
-
-		}
+		if (CursorHit.bBlockingHit) CachedDestination = CursorHit.Location;
 		if (APawn* ControlledPawn = GetPawn())
 		{
 			FVector Direction = (CachedDestination - ControlledPawn->GetActorLocation()).GetSafeNormal();
@@ -224,23 +168,19 @@ void AMy_Aura_Controller::AbilityInputTagReleased(FGameplayTag InputTag)
 	// 不是左键点击
 	if (!InputTag.MatchesTagExact(FMy_AuraGameplayTags::GetInstance().My_InputTag_LMB))
 	{
-		if (GetAuraASC() == nullptr) return;
-		GetAuraASC()->AbilityInputTagReleased(InputTag);
+		if (GetAuraASC()) GetAuraASC()->AbilityInputTagReleased(InputTag);
 		return;
 	}
-
 
 	// 左键点击敌人,激活相应Ability
 	if (bTargeting)
 	{
-		if (GetAuraASC() == nullptr) return;
-		GetAuraASC()->AbilityInputTagReleased(InputTag);
+		if (GetAuraASC()) GetAuraASC()->AbilityInputTagReleased(InputTag);
 	}
 	// 左键点击地面松手,进行移动
 	else
 	{
-
-		APawn* ControlledPawn = GetPawn();
+		const APawn* ControlledPawn = GetPawn();
 		if (FollowTime <= ShortPressThreshold && ControlledPawn)
 		{
 			// 获取导航系统
@@ -257,7 +197,7 @@ void AMy_Aura_Controller::AbilityInputTagReleased(FGameplayTag InputTag)
 				for (const FVector& PathLoc : NavigationPath->PathPoints)
 				{
 					Spline->AddSplinePoint(PathLoc, ESplineCoordinateSpace::World);
-					DrawDebugSphere(GetWorld(), PathLoc, 8.f, 8.f, FColor::Blue, false, 2.0f); // 绘制路径点
+					DrawDebugSphere(GetWorld(), PathLoc, 8.f, 8.f, FColor::Blue, false, 1.0f); // 绘制路径点
 				}
 
 				// 绘制路径线
@@ -265,7 +205,7 @@ void AMy_Aura_Controller::AbilityInputTagReleased(FGameplayTag InputTag)
 				{
 					FVector StartPoint = NavigationPath->PathPoints[i];
 					FVector EndPoint = NavigationPath->PathPoints[i + 1];
-					DrawDebugLine(GetWorld(), StartPoint, EndPoint, FColor::Green, false, 2.0f, 0, 2.0f); // 绘制路径线
+					DrawDebugLine(GetWorld(), StartPoint, EndPoint, FColor::Green, false, 1.0f, 0, 2.0f); // 绘制路径线
 				}
 
 				// 更新目标点为路径的最后一个点
@@ -277,10 +217,8 @@ void AMy_Aura_Controller::AbilityInputTagReleased(FGameplayTag InputTag)
 				UE_LOG(LogTemp, Warning, TEXT("No valid path found!"));
 			}
 		}
-
 		FollowTime = 0.0f;
 		bTargeting = false;
-
 	}
 }
 
