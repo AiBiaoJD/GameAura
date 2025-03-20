@@ -92,6 +92,24 @@ void UMy_AuraAttributeSet::PostAttributeChange(const FGameplayAttribute& Attribu
 	//好像对于持续的Effect,PostAttributeChange这里也限制不了
 }
 
+//在 GameplayEffect 执行完毕后调用
+void UMy_AuraAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffectModCallbackData& Data)
+{
+	Super::PostGameplayEffectExecute(Data);
+
+	FMy_EffectProperties Props;
+	SetEffectProperty(Data, Props);
+
+	if (Data.EvaluatedData.Attribute == GetHealthAttribute())
+	{
+		SetHealth(FMath::Clamp(GetHealth(), 0, GetMaxHealth()));
+	}
+	if (Data.EvaluatedData.Attribute == GetManaAttribute())
+	{
+		SetMana(FMath::Clamp(GetMana(), 0, GetMaxMana()));
+	}
+}
+
 void UMy_AuraAttributeSet::SetEffectProperty(const struct FGameplayEffectModCallbackData& Data, FMy_EffectProperties& Props) const
 {
 	//Source是造成Effect的来源, Target是Effect的对象(是这个ATTributeSet的拥有者)
@@ -133,23 +151,7 @@ void UMy_AuraAttributeSet::SetEffectProperty(const struct FGameplayEffectModCall
 }
 
 
-//在 GameplayEffect 执行完毕后调用
-void UMy_AuraAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffectModCallbackData& Data)
-{
-	Super::PostGameplayEffectExecute(Data);
 
-	FMy_EffectProperties Props;
-	SetEffectProperty(Data, Props);
-
-	if (Data.EvaluatedData.Attribute == GetHealthAttribute())
-	{
-		SetHealth(FMath::Clamp(GetHealth(), 0, GetMaxHealth()));
-	}
-	if (Data.EvaluatedData.Attribute == GetManaAttribute())
-	{
-		SetMana(FMath::Clamp(GetMana(), 0, GetMaxMana()));
-	}
-}
 
 void UMy_AuraAttributeSet::OnRep_Health(const FGameplayAttributeData& OldHealth) const
 {

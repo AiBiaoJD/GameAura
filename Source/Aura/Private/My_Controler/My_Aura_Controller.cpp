@@ -209,7 +209,10 @@ void AMy_Aura_Controller::AbilityInputTagReleased(FGameplayTag InputTag)
 				}
 
 				// 更新目标点为路径的最后一个点
-				CachedDestination = NavigationPath->PathPoints[NavigationPath->PathPoints.Num() - 1];
+				if (NavigationPath->PathPoints.Num() > 0)
+				{
+					CachedDestination = NavigationPath->PathPoints[NavigationPath->PathPoints.Num() - 1];
+				}
 				bAutoRunning = true;
 			}
 			else

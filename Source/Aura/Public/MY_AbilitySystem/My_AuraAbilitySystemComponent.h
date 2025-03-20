@@ -19,6 +19,7 @@ public:
 
 	void AbilityActorInfoSet();
 
+
 	FMy_EffectAssetTags EffectAssetTags;
 
 	// CharacterÌí¼ÓÄÜÁ¦

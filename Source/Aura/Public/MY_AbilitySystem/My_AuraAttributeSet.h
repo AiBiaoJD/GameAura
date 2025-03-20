@@ -85,7 +85,7 @@ public:
 	virtual void PostGameplayEffectExecute(const struct FGameplayEffectModCallbackData& Data) override;
 
 
-	//Tag 和 有返回值的委托
+	//Tag 和 函数指针
 
 	TMap<FGameplayTag, TMy_StaticFuncPtr<FGameplayAttribute()>> M_TagsToAttribute;
 
