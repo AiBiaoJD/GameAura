@@ -19,6 +19,10 @@ protected:
 	// Ability 被激活后的入口点
 	virtual void  ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData) override;
 
+	UFUNCTION(BlueprintCallable, Category="My_Projectile")
+	void SpawnProjectile();
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	TSubclassOf<AMy_ProjectileActor> ProjectileClass;
+
 };

@@ -11,8 +11,13 @@ void UMy_AuraProjectileSpell::ActivateAbility(const FGameplayAbilitySpecHandle H
 {
 	Super::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
 
+	
+}
+
+void UMy_AuraProjectileSpell::SpawnProjectile()
+{
 	// ProjectileActor需要在服务器生成,replicate到客户端
-	if (!HasAuthority(&ActivationInfo)) return;
+	if (!GetAvatarActorFromActorInfo()->HasAuthority()) return;
 
 	/*
 	 * 这里不直接获取AuraCharter,而是使用Interface结构
@@ -37,10 +42,8 @@ void UMy_AuraProjectileSpell::ActivateAbility(const FGameplayAbilitySpecHandle H
 
 		//TODO: Give Gameplay Effect
 
+
+
 		Projectile->FinishSpawning(SpawnTransform);
-
 	}
-
-
-
 }
