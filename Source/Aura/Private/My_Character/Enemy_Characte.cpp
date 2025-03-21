@@ -8,8 +8,13 @@
 
 void AEnemy_Characte::HighlightActor()
 {
-	// 启用 Custom Depth
-	//允许开发者将特定对象渲染到一个单独的深度缓冲区中
+	/*
+	 * Post Progress: Depth-Stencil一个单独的深度缓冲区，用于存储特定物体的深度信息。与主深度缓冲区不同，它可以独立于场景的其他部分进行处理。
+	 * 当我们悬停鼠标到敌人,就启动深度缓冲区；没悬停就不启动深度缓冲区
+	 * 启动后就可以设置CustomDepth Stencil Value来显示轮廓
+	 * 当然这个轮廓是在Post Progress下面的Material中设置的
+	 */
+	
 	GetMesh()->SetRenderCustomDepth(true);
 	GetMesh()->SetCustomDepthStencilValue(CUSTOM_DEPTH_RED);
 	Weapon->SetRenderCustomDepth(true);
