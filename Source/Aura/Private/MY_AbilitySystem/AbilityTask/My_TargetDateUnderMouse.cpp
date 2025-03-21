@@ -7,8 +7,6 @@
 UMy_TargetDateUnderMouse* UMy_TargetDateUnderMouse::CreateMyTargetDateUnderMouse(UGameplayAbility* OwningAbility)
 {
 	UMy_TargetDateUnderMouse* MyObj = NewAbilityTask<UMy_TargetDateUnderMouse>(OwningAbility);
-
-
 	return  MyObj;
 }
 
