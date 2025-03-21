@@ -25,12 +25,19 @@ protected:
 	virtual void BeginPlay() override;
 
 	//创建武器
-	UPROPERTY(EditAnywhere, Category = "Combat")
+	UPROPERTY(EditAnywhere, Category = "My_Combat")
 	TObjectPtr<USkeletalMeshComponent> Weapon;
 
-	//GAS
-	//Aura：实现下面在controler/playerstater中
-	//敌人：实现下面在构造函数中
+	UPROPERTY(EditAnywhere, Category = "My_Combat")
+	FName WeaponTipSockName;
+
+	virtual FVector GetWeaponSockLocation() override;
+
+	/*
+	 * GAS
+	 * Aura：实现下面在controler/playerstater中
+	 * 敌人：实现下面在构造函数中
+	 */
 	UPROPERTY()
 	TObjectPtr<UAbilitySystemComponent> AbilitySystemComponent;
 	UPROPERTY()

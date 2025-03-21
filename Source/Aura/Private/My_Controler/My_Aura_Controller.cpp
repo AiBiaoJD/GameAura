@@ -106,6 +106,7 @@ void AMy_Aura_Controller::SetupInputComponent()
 
 void AMy_Aura_Controller::Move(const FInputActionValue& InputActionValue)
 {
+	bAutoRunning = false;
 	const FVector2D InputAxisVector = InputActionValue.Get<FVector2D>();
 
 	const FRotator Rotation = GetControlRotation();
