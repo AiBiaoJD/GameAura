@@ -16,5 +16,4 @@ void UMy_TargetDateUnderMouse::Activate()
 	FHitResult CursorHit;
 	PC->GetHitResultUnderCursor(ECC_Visibility, false, CursorHit);
 	ValidData.Broadcast(CursorHit.Location);
-
 }
