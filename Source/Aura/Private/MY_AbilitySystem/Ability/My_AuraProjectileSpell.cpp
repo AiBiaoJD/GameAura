@@ -10,11 +10,9 @@
 void UMy_AuraProjectileSpell::ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData)
 {
 	Super::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
-
-	
 }
 
-void UMy_AuraProjectileSpell::SpawnProjectile()
+void UMy_AuraProjectileSpell::SpawnProjectile(const FVector& ProjectileTargetLocation)
 {
 	// ProjectileActor需要在服务器生成,replicate到客户端
 	if (!GetAvatarActorFromActorInfo()->HasAuthority()) return;
@@ -27,10 +25,12 @@ void UMy_AuraProjectileSpell::SpawnProjectile()
 	if (CombatInterface)
 	{
 		const FVector SockLoc = CombatInterface->GetWeaponSockLocation();
+		FRotator Rotation = (ProjectileTargetLocation - SockLoc).Rotation();
+		Rotation.Pitch = 0.f;
+
 		FTransform SpawnTransform;
 		SpawnTransform.SetLocation(SockLoc);
-
-		//TODO: Set the Projectile Rotation
+		SpawnTransform.SetRotation(Rotation.Quaternion());
 
 		// 因为要在ProjectileActor中添加Effect,所以使用这种方式创建,方便在生成Actor时Effect已经添加
 		AMy_ProjectileActor* Projectile = GetWorld()->SpawnActorDeferred<AMy_ProjectileActor>(

@@ -100,7 +100,8 @@ void AMy_Aura_Controller::SetupInputComponent()
 
 	//处理input Action,将设备输入绑定到input Action,在设备输入调用函数Move
 	AuraInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &AMy_Aura_Controller::Move);
-
+	AuraInputComponent->BindAction(ShiftAction, ETriggerEvent::Started, this, &AMy_Aura_Controller::ShiftPressed);
+	AuraInputComponent->BindAction(ShiftAction, ETriggerEvent::Completed, this, &AMy_Aura_Controller::ShiftRelease);
 	AuraInputComponent->BindAbilityAction(InputConfig, this, &ThisClass::AbilityInputTagPressed, &ThisClass::AbilityInputTagReleased, &ThisClass::AbilityInputTagHeld);
 }
 
@@ -122,7 +123,6 @@ void AMy_Aura_Controller::Move(const FInputActionValue& InputActionValue)
 		ControlledPawn->AddMovementInput(ForwardDir, InputAxisVector.Y);
 		ControlledPawn->AddMovementInput(RightdDir, InputAxisVector.X);
 	}
-
 }
 
 
@@ -146,7 +146,7 @@ void AMy_Aura_Controller::AbilityInputTagHeld(FGameplayTag InputTag)
 	}
 
 	// 左键点击敌人,激活相应Ability
-	if (bTargeting)
+	if (bTargeting || bShiftKeyDown)
 	{
 		if (GetAuraASC()) GetAuraASC()->AbilityInputTagHeld(InputTag);
 	}
@@ -173,13 +173,8 @@ void AMy_Aura_Controller::AbilityInputTagReleased(FGameplayTag InputTag)
 		return;
 	}
 
-	// 左键点击敌人,激活相应Ability
-	if (bTargeting)
-	{
-		if (GetAuraASC()) GetAuraASC()->AbilityInputTagReleased(InputTag);
-	}
-	// 左键点击地面松手,进行移动
-	else
+	// 左键松手不是点击敌人,也不是按Shift
+	if (!bTargeting && !bShiftKeyDown)
 	{
 		const APawn* ControlledPawn = GetPawn();
 		if (FollowTime <= ShortPressThreshold && ControlledPawn)
@@ -223,6 +218,10 @@ void AMy_Aura_Controller::AbilityInputTagReleased(FGameplayTag InputTag)
 		}
 		FollowTime = 0.0f;
 		bTargeting = false;
+	}
+	else
+	{
+		if (GetAuraASC()) GetAuraASC()->AbilityInputTagReleased(InputTag);
 	}
 }
 
