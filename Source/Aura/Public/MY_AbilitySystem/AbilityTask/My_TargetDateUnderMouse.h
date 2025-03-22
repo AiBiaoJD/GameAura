@@ -6,7 +6,7 @@
 #include "Abilities/Tasks/AbilityTask.h"
 #include "My_TargetDateUnderMouse.generated.h"
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FMy_OnMouseTargetDateSignature, const FVector&, Data);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FMy_OnMouseTargetDateSignature, const FGameplayAbilityTargetDataHandle&, TargetDataHandle);
 /**
  * 
  */
@@ -32,5 +32,5 @@ public:
 private:
 	// Task创建ASC自动调用下面的函数
 	virtual void Activate() override;
-
+	void SendMouseCursurData();
 };
