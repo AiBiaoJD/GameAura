@@ -33,4 +33,6 @@ private:
 	// Task创建ASC自动调用下面的函数
 	virtual void Activate() override;
 	void SendMouseCursurData();
+
+	void OnTargetDataReplicatedCallback(const FGameplayAbilityTargetDataHandle& DataHandle, FGameplayTag ActivateTag);
 };

@@ -3,6 +3,7 @@
 
 #include "My_AuraAssetManager.h"
 
+#include "AbilitySystemGlobals.h"
 #include "My_AuraGamePlayTags_Singleton.h"
 
 UMy_AuraAssetManager& UMy_AuraAssetManager::GetInstance()
@@ -21,6 +22,9 @@ void UMy_AuraAssetManager::StartInitialLoading()
 
 	//添加Tags,在加载资源的时候
 	FMy_AuraGameplayTags::InitializeNativeGameplayTags();
+
+	// This is Required to Use TargetData
+	UAbilitySystemGlobals::Get().InitGlobalData();
 }
 
 
