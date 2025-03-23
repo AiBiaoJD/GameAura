@@ -3,12 +3,12 @@
 
 #include "My_Character/Aura_Character.h"
 
-#include "Camera/CameraComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "MY_AbilitySystem/My_AuraAbilitySystemComponent.h"
 #include "My_Controler/My_AuraPlayerState.h"
 #include "My_Controler/My_Aura_Controller.h"
 #include "My_UI/HUD/My_AuraHUD.h"
+
 
 AAura_Character::AAura_Character()
 {
@@ -54,6 +54,8 @@ int32 AAura_Character::GetPlayerLevel()
 	check(AuraPlayerState);
 	return  AuraPlayerState->GetPlayerLevel();
 }
+
+
 
 void AAura_Character::My_InitAbilityActorInfo()
 {

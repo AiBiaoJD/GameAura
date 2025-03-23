@@ -42,6 +42,7 @@ FVector AMyCharacter_Base::GetWeaponSockLocation()
 	return Weapon->GetSocketLocation(WeaponTipSockName);
 }
 
+
 void AMyCharacter_Base::My_InitAbilityActorInfo()
 {
 }

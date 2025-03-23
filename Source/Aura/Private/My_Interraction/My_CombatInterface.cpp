@@ -13,3 +13,4 @@ FVector IMy_CombatInterface::GetWeaponSockLocation()
 {
 	return FVector();
 }
+
