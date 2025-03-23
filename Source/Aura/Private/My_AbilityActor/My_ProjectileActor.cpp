@@ -4,6 +4,7 @@
 #include "My_AbilityActor/My_ProjectileActor.h"
 
 #include "NiagaraFunctionLibrary.h"
+#include "Components/AudioComponent.h"
 #include "Kismet/GameplayStatics.h"
 
 AMy_ProjectileActor::AMy_ProjectileActor()
@@ -24,12 +25,16 @@ AMy_ProjectileActor::AMy_ProjectileActor()
 	ProjectileMovement->MaxSpeed = 550.f;
 	ProjectileMovement->ProjectileGravityScale = 0.f;
 
+
 }
 
 void AMy_ProjectileActor::BeginPlay()
 {
 	Super::BeginPlay();
+
+	SetLifeSpan(LifeSpan);
 	Sphere->OnComponentBeginOverlap.AddDynamic(this, &AMy_ProjectileActor::OnSphereOverlap);
+	LoopingSoundComponent = UGameplayStatics::SpawnSoundAttached(LoopingSound, GetRootComponent());
 }
 
 void AMy_ProjectileActor::OnSphereOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
@@ -39,6 +44,16 @@ void AMy_ProjectileActor::OnSphereOverlap(UPrimitiveComponent* OverlappedCompone
 		MulticastPlayImpactEffects(); // µ÷ÓÃ NetMulticast RPC
 		Destroy(); // Ïú»Ù Actor
 	}
+
+}
+
+void AMy_ProjectileActor::Destroyed()
+{
+	if (LoopingSoundComponent)
+	{
+		LoopingSoundComponent->Stop();
+	}
+	Super::Destroyed();
 }
 
 void AMy_ProjectileActor::MulticastPlayImpactEffects_Implementation()

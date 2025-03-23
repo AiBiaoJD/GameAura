@@ -15,6 +15,7 @@ UMy_AuraAbilitySystemComponent::UMy_AuraAbilitySystemComponent()
 void UMy_AuraAbilitySystemComponent::AbilityActorInfoSet()
 {
 	//-------一旦Actorinfo设置好,就可以对ASC的委托进行绑定-----------------
+	// 该委托只在服务器调用,客户端不使用,因此使用RPC方法解决问题
 	OnGameplayEffectAppliedDelegateToSelf.AddUObject(this, &UMy_AuraAbilitySystemComponent::ClientEffectApplied);
 }
 

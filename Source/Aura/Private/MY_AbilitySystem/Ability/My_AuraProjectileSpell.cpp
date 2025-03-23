@@ -3,6 +3,7 @@
 
 #include "MY_AbilitySystem/Ability/My_AuraProjectileSpell.h"
 
+#include "Kismet/GameplayStatics.h"
 #include "My_AbilityActor/My_ProjectileActor.h"
 #include "My_Interraction/My_CombatInterface.h"
 
@@ -39,6 +40,7 @@ void UMy_AuraProjectileSpell::SpawnProjectile(const FVector& ProjectileTargetLoc
 			GetOwningActorFromActorInfo(),
 			Cast<APawn>(GetOwningActorFromActorInfo()),
 			ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+
 
 		//TODO: Give Gameplay Effect
 
