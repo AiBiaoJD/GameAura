@@ -3,6 +3,9 @@
 
 #include "My_AbilityActor/My_ProjectileActor.h"
 
+#include "NiagaraFunctionLibrary.h"
+#include "Kismet/GameplayStatics.h"
+
 AMy_ProjectileActor::AMy_ProjectileActor()
 {
 	PrimaryActorTick.bCanEverTick = false;
@@ -21,7 +24,6 @@ AMy_ProjectileActor::AMy_ProjectileActor()
 	ProjectileMovement->MaxSpeed = 550.f;
 	ProjectileMovement->ProjectileGravityScale = 0.f;
 
-
 }
 
 void AMy_ProjectileActor::BeginPlay()
@@ -32,7 +34,17 @@ void AMy_ProjectileActor::BeginPlay()
 
 void AMy_ProjectileActor::OnSphereOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
+	if (HasAuthority()) // 确保只在服务器上调用
+	{
+		MulticastPlayImpactEffects(); // 调用 NetMulticast RPC
+		Destroy(); // 销毁 Actor
+	}
+}
 
+void AMy_ProjectileActor::MulticastPlayImpactEffects_Implementation()
+{
+	UGameplayStatics::PlaySoundAtLocation(this, ImpactSound, GetActorLocation(), FRotator::ZeroRotator);
+	UNiagaraFunctionLibrary::SpawnSystemAtLocation(this, ImpactEffect, GetActorLocation());
 }
 
 
