@@ -3,7 +3,8 @@
 
 #include "MY_AbilitySystem/Ability/My_AuraProjectileSpell.h"
 
-#include "Kismet/GameplayStatics.h"
+#include "AbilitySystemBlueprintLibrary.h"
+#include "AbilitySystemComponent.h"
 #include "My_AbilityActor/My_ProjectileActor.h"
 #include "My_Interraction/My_CombatInterface.h"
 
@@ -41,11 +42,11 @@ void UMy_AuraProjectileSpell::SpawnProjectile(const FVector& ProjectileTargetLoc
 			Cast<APawn>(GetOwningActorFromActorInfo()),
 			ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
 
+		const UAbilitySystemComponent* SourceASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(GetAvatarActorFromActorInfo());
+		const FGameplayEffectSpecHandle SpecHandle = SourceASC->MakeOutgoingSpec(DamageEffectClass, GetAbilityLevel(), SourceASC->MakeEffectContext());
+		Projectile->DamageEffectSpecHandle = SpecHandle;
 
-		//TODO: Give Gameplay Effect
-
-
-
+		
 		Projectile->FinishSpawning(SpawnTransform);
 	}
 }

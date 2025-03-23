@@ -4,6 +4,7 @@
 #include "My_Character/MyCharacter_Base.h"
 
 #include "Aura/Aura.h"
+#include "Components/CapsuleComponent.h"
 #include "MY_AbilitySystem/My_AuraAbilitySystemComponent.h"
 
 // Sets default values
@@ -13,13 +14,16 @@ AMyCharacter_Base::AMyCharacter_Base()
 	bNetLoadOnClient = true;
 	PrimaryActorTick.bCanEverTick = false;
 
-	GetMesh()->SetCollisionResponseToChannel(ECC_MyProjectile, ECR_Overlap);
-	GetMesh()->SetGenerateOverlapEvents(true);
 	Weapon = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("Weapon"));
 	Weapon->SetupAttachment(GetMesh(), TEXT("WeaponHandSocket"));
 	Weapon->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
+	GetMesh()->SetCollisionResponseToChannel(ECC_MyProjectile, ECR_Overlap);
+	GetMesh()->SetGenerateOverlapEvents(true);
+	GetCapsuleComponent()->SetGenerateOverlapEvents(false); //确保mesh 和 capsule只有一个用来处理OnOverlap
 }
+
+
 
 UAbilitySystemComponent* AMyCharacter_Base::GetAbilitySystemComponent() const
 {
@@ -50,9 +54,8 @@ void AMyCharacter_Base::My_InitAbilityActorInfo()
 }
 
 
-void AMyCharacter_Base::ApplyEffectToSelf(TSubclassOf<UGameplayEffect> GamePlayEffect, float Level)const
+void AMyCharacter_Base::ApplyEffectToSelf(TSubclassOf<UGameplayEffect> GamePlayEffect, float Level) const
 {
-
 	if (GetAbilitySystemComponent() && GamePlayEffect)
 	{
 		FGameplayEffectContextHandle ContextHandle = GetAbilitySystemComponent()->MakeEffectContext();
@@ -62,7 +65,6 @@ void AMyCharacter_Base::ApplyEffectToSelf(TSubclassOf<UGameplayEffect> GamePlayE
 
 		GetAbilitySystemComponent()->ApplyGameplayEffectSpecToTarget(*EffectSpecHandle.Data.Get(), GetAbilitySystemComponent());
 	}
-
 }
 
 void AMyCharacter_Base::InitializeDefaultAttribute()const

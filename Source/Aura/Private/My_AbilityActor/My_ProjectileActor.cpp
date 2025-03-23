@@ -3,6 +3,8 @@
 
 #include "My_AbilityActor/My_ProjectileActor.h"
 
+#include "AbilitySystemBlueprintLibrary.h"
+#include "AbilitySystemComponent.h"
 #include "NiagaraFunctionLibrary.h"
 #include "Aura/Aura.h"
 #include "Components/AudioComponent.h"
@@ -43,7 +45,13 @@ void AMy_ProjectileActor::OnSphereOverlap(UPrimitiveComponent* OverlappedCompone
 {
 	if (HasAuthority()) // 确保只在服务器上调用
 	{
-		MulticastPlayImpactEffects(); // 调用 NetMulticast RPC
+		MulticastPlayImpactEffects(); // 调用 NetMulticast RPC,播放声音和特效
+
+		// 激活Effect,只能在服务器修改Attribute,Replicate Attribute到客户端
+		if (UAbilitySystemComponent* TargetASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(OtherActor))
+		{
+			TargetASC->ApplyGameplayEffectSpecToSelf(*DamageEffectSpecHandle.Data.Get());
+		}
 		Destroy(); // 销毁 Actor
 	}
 

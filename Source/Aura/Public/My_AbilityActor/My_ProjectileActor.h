@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "GameplayEffectTypes.h"
 #include "NiagaraComponent.h"
 #include "Components/SphereComponent.h"
 #include "GameFramework/Actor.h"
@@ -20,6 +21,9 @@ public:
 	UPROPERTY(VisibleAnywhere)
 	TObjectPtr<UProjectileMovementComponent> ProjectileMovement;
 
+	// 暴露给蓝图的变量，并在生成时显示
+	UPROPERTY(BlueprintReadWrite, meta=(ExposeOnSpawn = true))
+	FGameplayEffectSpecHandle DamageEffectSpecHandle;
 protected:
 	virtual void BeginPlay() override;
 

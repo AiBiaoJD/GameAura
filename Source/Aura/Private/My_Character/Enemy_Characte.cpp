@@ -67,4 +67,7 @@ void AEnemy_Characte::My_InitAbilityActorInfo()
 	AbilitySystemComponent->InitAbilityActorInfo(this, this);
 	Cast<UMy_AuraAbilitySystemComponent>(AbilitySystemComponent)->AbilityActorInfoSet();
 
+	InitializeDefaultAttribute();
+
+
 }
