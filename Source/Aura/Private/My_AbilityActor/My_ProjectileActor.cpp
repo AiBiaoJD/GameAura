@@ -4,6 +4,7 @@
 #include "My_AbilityActor/My_ProjectileActor.h"
 
 #include "NiagaraFunctionLibrary.h"
+#include "Aura/Aura.h"
 #include "Components/AudioComponent.h"
 #include "Kismet/GameplayStatics.h"
 
@@ -14,6 +15,7 @@ AMy_ProjectileActor::AMy_ProjectileActor()
 
 	Sphere = CreateDefaultSubobject<USphereComponent>("Sphere");
 	SetRootComponent(Sphere);
+	Sphere->SetCollisionObjectType(ECC_MyProjectile);
 	Sphere->SetCollisionEnabled(ECollisionEnabled::QueryOnly); //½öÆôÓÃ²éÑ¯Åö×²¼ì²â
 	Sphere->SetCollisionResponseToAllChannels(ECR_Ignore);
 	Sphere->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Overlap);

@@ -3,6 +3,7 @@
 
 #include "My_Character/MyCharacter_Base.h"
 
+#include "Aura/Aura.h"
 #include "MY_AbilitySystem/My_AuraAbilitySystemComponent.h"
 
 // Sets default values
@@ -10,9 +11,10 @@ AMyCharacter_Base::AMyCharacter_Base()
 {
 	bReplicates = true;
 	bNetLoadOnClient = true;
-
 	PrimaryActorTick.bCanEverTick = false;
 
+	GetMesh()->SetCollisionResponseToChannel(ECC_MyProjectile, ECR_Overlap);
+	GetMesh()->SetGenerateOverlapEvents(true);
 	Weapon = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("Weapon"));
 	Weapon->SetupAttachment(GetMesh(), TEXT("WeaponHandSocket"));
 	Weapon->SetCollisionEnabled(ECollisionEnabled::NoCollision);

@@ -27,10 +27,8 @@ protected:
 	//创建武器
 	UPROPERTY(EditAnywhere, Category = "My_Combat")
 	TObjectPtr<USkeletalMeshComponent> Weapon;
-
 	UPROPERTY(EditAnywhere, Category = "My_Combat")
 	FName WeaponTipSockName;
-
 	virtual FVector GetWeaponSockLocation() override;
 
 	/*
@@ -45,7 +43,6 @@ protected:
 
 	virtual void My_InitAbilityActorInfo();
 
-
 	//Effect 初始化相关属性
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Attribute")
 	TSubclassOf<UGameplayEffect> DefaultPrimaryAttributeEffectClass;
@@ -59,8 +56,6 @@ protected:
 
 	void ApplyEffectToSelf(TSubclassOf<UGameplayEffect> GamePlayEffect, float Level) const;
 	void InitializeDefaultAttribute() const;
-
-
 
 	// Ability初始化相关
 	void AddCharacterAbilities();
