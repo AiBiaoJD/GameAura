@@ -29,17 +29,6 @@ UMy_AttributeMenuWidgetController* AMy_AuraHUD::GetMenuWidgetController(const FM
 	return MenuWidgetController;
 }
 
-UMy_EnemyHealthWidgetController* AMy_AuraHUD::GetEnemyHealthWidgetController(const FMY_WidgetControllerParams& WCParams)
-{
-	if (EnemyHealthWidgetController == nullptr)
-	{
-		EnemyHealthWidgetController = NewObject<UMy_EnemyHealthWidgetController>(this, EnemyHealthWidgetControllerClass);
-		EnemyHealthWidgetController->SetWidgetControllerParams(WCParams);
-		EnemyHealthWidgetController->BindCallbacksToDependencies();
-	}
-	return  EnemyHealthWidgetController;
-}
-
 
 void AMy_AuraHUD::InitOverlay(APlayerController* PC, APlayerState* PS, UAbilitySystemComponent* ASC, UAttributeSet* AS)
 {

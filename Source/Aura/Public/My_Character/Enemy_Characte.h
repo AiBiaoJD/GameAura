@@ -3,8 +3,10 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Components/WidgetComponent.h"
 #include "My_Character/MyCharacter_Base.h"
 #include "My_Interraction/My_Enemy_Interface.h"
+#include "My_UI/WidgetController/My_OverlayWidgetController.h"
 #include "Enemy_Characte.generated.h"
 
 /**
@@ -23,8 +25,14 @@ public:
 	/** Combat interface **/
 	virtual int32 GetPlayerLevel() override;
 	/** end Combat interface **/
-	
+
 	AEnemy_Characte();
+
+	UPROPERTY(BlueprintAssignable)
+	FMy_OnAttributeChangedSignature OnHealthChanged;
+
+	UPROPERTY(BlueprintAssignable)
+	FMy_OnAttributeChangedSignature OnMaxHealthChanged;
 protected:
 	virtual  void BeginPlay() override;
 
@@ -34,4 +42,13 @@ protected:
 	//只关心检查敌人Level在服务器上,不需要Replied
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Character Class Default")
 	int32 Level = 1;
+
+
+	/*
+	 * 敌人的血量UI 和 血量WidgetController设置
+	 */
+	UPROPERTY(VisibleAnywhere,  BlueprintReadOnly)
+	TObjectPtr<UWidgetComponent> HealthBar;
+
+
 };

@@ -4,7 +4,6 @@
 #include "DrawDebugHelpers.h"
 #include "Aura/Aura.h"
 #include "MY_AbilitySystem/My_AuraAbilitySystemComponent.h"
-#include "MY_AbilitySystem/My_AuraAbilitySystemLibrary.h"
 #include "MY_AbilitySystem/My_AuraAttributeSet.h"
 
 void AEnemy_Characte::HighlightActor()
@@ -15,7 +14,7 @@ void AEnemy_Characte::HighlightActor()
 	 * 启动后就可以设置CustomDepth Stencil Value来显示轮廓
 	 * 当然这个轮廓是在Post Progress下面的Material中设置的
 	 */
-	
+
 	GetMesh()->SetRenderCustomDepth(true);
 	GetMesh()->SetCustomDepthStencilValue(CUSTOM_DEPTH_RED);
 	Weapon->SetRenderCustomDepth(true);
@@ -54,6 +53,8 @@ AEnemy_Characte::AEnemy_Characte()
 
 	AttributeSet = CreateDefaultSubobject<UMy_AuraAttributeSet>("AttributeSet");
 
+	HealthBar = CreateDefaultSubobject<UWidgetComponent>("HealthBar");
+	HealthBar->SetupAttachment(GetRootComponent());
 }
 
 void AEnemy_Characte::BeginPlay()
@@ -62,7 +63,34 @@ void AEnemy_Characte::BeginPlay()
 
 	My_InitAbilityActorInfo();
 
-	UMy_AuraAbilitySystemLibrary::My_GetEnemyHealthWidgetController(GetWorld(), this);
+	/*
+	 * 血量UI WidgetController部分
+	 */
+
+	 // 必须先SetWidgetController,因为里面是对委托绑定
+	if (UMy_AuraUserWidget* AuraUserWidget = CastChecked<UMy_AuraUserWidget>(HealthBar->GetUserWidgetObject()))
+	{
+		AuraUserWidget->SetWidgetController(this);
+	}
+	// 初始化widgetController,里面是对委托的广播
+	if (UMy_AuraAttributeSet* AuraAS = Cast<UMy_AuraAttributeSet>(AttributeSet))
+	{
+		AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(AuraAS->GetHealthAttribute()).AddLambda([this](const FOnAttributeChangeData& Data)
+			{
+				OnHealthChanged.Broadcast(Data.NewValue);
+			});
+
+		AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(AuraAS->GetMaxHealthAttribute()).AddLambda([this](const FOnAttributeChangeData& Data)
+			{
+				OnMaxHealthChanged.Broadcast(Data.NewValue);
+			});
+
+		// 广播初始值
+		OnHealthChanged.Broadcast(AuraAS->GetHealth());
+		OnMaxHealthChanged.Broadcast(AuraAS->GetMaxHealth());
+	}
+
+	
 
 }
 
