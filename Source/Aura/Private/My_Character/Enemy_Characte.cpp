@@ -66,32 +66,31 @@ void AEnemy_Characte::BeginPlay()
 	/*
 	 * 血量UI WidgetController部分
 	 */
-	UMy_AuraAttributeSet* AuraAS = CastChecked<UMy_AuraAttributeSet>(AttributeSet);
-		// 初始化widgetController,里面是对委托的广播
-		if (AuraAS)
-		{
-			AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(AuraAS->GetHealthAttribute()).AddLambda([this](const FOnAttributeChangeData& Data)
-				{
-					OnHealthChanged.Broadcast(Data.NewValue);
-				});
 
-			AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(AuraAS->GetMaxHealthAttribute()).AddLambda([this](const FOnAttributeChangeData& Data)
-				{
-					OnMaxHealthChanged.Broadcast(Data.NewValue);
-				});
-
-
-		}
-
-
-	// 必须先SetWidgetController,因为里面是对委托绑定
+	 // SetWidgetController,因为里面是对委托绑定（也可以后绑定,但绑定后要广播初始值,保证UI正确）
 	if (UMy_AuraUserWidget* AuraUserWidget = CastChecked<UMy_AuraUserWidget>(HealthBar->GetUserWidgetObject()))
 	{
 		AuraUserWidget->SetWidgetController(this);
 	}
-	// 广播初始值
-	OnHealthChanged.Broadcast(AuraAS->GetHealth());
-	OnMaxHealthChanged.Broadcast(AuraAS->GetMaxHealth());
+
+	// 初始化widgetController,里面是对委托的广播
+	if (UMy_AuraAttributeSet* AuraAS = CastChecked<UMy_AuraAttributeSet>(AttributeSet))
+	{
+		AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(AuraAS->GetHealthAttribute()).AddLambda([this](const FOnAttributeChangeData& Data)
+			{
+				OnHealthChanged.Broadcast(Data.NewValue);
+			});
+
+		AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(AuraAS->GetMaxHealthAttribute()).AddLambda([this](const FOnAttributeChangeData& Data)
+			{
+				OnMaxHealthChanged.Broadcast(Data.NewValue);
+			});
+
+		// 广播初始值
+		OnHealthChanged.Broadcast(AuraAS->GetHealth());
+		OnMaxHealthChanged.Broadcast(AuraAS->GetMaxHealth());
+	}
+
 }
 
 void AEnemy_Characte::My_InitAbilityActorInfo()
