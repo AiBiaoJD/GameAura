@@ -4,6 +4,7 @@
 #include "DrawDebugHelpers.h"
 #include "Aura/Aura.h"
 #include "MY_AbilitySystem/My_AuraAbilitySystemComponent.h"
+#include "MY_AbilitySystem/My_AuraAbilitySystemLibrary.h"
 #include "MY_AbilitySystem/My_AuraAttributeSet.h"
 
 void AEnemy_Characte::HighlightActor()
@@ -60,6 +61,9 @@ void AEnemy_Characte::BeginPlay()
 	Super::BeginPlay();
 
 	My_InitAbilityActorInfo();
+
+	UMy_AuraAbilitySystemLibrary::My_GetEnemyHealthWidgetController(GetWorld(), this);
+
 }
 
 void AEnemy_Characte::My_InitAbilityActorInfo()

@@ -68,7 +68,6 @@ void UMy_OverlayWidgetController::BindCallbacksToDependencies()
 					OnMessageWidgetRow.Broadcast(*Row);
 				}
 
-
 			}
 		}
 	);

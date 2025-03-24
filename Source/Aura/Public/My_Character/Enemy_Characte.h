@@ -23,7 +23,7 @@ public:
 	/** Combat interface **/
 	virtual int32 GetPlayerLevel() override;
 	/** end Combat interface **/
-
+	
 	AEnemy_Characte();
 protected:
 	virtual  void BeginPlay() override;

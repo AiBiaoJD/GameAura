@@ -15,7 +15,6 @@ void UMy_AttributeMenuWidgetController::BroadcastInitiaValues()
 	{
 		BroadAttributeInfo(Pair.Key, Pair.Value());
 	}
-
 }
 
 void UMy_AttributeMenuWidgetController::BindCallbacksToDependencies()

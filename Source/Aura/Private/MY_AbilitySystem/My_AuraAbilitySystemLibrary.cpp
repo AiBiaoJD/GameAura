@@ -4,6 +4,7 @@
 #include "MY_AbilitySystem/My_AuraAbilitySystemLibrary.h"
 
 #include "Kismet/GameplayStatics.h"
+#include "My_Character/Enemy_Characte.h"
 #include "My_Controler/My_AuraPlayerState.h"
 #include "My_UI/HUD/My_AuraHUD.h"
 
@@ -41,3 +42,24 @@ UMy_AttributeMenuWidgetController* UMy_AuraAbilitySystemLibrary::My_GetMenuWidge
 	}
 	return nullptr;
 }
+
+UMy_EnemyHealthWidgetController* UMy_AuraAbilitySystemLibrary::My_GetEnemyHealthWidgetController(const UObject* WorldContextObject, AEnemy_Characte* Enemy)
+{
+	if (APlayerController* PC = UGameplayStatics::GetPlayerController(WorldContextObject, 0))
+	{
+		if (AMy_AuraHUD* AuraHUD = Cast<AMy_AuraHUD>(PC->GetHUD()))
+		{
+			check(Enemy);
+			UAbilitySystemComponent* ASC = Enemy->GetAbilitySystemComponent();
+			UAttributeSet* AS = Enemy->GetAttributeSet();
+
+			const FMY_WidgetControllerParams WidgetControllerParams(nullptr, nullptr, ASC, AS);
+			return AuraHUD->GetEnemyHealthWidgetController(WidgetControllerParams);
+		}
+	}
+	return nullptr;
+}
+
+
+
+

@@ -6,6 +6,7 @@
 #include "GameFramework/HUD.h"
 #include "My_UI/Widget/My_AuraUserWidget.h"
 #include "My_UI/WidgetController/My_AttributeMenuWidgetController.h"
+#include "My_UI/WidgetController/My_EnemyHealthWidgetController.h"
 #include "My_UI/WidgetController/My_OverlayWidgetController.h"
 #include "My_AuraHUD.generated.h"
 
@@ -21,6 +22,7 @@ class AURA_API AMy_AuraHUD : public AHUD
 public:
 	UMy_OverlayWidgetController* GetOverlayWidgetController(const FMY_WidgetControllerParams& WCParams);
 	UMy_AttributeMenuWidgetController* GetMenuWidgetController(const FMY_WidgetControllerParams& WCParams);
+	UMy_EnemyHealthWidgetController* GetEnemyHealthWidgetController(const FMY_WidgetControllerParams& WCParams);
 
 	//为了初始化OverlayWidgetController，我们需要传入FWidgetControllerParams结构体
 	//之后使用OverlayWidgetController来初始化OverlayWidget，而Beginplay()不可以传参数
@@ -48,4 +50,10 @@ private:
 
 	UPROPERTY(EditAnywhere)
 	TSubclassOf<UMy_AttributeMenuWidgetController> MenuWidgetControllerClass;
+
+	UPROPERTY()
+	TObjectPtr<UMy_EnemyHealthWidgetController> EnemyHealthWidgetController;
+
+	UPROPERTY(EditAnywhere)
+	TSubclassOf<UMy_EnemyHealthWidgetController>EnemyHealthWidgetControllerClass;
 };
