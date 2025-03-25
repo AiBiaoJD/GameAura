@@ -41,7 +41,6 @@ protected:
 	UPROPERTY()
 	TObjectPtr<UAttributeSet> AttributeSet;
 
-	virtual void My_InitAbilityActorInfo();
 
 	//Effect 初始化相关属性
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Attribute")
@@ -55,7 +54,8 @@ protected:
 	TSubclassOf<UGameplayEffect> InitVitalAttributeEffectClass;
 
 	void ApplyEffectToSelf(TSubclassOf<UGameplayEffect> GamePlayEffect, float Level) const;
-	void InitializeDefaultAttribute() const;
+	virtual void My_InitAbilityActorInfo();
+	virtual void InitializeDefaultAttribute() const;
 
 	// Ability初始化相关
 	void AddCharacterAbilities();

@@ -4,6 +4,7 @@
 #include "DrawDebugHelpers.h"
 #include "Aura/Aura.h"
 #include "MY_AbilitySystem/My_AuraAbilitySystemComponent.h"
+#include "MY_AbilitySystem/My_AuraAbilitySystemLibrary.h"
 #include "MY_AbilitySystem/My_AuraAttributeSet.h"
 
 void AEnemy_Characte::HighlightActor()
@@ -99,6 +100,9 @@ void AEnemy_Characte::My_InitAbilityActorInfo()
 	Cast<UMy_AuraAbilitySystemComponent>(AbilitySystemComponent)->AbilityActorInfoSet();
 
 	InitializeDefaultAttribute();
+}
 
-
+void AEnemy_Characte::InitializeDefaultAttribute() const
+{
+	UMy_AuraAbilitySystemLibrary::InitializeDefaultAttributes(this, CharacterClass, Level, AbilitySystemComponent);
 }
