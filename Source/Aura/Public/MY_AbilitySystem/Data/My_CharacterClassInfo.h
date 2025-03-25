@@ -11,9 +11,9 @@ class UGameplayEffect;
 UENUM(BlueprintType)
 enum class EMy_CharacterClass : uint8
 {
-	Elementalist,
-	Warrior,
-	Ranger
+	Elementalist, // 法师
+	Warrior,      // 战士
+	Ranger		  // 射手
 };
 
 USTRUCT(BlueprintType)
