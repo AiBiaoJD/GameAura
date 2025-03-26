@@ -78,5 +78,10 @@ void FMy_AuraGameplayTags::InitializeNativeGameplayTags()
 	*/
 	GameplayTagsInstance.My_EffectData_Damage = UGameplayTagsManager::Get().AddNativeGameplayTag(FName("My_EffectData.Damage"), FString("Effect Cause Damage"));
 
+	/*
+	* Effect Granted Tag
+	*/
+
+	GameplayTagsInstance.My_EffectGranted_HitReact = UGameplayTagsManager::Get().AddNativeGameplayTag(FName("My_EffectGranted.HitReact"), FString("Tag Granted When Hit Reaction"));
 
 }

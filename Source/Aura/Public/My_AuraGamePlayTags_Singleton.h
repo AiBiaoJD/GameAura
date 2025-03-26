@@ -49,6 +49,10 @@ public:
 	// Effect SetbyCaller Tag
 	FGameplayTag My_EffectData_Damage;
 
+	// Effect Granted Tag
+	FGameplayTag My_EffectGranted_HitReact;
+
+
 
 private:
 	static FMy_AuraGameplayTags GameplayTagsInstance;

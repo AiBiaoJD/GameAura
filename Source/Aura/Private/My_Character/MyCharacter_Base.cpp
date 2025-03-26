@@ -35,6 +35,11 @@ UAttributeSet* AMyCharacter_Base::GetAttributeSet() const
 	return AttributeSet;
 }
 
+UAnimMontage* AMyCharacter_Base::GetHitReactMontage_Implementation()
+{
+	return HitReactMontage;
+}
+
 // Called when the game starts or when spawned
 void AMyCharacter_Base::BeginPlay()
 {

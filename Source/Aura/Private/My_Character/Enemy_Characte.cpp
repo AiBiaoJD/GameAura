@@ -2,7 +2,9 @@
 
 #include "My_Character/Enemy_Characte.h"
 #include "DrawDebugHelpers.h"
+#include "My_AuraGamePlayTags_Singleton.h"
 #include "Aura/Aura.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "MY_AbilitySystem/My_AuraAbilitySystemComponent.h"
 #include "MY_AbilitySystem/My_AuraAbilitySystemLibrary.h"
 #include "MY_AbilitySystem/My_AuraAttributeSet.h"
@@ -61,7 +63,7 @@ AEnemy_Characte::AEnemy_Characte()
 void AEnemy_Characte::BeginPlay()
 {
 	Super::BeginPlay();
-
+	GetCharacterMovement()->MaxWalkSpeed = BaseWalkSpeed;
 	My_InitAbilityActorInfo();
 
 	/*
@@ -92,6 +94,19 @@ void AEnemy_Characte::BeginPlay()
 		OnMaxHealthChanged.Broadcast(AuraAS->GetMaxHealth());
 	}
 
+	/*
+	 * Hit React ²¿·Ö
+	*/
+	AbilitySystemComponent->RegisterGameplayTagEvent(FMy_AuraGameplayTags::GetInstance().My_EffectGranted_HitReact, EGameplayTagEventType::NewOrRemoved).AddUObject(
+		this,
+		&AEnemy_Characte::HitReatTagChanged
+	);
+}
+
+void AEnemy_Characte::HitReatTagChanged(const FGameplayTag Tag, int32 NewCount)
+{
+	bHitReacting = NewCount > 0;
+	GetCharacterMovement()->MaxWalkSpeed = bHitReacting ? 0.f : BaseWalkSpeed;
 }
 
 void AEnemy_Characte::My_InitAbilityActorInfo()

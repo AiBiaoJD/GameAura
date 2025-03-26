@@ -34,6 +34,15 @@ public:
 
 	UPROPERTY(BlueprintAssignable)
 	FMy_OnAttributeChangedSignature OnMaxHealthChanged;
+
+	void HitReatTagChanged(const FGameplayTag Tag, int32 NewCount);
+
+	UPROPERTY(BlueprintReadOnly, Category="My_Combat")
+	bool bHitReacting = false;
+
+	UPROPERTY(BlueprintReadOnly, Category = "My_Combat")
+	float BaseWalkSpeed = 250.f;
+
 protected:
 	virtual  void BeginPlay() override;
 	virtual  void My_InitAbilityActorInfo() override;
