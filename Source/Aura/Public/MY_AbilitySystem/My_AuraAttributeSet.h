@@ -188,7 +188,7 @@ public:
 
 
 	/*
-	*Vital Attributes:核心属性
+	* Vital Attributes:核心属性
 	*/
 
 	//ReplicatedUsing = OnRep_Health,属性更新时执行回调函数
@@ -203,6 +203,12 @@ public:
 	FGameplayAttributeData Mana;
 	ATTRIBUTE_ACCESSORS(UMy_AuraAttributeSet, Mana);
 
+	/*
+	 * MetaAttribute:只在服务器上运行,不会Replicated到客户端
+	 */
+	UPROPERTY(BlueprintReadOnly, Category="Meta Attribute")
+	FGameplayAttributeData IncomingDamage;
+	ATTRIBUTE_ACCESSORS(UMy_AuraAttributeSet, IncomingDamage);
 
 	UFUNCTION()
 	void OnRep_Health(const FGameplayAttributeData& OldHealth) const;

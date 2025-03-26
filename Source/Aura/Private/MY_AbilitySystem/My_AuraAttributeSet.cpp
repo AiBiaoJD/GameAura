@@ -100,14 +100,30 @@ void UMy_AuraAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffec
 	FMy_EffectProperties Props;
 	SetEffectProperty(Data, Props);
 
+	
 	if (Data.EvaluatedData.Attribute == GetHealthAttribute())
 	{
 		SetHealth(FMath::Clamp(GetHealth(), 0, GetMaxHealth()));
-		UE_LOG(LogTemp, Warning, TEXT("changed Health on %s, Health %f"), *Props.TargetAvatarActor->GetName(), GetHealth());
 	}
 	if (Data.EvaluatedData.Attribute == GetManaAttribute())
 	{
 		SetMana(FMath::Clamp(GetMana(), 0, GetMaxMana()));
+	}
+
+	/*
+	 * MetaAttribute²¿·Ö
+	 */
+	if (Data.EvaluatedData.Attribute == GetIncomingDamageAttribute())
+	{
+		const float LocateIncomingDamage = GetIncomingDamage();
+		SetIncomingDamage(0.f);
+		if (LocateIncomingDamage > 0.f)
+		{
+			const float NewHealth = GetHealth() - LocateIncomingDamage;
+			SetHealth(FMath::Clamp(NewHealth, 0.f, GetMaxHealth()));
+			UE_LOG(LogTemp, Warning, TEXT("changed Health on %s, Health %f"), *Props.TargetAvatarActor->GetName(), GetHealth());
+			const bool bFatal = NewHealth <= 0.f;
+		}
 	}
 }
 
