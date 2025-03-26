@@ -37,7 +37,7 @@ public:
 	FGameplayTag My_Attribute_Secondary_CriticalHitDamage;
 
 
-	//InputActions Tag
+	// InputActions Tag
 	FGameplayTag My_InputTag_LMB;
 	FGameplayTag My_InputTag_RMB;
 	FGameplayTag My_InputTag_1;
@@ -46,6 +46,8 @@ public:
 	FGameplayTag My_InputTag_4;
 	FGameplayTag My_InputTag_5;
 
+	// Effect SetbyCaller Tag
+	FGameplayTag My_EffectData_Damage;
 
 
 private:
