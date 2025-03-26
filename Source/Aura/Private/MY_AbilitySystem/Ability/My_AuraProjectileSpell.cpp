@@ -45,7 +45,9 @@ void UMy_AuraProjectileSpell::SpawnProjectile(const FVector& ProjectileTargetLoc
 
 		const UAbilitySystemComponent* SourceASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(GetAvatarActorFromActorInfo());
 		const FGameplayEffectSpecHandle SpecHandle = SourceASC->MakeOutgoingSpec(DamageEffectClass, GetAbilityLevel(), SourceASC->MakeEffectContext());
-		SpecHandle.Data->SetSetByCallerMagnitude(FMy_AuraGameplayTags::GetInstance().My_EffectData_Damage, 80.f);
+
+		float DamageValue = Damage.GetValueAtLevel(GetAbilityLevel());
+		SpecHandle.Data->SetSetByCallerMagnitude(FMy_AuraGameplayTags::GetInstance().My_EffectData_Damage, DamageValue);
 		Projectile->DamageEffectSpecHandle = SpecHandle;
 
 		Projectile->FinishSpawning(SpawnTransform);
