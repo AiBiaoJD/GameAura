@@ -117,7 +117,10 @@ void AEnemy_Characte::My_InitAbilityActorInfo()
 	InitializeDefaultAttribute();
 }
 
+// 初始化敌人的Attribute和Ability 从DataAsset中
 void AEnemy_Characte::InitializeDefaultAttribute() const
 {
 	UMy_AuraAbilitySystemLibrary::InitializeDefaultAttributes(this, CharacterClass, Level, AbilitySystemComponent);
+
+	UMy_AuraAbilitySystemLibrary::InitStartupAbilities(this, AbilitySystemComponent);
 }

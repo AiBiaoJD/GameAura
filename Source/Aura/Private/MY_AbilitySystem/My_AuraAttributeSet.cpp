@@ -122,7 +122,18 @@ void UMy_AuraAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffec
 			const float NewHealth = GetHealth() - LocateIncomingDamage;
 			SetHealth(FMath::Clamp(NewHealth, 0.f, GetMaxHealth()));
 			UE_LOG(LogTemp, Warning, TEXT("changed Health on %s, Health %f"), *Props.TargetAvatarActor->GetName(), GetHealth());
-			const bool bFatal = NewHealth <= 0.f;
+
+			const bool bFatal = NewHealth <= 0.f; // ÊÇ·ñÖÂÃü
+			if (bFatal)
+			{
+				
+			}
+			else
+			{
+				FGameplayTagContainer TagContainer;
+				TagContainer.AddTag(FMy_AuraGameplayTags::GetInstance().My_EffectGranted_HitReact);
+				Props.TargetASC->TryActivateAbilitiesByTag(TagContainer);
+			}
 		}
 	}
 }
