@@ -25,6 +25,7 @@ public:
 
 	/** Combat interface **/
 	virtual int32 GetPlayerLevel() override;
+	virtual void Die() override;
 	/** end Combat interface **/
 
 	AEnemy_Characte();
@@ -37,12 +38,14 @@ public:
 
 	void HitReatTagChanged(const FGameplayTag Tag, int32 NewCount);
 
-	UPROPERTY(BlueprintReadOnly, Category="My_Combat")
+	UPROPERTY(BlueprintReadOnly, Category = "My_Combat")
 	bool bHitReacting = false;
 
 	UPROPERTY(BlueprintReadOnly, Category = "My_Combat")
 	float BaseWalkSpeed = 250.f;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "My_Combat")
+	float LifeSpan = 5.f;
 protected:
 	virtual  void BeginPlay() override;
 	virtual  void My_InitAbilityActorInfo() override;
@@ -50,7 +53,7 @@ protected:
 
 
 	//只关心检查敌人Level在服务器上,不需要Replied
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Character Class Default")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Character Class Default")
 	int32 Level = 1;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Character Class Default")
@@ -60,7 +63,7 @@ protected:
 	/*
 	 * 敌人的血量UI 和 血量WidgetController设置
 	 */
-	UPROPERTY(VisibleAnywhere,  BlueprintReadOnly)
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	TObjectPtr<UWidgetComponent> HealthBar;
 
 

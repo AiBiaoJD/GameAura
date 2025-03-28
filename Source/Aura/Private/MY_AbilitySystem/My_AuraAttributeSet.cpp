@@ -7,6 +7,7 @@
 #include "GameplayEffectExtension.h"
 #include "My_AuraGamePlayTags_Singleton.h"
 #include "GameFramework/Character.h"
+#include "My_Interraction/My_CombatInterface.h"
 #include "Net/UnrealNetwork.h"
 
 UMy_AuraAttributeSet::UMy_AuraAttributeSet()
@@ -126,7 +127,11 @@ void UMy_AuraAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffec
 			const bool bFatal = NewHealth <= 0.f; // ÊÇ·ñÖÂÃü
 			if (bFatal)
 			{
-				
+				IMy_CombatInterface* CombatInterface = Cast<IMy_CombatInterface>(Props.TargetAvatarActor);
+				if (CombatInterface)
+				{
+					CombatInterface->Die();
+				}
 			}
 			else
 			{

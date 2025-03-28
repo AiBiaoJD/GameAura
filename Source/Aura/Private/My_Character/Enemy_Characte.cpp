@@ -38,6 +38,12 @@ int32 AEnemy_Characte::GetPlayerLevel()
 	return Level;
 }
 
+void AEnemy_Characte::Die()
+{
+	SetLifeSpan(LifeSpan);
+	Super::Die();
+}
+
 AEnemy_Characte::AEnemy_Characte()
 {
 	/*
