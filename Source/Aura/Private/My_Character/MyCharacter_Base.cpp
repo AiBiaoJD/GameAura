@@ -58,6 +58,8 @@ void AMyCharacter_Base::MulticastHandleDeath_Implementation()
 	GetMesh()->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);
 
 	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+	Dissolve();
 }
 
 // Called when the game starts or when spawned
@@ -108,5 +110,22 @@ void AMyCharacter_Base::AddCharacterAbilities()
 
 	ASC->AddCharacterAbilitiesFromASC(StartupAbility);
 
+}
+
+void AMyCharacter_Base::Dissolve()
+{
+	if (IsValid(DissolveMaterialInstance))
+	{
+		UMaterialInstanceDynamic* DynamicMaterial = UMaterialInstanceDynamic::Create(DissolveMaterialInstance, this);
+		GetMesh()->SetMaterial(0, DynamicMaterial);
+		StartDissolveTimeline(DynamicMaterial);
+	}
+
+	if (IsValid(WeaponDissolveMaterialInstance))
+	{
+		UMaterialInstanceDynamic* DynamicMaterial = UMaterialInstanceDynamic::Create(DissolveMaterialInstance, this);
+		Weapon->SetMaterial(0, DynamicMaterial);
+		StartWeaponDissolveTimeline(DynamicMaterial);
+	}
 }
 
