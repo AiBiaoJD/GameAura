@@ -4,15 +4,18 @@
 #include "MY_AbilitySystem/ExeCalc/My_ExeCalc_Damage.h"
 
 #include "AbilitySystemComponent.h"
+#include "My_AuraGamePlayTags_Singleton.h"
 #include "MY_AbilitySystem/My_AuraAttributeSet.h"
 
 
 struct My_AuraDamageStatics
 {
 	DECLARE_ATTRIBUTE_CAPTUREDEF(Armor);
+	DECLARE_ATTRIBUTE_CAPTUREDEF(BlockChance);
 	My_AuraDamageStatics()
 	{
 		DEFINE_ATTRIBUTE_CAPTUREDEF(UMy_AuraAttributeSet, Armor, Target, false);
+		DEFINE_ATTRIBUTE_CAPTUREDEF(UMy_AuraAttributeSet, BlockChance, Target, false);
 	}
 };
 static const My_AuraDamageStatics& DamageStatics()
@@ -23,6 +26,8 @@ static const My_AuraDamageStatics& DamageStatics()
 UMy_ExeCalc_Damage::UMy_ExeCalc_Damage()
 {
 	RelevantAttributesToCapture.Add(DamageStatics().ArmorDef);
+	RelevantAttributesToCapture.Add(DamageStatics().BlockChanceDef);
+
 }
 
 
@@ -38,16 +43,38 @@ void UMy_ExeCalc_Damage::Execute_Implementation(const FGameplayEffectCustomExecu
 	EvaluateParameters.SourceTags = Spec.CapturedSourceTags.GetAggregatedTags();
 	EvaluateParameters.TargetTags = Spec.CapturedTargetTags.GetAggregatedTags();
 
-	// 获取捕获的属性值
-	float Armor;
-	ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(DamageStatics().ArmorDef, EvaluateParameters, Armor);
-	Armor = FMath::Max(0.f, Armor);
-	Armor++;
+	// 获取Damage
+	float Damage = Spec.GetSetByCallerMagnitude(FMy_AuraGameplayTags::GetInstance().My_EffectData_Damage);
+
+	// 获取格挡概率（BlockChance)
+	float BlockChance = 0.f;
+	const UMy_AuraAttributeSet* My_AuraAttribute = Cast<UMy_AuraAttributeSet>(TargetASC->GetAttributeSet(UMy_AuraAttributeSet::StaticClass()));
+	if (My_AuraAttribute)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("EnemyBlockChance (Direct) = %f"), My_AuraAttribute->GetBlockChance());
+	}
+
+
+	if (!ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(DamageStatics().BlockChanceDef, EvaluateParameters, BlockChance))
+	{
+		UE_LOG(LogTemp, Error, TEXT("Failed to capture BlockChance!"));
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("BlockChance = %f"), BlockChance);
+
+	}
+	const bool isBlocked = FMath::RandRange(0.f, 1.f) <= BlockChance;
+	if (isBlocked)
+	{
+		Damage *= 0.5f;
+	}
+
 
 	// 输出伤害
 	OutExecutionOutput.AddOutputModifier(FGameplayModifierEvaluatedData(
-		DamageStatics().ArmorProperty,
+		UMy_AuraAttributeSet::GetIncomingDamageAttribute(),
 		EGameplayModOp::Additive,
-		Armor
+		Damage
 	));
 }
