@@ -8,8 +8,10 @@
 #include "My_AuraGamePlayTags_Singleton.h"
 #include "NavigationPath.h"
 #include "NavigationSystem.h"
+#include "GameFramework/Character.h"
 #include "My_Input/My_AuraEnhancedInputComponent.h"
 #include "My_Interraction/My_Enemy_Interface.h"
+#include "My_UI/Widget/My_DamageTextComponent.h"
 
 AMy_Aura_Controller::AMy_Aura_Controller()
 {
@@ -23,6 +25,19 @@ void AMy_Aura_Controller::PlayerTick(float DeltaTime)
 	CursorTrace();
 	AutoRun();
 }
+
+void AMy_Aura_Controller::ClientShowDamageNum_Implementation(float DamageAmount, ACharacter* TargetCharacter)
+{
+	if (IsValid(TargetCharacter) && DamageTextComponentClass)
+	{
+		UMy_DamageTextComponent *DamageText = NewObject<UMy_DamageTextComponent>(TargetCharacter, DamageTextComponentClass);
+		DamageText->RegisterComponent(); //±ØÐë×¢²áÏÔÊ¾Widget
+		DamageText->AttachToComponent(TargetCharacter->GetRootComponent(), FAttachmentTransformRules::KeepRelativeTransform);
+		DamageText->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);
+		DamageText->SetDamageText(DamageAmount);
+	}
+}
+
 
 void AMy_Aura_Controller::AutoRun()
 {

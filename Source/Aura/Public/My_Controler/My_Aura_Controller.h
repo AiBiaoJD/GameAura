@@ -12,6 +12,8 @@
 #include "My_Aura_Controller.generated.h"
 
 
+class UDamageTextComponent;
+class UMy_DamageTextComponent;
 /**
  *
  */
@@ -22,6 +24,9 @@ class AURA_API AMy_Aura_Controller : public APlayerController
 public:
 	AMy_Aura_Controller();
 	virtual void PlayerTick(float DeltaTime) override;
+
+	UFUNCTION(Client, Reliable)
+	void ClientShowDamageNum(float DamageAmount, ACharacter* TargetCharacter);
 protected:
 	virtual void BeginPlay() override;
 	virtual void SetupInputComponent() override;
@@ -84,5 +89,11 @@ private:
 	TObjectPtr<USplineComponent> Spline;
 
 	void AutoRun();
+
+	/* Damage Text Show */
+	UPROPERTY(EditDefaultsOnly)
+	TSubclassOf<UMy_DamageTextComponent> DamageTextComponentClass;
+
+
 };
 

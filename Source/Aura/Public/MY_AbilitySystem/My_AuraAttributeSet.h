@@ -259,5 +259,6 @@ public:
 	void OnRep_ManaRegeneration(const FGameplayAttributeData& OldManaRegeneration) const;
 private:
 	void SetEffectProperty(const struct FGameplayEffectModCallbackData& Data, FMy_EffectProperties& Props) const;
+	void ShowDamageText(const FMy_EffectProperties& Props, float Damage) const;
 };
 

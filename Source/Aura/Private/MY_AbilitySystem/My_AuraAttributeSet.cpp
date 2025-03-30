@@ -7,6 +7,8 @@
 #include "GameplayEffectExtension.h"
 #include "My_AuraGamePlayTags_Singleton.h"
 #include "GameFramework/Character.h"
+#include "Kismet/GameplayStatics.h"
+#include "My_Controler/My_Aura_Controller.h"
 #include "My_Interraction/My_CombatInterface.h"
 #include "Net/UnrealNetwork.h"
 
@@ -116,15 +118,15 @@ void UMy_AuraAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffec
 	 */
 	if (Data.EvaluatedData.Attribute == GetIncomingDamageAttribute())
 	{
-		const float LocateIncomingDamage = GetIncomingDamage();
+		const float LocalIncomingDamage = GetIncomingDamage();
 		SetIncomingDamage(0.f);
-		if (LocateIncomingDamage > 0.f)
+		if (LocalIncomingDamage > 0.f)
 		{
-			const float NewHealth = GetHealth() - LocateIncomingDamage;
+			const float NewHealth = GetHealth() - LocalIncomingDamage;
 			SetHealth(FMath::Clamp(NewHealth, 0.f, GetMaxHealth()));
 			UE_LOG(LogTemp, Warning, TEXT("changed Health on %s, Health %f"), *Props.TargetAvatarActor->GetName(), GetHealth());
 
-			const bool bFatal = NewHealth <= 0.f; // ÊÇ·ñÖÂÃü
+			const bool bFatal = NewHealth <= 0.f; 
 			if (bFatal)
 			{
 				IMy_CombatInterface* CombatInterface = Cast<IMy_CombatInterface>(Props.TargetAvatarActor);
@@ -139,6 +141,19 @@ void UMy_AuraAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffec
 				TagContainer.AddTag(FMy_AuraGameplayTags::GetInstance().My_EffectGranted_HitReact);
 				Props.TargetASC->TryActivateAbilitiesByTag(TagContainer);
 			}
+
+			ShowDamageText(Props, LocalIncomingDamage);
+			
+		}
+	}
+}
+void UMy_AuraAttributeSet::ShowDamageText(const FMy_EffectProperties& Props, float Damage) const
+{
+	if (Props.SourceCharacter != Props.TargetCharacter)
+	{
+		if (AMy_Aura_Controller* PC = Cast<AMy_Aura_Controller>(UGameplayStatics::GetPlayerController(Props.SourceCharacter, 0)))
+		{
+			PC->ClientShowDamageNum(Damage, Props.TargetCharacter);
 		}
 	}
 }
