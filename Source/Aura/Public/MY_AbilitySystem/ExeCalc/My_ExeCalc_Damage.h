@@ -13,5 +13,8 @@ UCLASS()
 class AURA_API UMy_ExeCalc_Damage : public UGameplayEffectExecutionCalculation
 {
 	GENERATED_BODY()
-	
+
+public:
+	UMy_ExeCalc_Damage();
+	virtual void Execute_Implementation(const FGameplayEffectCustomExecutionParameters& ExecutionParams, FGameplayEffectCustomExecutionOutput& OutExecutionOutput) const override;
 };
