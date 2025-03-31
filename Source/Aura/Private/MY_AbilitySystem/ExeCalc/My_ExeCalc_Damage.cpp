@@ -18,15 +18,15 @@ struct My_AuraDamageStatics
 		DEFINE_ATTRIBUTE_CAPTUREDEF(UMy_AuraAttributeSet, BlockChance, Target, false);
 	}
 };
-static const My_AuraDamageStatics& DamageStatics()
+static const My_AuraDamageStatics& My_DamageStatics()
 {
-	static My_AuraDamageStatics DStatics;
-	return DStatics;
+	static My_AuraDamageStatics My_DStatics;
+	return My_DStatics;
 }
 UMy_ExeCalc_Damage::UMy_ExeCalc_Damage()
 {
-	RelevantAttributesToCapture.Add(DamageStatics().ArmorDef);
-	RelevantAttributesToCapture.Add(DamageStatics().BlockChanceDef);
+	RelevantAttributesToCapture.Add(My_DamageStatics().ArmorDef);
+	RelevantAttributesToCapture.Add(My_DamageStatics().BlockChanceDef);
 
 }
 
@@ -55,7 +55,7 @@ void UMy_ExeCalc_Damage::Execute_Implementation(const FGameplayEffectCustomExecu
 	}
 
 
-	if (!ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(DamageStatics().BlockChanceDef, EvaluateParameters, BlockChance))
+	if (!ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(My_DamageStatics().BlockChanceDef, EvaluateParameters, BlockChance))
 	{
 		UE_LOG(LogTemp, Error, TEXT("Failed to capture BlockChance!"));
 	}
