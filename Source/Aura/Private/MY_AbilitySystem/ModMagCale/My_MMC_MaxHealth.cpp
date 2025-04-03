@@ -26,7 +26,6 @@ float UMy_MMC_MaxHealth::CalculateBaseMagnitude_Implementation(const FGameplayEf
 	EvaluateParameters.SourceTags = SourceTags;
 	EvaluateParameters.TargetTags = TargetTags;
 
-
 	float Vigor = 0.0f;
 	GetCapturedAttributeMagnitude(VigorDef, Spec, EvaluateParameters, Vigor);
 	Vigor = FMath::Max(Vigor, 0.0f);
