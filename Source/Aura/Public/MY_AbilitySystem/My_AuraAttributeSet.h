@@ -169,7 +169,7 @@ public:
 	FGameplayAttributeData BlockChance;
 	ATTRIBUTE_ACCESSORS(UMy_AuraAttributeSet, BlockChance);
 
-	//暴击伤害减少:减少受到的暴击伤害百分比
+	//暴击抗性:降低敌人暴击的概率或暴击伤害
 	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_CriticalHitResistance, Category = "Third Attribute")
 	FGameplayAttributeData CriticalHitResistance;
 	ATTRIBUTE_ACCESSORS(UMy_AuraAttributeSet, CriticalHitResistance);
