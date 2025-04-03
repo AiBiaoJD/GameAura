@@ -6,6 +6,10 @@
 #include "AbilitySystemComponent.h"
 #include "My_AuraGamePlayTags_Singleton.h"
 #include "MY_AbilitySystem/My_AuraAttributeSet.h"
+#include <MY_AbilitySystem/Data/My_CharacterClassInfo.h>
+
+#include "MY_AbilitySystem/My_AuraAbilitySystemLibrary.h"
+#include "My_Interraction/My_CombatInterface.h"
 
 
 struct My_AuraDamageStatics
@@ -41,6 +45,8 @@ void UMy_ExeCalc_Damage::Execute_Implementation(const FGameplayEffectCustomExecu
 	const UAbilitySystemComponent* TargetASC = ExecutionParams.GetTargetAbilitySystemComponent();
 	AActor* SourceAvatar = SourceASC ? SourceASC->GetAvatarActor() : nullptr;
 	AActor* TargetAvatar = TargetASC ? TargetASC->GetAvatarActor() : nullptr;
+	IMy_CombatInterface* SourceCombatInterface = Cast<IMy_CombatInterface>(SourceAvatar);
+	IMy_CombatInterface* TargetCombatInterface = Cast<IMy_CombatInterface>(TargetAvatar);
 	const FGameplayEffectSpec& Spec = ExecutionParams.GetOwningSpec();
 	FAggregatorEvaluateParameters EvaluateParameters;
 	EvaluateParameters.SourceTags = Spec.CapturedSourceTags.GetAggregatedTags();
@@ -64,14 +70,21 @@ void UMy_ExeCalc_Damage::Execute_Implementation(const FGameplayEffectCustomExecu
 	ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(My_DamageStatics().ArmorDef, EvaluateParameters, TargetArmor);
 	TargetArmor = FMath::Max(0.f, TargetArmor);
 
+	// 获取护甲和护甲穿透计算系数
+	UMy_CharacterClassInfo* CharacterClassInfo = UMy_AuraAbilitySystemLibrary::GetCharacterClassInfo(SourceAvatar);
+	FRealCurve* ArmorPenetrationCurve = CharacterClassInfo->DamageCalculationCoefficients->FindCurve(FName("ArmorPenetration"), FString());
+	FRealCurve* EffectiveArmorCurve = CharacterClassInfo->DamageCalculationCoefficients->FindCurve(FName("EffectiveArmor"), FString());
+	const float ArmorPenetrationCoefficient = ArmorPenetrationCurve->Eval(SourceCombatInterface->GetPlayerLevel());
+	const float EffectiveArmorCoefficient = EffectiveArmorCurve->Eval(TargetCombatInterface->GetPlayerLevel());
+
 	// 获取护甲穿透(Armor)
 	float SourceArmorPenetration = 0.f;
 	ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(My_DamageStatics().ArmorPenetrationDef, EvaluateParameters, SourceArmorPenetration);
 	SourceArmorPenetration = FMath::Max(0.f, SourceArmorPenetration);
 
 	// 根据护甲和护甲穿透计算Damage
-	float EffectiveArmor = (1 - SourceArmorPenetration * 0.25) * TargetArmor;
-	Damage *= (100 - EffectiveArmor * 0.25) / 100;
+	float EffectiveArmor = (1 - SourceArmorPenetration * ArmorPenetrationCoefficient) * TargetArmor;
+	Damage *= (100 - EffectiveArmor * EffectiveArmorCoefficient) / 100;
 
 	// 输出伤害
 	OutExecutionOutput.AddOutputModifier(FGameplayModifierEvaluatedData(
