@@ -26,15 +26,15 @@ void AMy_Aura_Controller::PlayerTick(float DeltaTime)
 	AutoRun();
 }
 
-void AMy_Aura_Controller::ClientShowDamageNum_Implementation(float DamageAmount, ACharacter* TargetCharacter)
+void AMy_Aura_Controller::ClientShowDamageNum_Implementation(float DamageAmount, ACharacter* TargetCharacter, bool IsBlockedHit, bool IsCriticalHit)
 {
 	if (IsValid(TargetCharacter) && DamageTextComponentClass)
 	{
-		UMy_DamageTextComponent *DamageText = NewObject<UMy_DamageTextComponent>(TargetCharacter, DamageTextComponentClass);
+		UMy_DamageTextComponent* DamageText = NewObject<UMy_DamageTextComponent>(TargetCharacter, DamageTextComponentClass);
 		DamageText->RegisterComponent(); //±ØÐë×¢²áÏÔÊ¾Widget
 		DamageText->AttachToComponent(TargetCharacter->GetRootComponent(), FAttachmentTransformRules::KeepRelativeTransform);
 		DamageText->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);
-		DamageText->SetDamageText(DamageAmount);
+		DamageText->SetDamageText(DamageAmount, IsBlockedHit, IsCriticalHit);
 	}
 }
 
@@ -56,7 +56,6 @@ void AMy_Aura_Controller::AutoRun()
 		{
 			bAutoRunning = false;
 		}
-
 	}
 }
 
@@ -103,8 +102,6 @@ void AMy_Aura_Controller::BeginPlay()
 	InputModeData.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
 	InputModeData.SetHideCursorDuringCapture(false);
 	SetInputMode((InputModeData));
-
-
 }
 
 void AMy_Aura_Controller::SetupInputComponent()
@@ -128,8 +125,8 @@ void AMy_Aura_Controller::Move(const FInputActionValue& InputActionValue)
 	const FRotator Rotation = GetControlRotation();
 	const FRotator YawRotation(0.0f, Rotation.Yaw, 0.0f);
 
-	const FVector  ForwardDir = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
-	const FVector  RightdDir = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
+	const FVector ForwardDir = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
+	const FVector RightdDir = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
 
 	if (APawn* ControlledPawn = GetPawn())
 	{
@@ -176,7 +173,6 @@ void AMy_Aura_Controller::AbilityInputTagHeld(FGameplayTag InputTag)
 			ControlledPawn->AddMovementInput(Direction);
 		}
 	}
-
 }
 
 void AMy_Aura_Controller::AbilityInputTagReleased(FGameplayTag InputTag)
@@ -250,5 +246,3 @@ UMy_AuraAbilitySystemComponent* AMy_Aura_Controller::GetAuraASC()
 	}
 	return AuraAbilitySystemComponent;
 }
-
-

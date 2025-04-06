@@ -155,7 +155,7 @@ void UMy_AuraAttributeSet::ShowDamageText(const FMy_EffectProperties& Props, flo
 		UE_LOG(LogTemp, Warning, TEXT("isCriticalHit: %d"), IsCriticalHit);
 		if (AMy_Aura_Controller* PC = Cast<AMy_Aura_Controller>(UGameplayStatics::GetPlayerController(Props.SourceCharacter, 0)))
 		{
-			PC->ClientShowDamageNum(Damage, Props.TargetCharacter);
+			PC->ClientShowDamageNum(Damage, Props.TargetCharacter, IsBlockedHit, IsCriticalHit);
 		}
 	}
 }
