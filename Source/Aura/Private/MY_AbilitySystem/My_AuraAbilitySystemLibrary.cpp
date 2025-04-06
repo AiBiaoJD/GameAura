@@ -3,12 +3,14 @@
 
 #include "MY_AbilitySystem/My_AuraAbilitySystemLibrary.h"
 
+#include "My_AuraAbilityTypes.h"
 #include "Kismet/GameplayStatics.h"
 #include "My_Controler/My_AuraPlayerState.h"
 #include "MY_GameMode/MyGameModeBase.h"
 #include "My_UI/HUD/My_AuraHUD.h"
 
-UMy_OverlayWidgetController* UMy_AuraAbilitySystemLibrary::My_GetOverlayWidgetController(const UObject* WorldContextObject)
+UMy_OverlayWidgetController* UMy_AuraAbilitySystemLibrary::My_GetOverlayWidgetController(
+	const UObject* WorldContextObject)
 {
 	if (APlayerController* PC = UGameplayStatics::GetPlayerController(WorldContextObject, 0))
 	{
@@ -43,7 +45,9 @@ UMy_AttributeMenuWidgetController* UMy_AuraAbilitySystemLibrary::My_GetMenuWidge
 	return nullptr;
 }
 
-void UMy_AuraAbilitySystemLibrary::InitializeDefaultAttributes(const UObject* WorldContextObject, EMy_CharacterClass CharacterType, float level, UAbilitySystemComponent* ASC)
+void UMy_AuraAbilitySystemLibrary::InitializeDefaultAttributes(const UObject* WorldContextObject,
+                                                               EMy_CharacterClass CharacterType, float level,
+                                                               UAbilitySystemComponent* ASC)
 {
 	UMy_CharacterClassInfo* ClassInfo = GetCharacterClassInfo(WorldContextObject);
 	FMy_CharacterClassDefaultInfo ClassDefaultInfo = ClassInfo->GetClassDefaultInfo(CharacterType);
@@ -51,20 +55,23 @@ void UMy_AuraAbilitySystemLibrary::InitializeDefaultAttributes(const UObject* Wo
 	FGameplayEffectContextHandle ContextHandle = ASC->MakeEffectContext();
 	ContextHandle.AddSourceObject(ASC->GetAvatarActor());
 
-	const FGameplayEffectSpecHandle PrimatySpecHandle = ASC->MakeOutgoingSpec(ClassDefaultInfo.PrimaryAttributes, level, ContextHandle);
+	const FGameplayEffectSpecHandle PrimatySpecHandle = ASC->MakeOutgoingSpec(
+		ClassDefaultInfo.PrimaryAttributes, level, ContextHandle);
 	ASC->ApplyGameplayEffectSpecToSelf(*PrimatySpecHandle.Data.Get());
 
-	const FGameplayEffectSpecHandle SecondarySpecHandle = ASC->MakeOutgoingSpec(ClassInfo->SecondaryAttributes, level, ContextHandle);
+	const FGameplayEffectSpecHandle SecondarySpecHandle = ASC->MakeOutgoingSpec(
+		ClassInfo->SecondaryAttributes, level, ContextHandle);
 	ASC->ApplyGameplayEffectSpecToSelf(*SecondarySpecHandle.Data.Get());
 
-	const FGameplayEffectSpecHandle VitalSpecHandle = ASC->MakeOutgoingSpec(ClassInfo->VitalAttributes, level, ContextHandle);
+	const FGameplayEffectSpecHandle VitalSpecHandle = ASC->MakeOutgoingSpec(
+		ClassInfo->VitalAttributes, level, ContextHandle);
 	ASC->ApplyGameplayEffectSpecToSelf(*VitalSpecHandle.Data.Get());
 }
 
 void UMy_AuraAbilitySystemLibrary::InitStartupAbilities(const UObject* WorldContextObject, UAbilitySystemComponent* ASC)
 {
 	UMy_CharacterClassInfo* ClassInfo = GetCharacterClassInfo(WorldContextObject);
-	for (auto Ability: ClassInfo->CommonAbility)
+	for (auto Ability : ClassInfo->CommonAbility)
 	{
 		FGameplayAbilitySpec AbilitySpec = FGameplayAbilitySpec(Ability, 1);
 		ASC->GiveAbility(AbilitySpec);
@@ -78,3 +85,36 @@ UMy_CharacterClassInfo* UMy_AuraAbilitySystemLibrary::GetCharacterClassInfo(cons
 	return AuraGameMode->CharacterClassInfo;
 }
 
+bool UMy_AuraAbilitySystemLibrary::IsBlockedHit(const FGameplayEffectContextHandle& EffectContextHandle)
+{
+	if (const FMY_AuraGamePlayEffectContext* AuraGamePlayEffectContext = static_cast<const FMY_AuraGamePlayEffectContext*>(EffectContextHandle.Get()))
+	{
+		return AuraGamePlayEffectContext->IsBlockedHit();
+	}
+	return false;
+}
+
+bool UMy_AuraAbilitySystemLibrary::IsCriticalHit(const FGameplayEffectContextHandle& EffectContextHandle)
+{
+	if (const FMY_AuraGamePlayEffectContext* AuraGamePlayEffectContext = static_cast<const FMY_AuraGamePlayEffectContext*>(EffectContextHandle.Get()))
+	{
+		return AuraGamePlayEffectContext->IsCriticalHit();
+	}
+	return false;
+}
+
+void UMy_AuraAbilitySystemLibrary::SetIsBlockedHit(FGameplayEffectContextHandle& EffectContextHandle, bool IsBlocked)
+{
+	if (FMY_AuraGamePlayEffectContext* AuraGamePlayEffectContext = static_cast<FMY_AuraGamePlayEffectContext*>(EffectContextHandle.Get()))
+	{
+		AuraGamePlayEffectContext->SetIsBlockedHit(IsBlocked);
+	}
+}
+
+void UMy_AuraAbilitySystemLibrary::SetIsCriticalHit(FGameplayEffectContextHandle& EffectContextHandle, bool IsCritical)
+{
+	if (FMY_AuraGamePlayEffectContext* AuraGamePlayEffectContext = static_cast<FMY_AuraGamePlayEffectContext*>(EffectContextHandle.Get()))
+	{
+		AuraGamePlayEffectContext->SetIsCriticalHit(IsCritical);
+	}
+}

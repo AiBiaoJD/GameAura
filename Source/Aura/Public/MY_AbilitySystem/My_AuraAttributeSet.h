@@ -16,7 +16,7 @@
 // typedef is specific to the FgameplayAttribute(), But TStaticFuncPtr is general to any static
 
 // typedef  TBaseStaticDelegateInstance<FGameplayAttribute(), FDefaultTSDelegateUserPolicy>::FFuncPtr FMy_AttributeFuncPtr;
-template<class T>
+template <class T>
 using TMy_StaticFuncPtr = typename TBaseStaticDelegateInstance<T, FDefaultTSDelegateUserPolicy>::FFuncPtr;
 
 
@@ -27,7 +27,6 @@ struct FMy_EffectProperties
 	GENERATED_BODY()
 	FMy_EffectProperties()
 	{
-
 	}
 
 	//Effect上下文
@@ -68,8 +67,8 @@ UCLASS()
 class AURA_API UMy_AuraAttributeSet : public UAttributeSet
 {
 	GENERATED_BODY()
-public:
 
+public:
 	UMy_AuraAttributeSet();
 	/*
 	1.定义哪些属性需要在网络上复制
@@ -90,12 +89,11 @@ public:
 	TMap<FGameplayTag, TMy_StaticFuncPtr<FGameplayAttribute()>> M_TagsToAttribute;
 
 
-
 	/*
 	 *Primary Attribute:主要属性
 	 */
 
-	 //力量:提升物理攻击力
+	//力量:提升物理攻击力
 	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_Strength, Category = "Primary Attribute")
 	FGameplayAttributeData Strength;
 	ATTRIBUTE_ACCESSORS(UMy_AuraAttributeSet, Strength);
@@ -120,9 +118,9 @@ public:
 	 *Second Attribute;二级属性
 	 */
 
-	 //----------1.基于抗性Resilience属性生成----------
+	//----------1.基于抗性Resilience属性生成----------
 
-	 //护甲:主要减少受到的伤害百分比,并提高Block Chance的概率(受到伤害减半)和敌人的暴击伤害
+	//护甲:主要减少受到的伤害百分比,并提高Block Chance的概率(受到伤害减半)和敌人的暴击伤害
 	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_Armor, Category = "Second Attribute")
 	FGameplayAttributeData Armor;
 	ATTRIBUTE_ACCESSORS(UMy_AuraAttributeSet, Armor);
@@ -162,7 +160,7 @@ public:
 	 *Third  Attribute;三级属性
 	 */
 
-	 //----------1.基于护甲Armor属性生成----------
+	//----------1.基于护甲Armor属性生成----------
 
 	//伤害减半几率:受到伤害减半的概率
 	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_BlockChance, Category = "Third Attribute")
@@ -257,8 +255,8 @@ public:
 
 	UFUNCTION()
 	void OnRep_ManaRegeneration(const FGameplayAttributeData& OldManaRegeneration) const;
+
 private:
 	void SetEffectProperty(const struct FGameplayEffectModCallbackData& Data, FMy_EffectProperties& Props) const;
-	void ShowDamageText(const FMy_EffectProperties& Props, float Damage) const;
+	void ShowDamageText(const FMy_EffectProperties& Props, float Damage, bool IsBlockedHit, bool IsCriticalHit) const;
 };
-

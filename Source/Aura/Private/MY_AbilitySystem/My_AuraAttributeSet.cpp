@@ -8,6 +8,7 @@
 #include "My_AuraGamePlayTags_Singleton.h"
 #include "GameFramework/Character.h"
 #include "Kismet/GameplayStatics.h"
+#include "MY_AbilitySystem/My_AuraAbilitySystemLibrary.h"
 #include "My_Controler/My_Aura_Controller.h"
 #include "My_Interraction/My_CombatInterface.h"
 #include "Net/UnrealNetwork.h"
@@ -33,7 +34,6 @@ UMy_AuraAttributeSet::UMy_AuraAttributeSet()
 	M_TagsToAttribute.Add(GameplayTags.My_Attribute_Secondary_CriticalHitResistance, GetCriticalHitResistanceAttribute);
 	M_TagsToAttribute.Add(GameplayTags.My_Attribute_Secondary_CriticalHitChance, GetCriticalHitChanceAttribute);
 	M_TagsToAttribute.Add(GameplayTags.My_Attribute_Secondary_CriticalHitDamage, GetCriticalHitDamageAttribute);
-	
 }
 
 //服务器通知客户端各种ATTribute的更新情况
@@ -52,7 +52,6 @@ void UMy_AuraAttributeSet::GetLifetimeReplicatedProps(TArray<class FLifetimeProp
 	//---- Vital ATTribute -----
 	DOREPLIFETIME_CONDITION_NOTIFY(UMy_AuraAttributeSet, Health, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UMy_AuraAttributeSet, MaxHealth, COND_None, REPNOTIFY_Always);
-	
 
 
 	//---- Second Attribute -----
@@ -86,7 +85,6 @@ void UMy_AuraAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribut
 	{
 		NewValue = FMath::Clamp(NewValue, 0.0f, GetMaxMana());
 	}
-
 }
 
 void UMy_AuraAttributeSet::PostAttributeChange(const FGameplayAttribute& Attribute, float OldValue, float NewValue)
@@ -103,7 +101,7 @@ void UMy_AuraAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffec
 	FMy_EffectProperties Props;
 	SetEffectProperty(Data, Props);
 
-	
+
 	if (Data.EvaluatedData.Attribute == GetHealthAttribute())
 	{
 		SetHealth(FMath::Clamp(GetHealth(), 0, GetMaxHealth()));
@@ -126,7 +124,7 @@ void UMy_AuraAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffec
 			SetHealth(FMath::Clamp(NewHealth, 0.f, GetMaxHealth()));
 			UE_LOG(LogTemp, Warning, TEXT("changed Health on %s, Health %f"), *Props.TargetAvatarActor->GetName(), GetHealth());
 
-			const bool bFatal = NewHealth <= 0.f; 
+			const bool bFatal = NewHealth <= 0.f;
 			if (bFatal)
 			{
 				IMy_CombatInterface* CombatInterface = Cast<IMy_CombatInterface>(Props.TargetAvatarActor);
@@ -142,15 +140,19 @@ void UMy_AuraAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffec
 				Props.TargetASC->TryActivateAbilitiesByTag(TagContainer);
 			}
 
-			ShowDamageText(Props, LocalIncomingDamage);
-			
+			const bool bBlock = UMy_AuraAbilitySystemLibrary::IsBlockedHit(Props.EffectContextHandle);
+			const bool bCritical = UMy_AuraAbilitySystemLibrary::IsCriticalHit(Props.EffectContextHandle);
+			ShowDamageText(Props, LocalIncomingDamage, bBlock, bCritical);
 		}
 	}
 }
-void UMy_AuraAttributeSet::ShowDamageText(const FMy_EffectProperties& Props, float Damage) const
+
+void UMy_AuraAttributeSet::ShowDamageText(const FMy_EffectProperties& Props, float Damage, bool IsBlockedHit, bool IsCriticalHit) const
 {
 	if (Props.SourceCharacter != Props.TargetCharacter)
 	{
+		UE_LOG(LogTemp, Warning, TEXT("Isblockhit: %d"), IsBlockedHit);
+		UE_LOG(LogTemp, Warning, TEXT("isCriticalHit: %d"), IsCriticalHit);
 		if (AMy_Aura_Controller* PC = Cast<AMy_Aura_Controller>(UGameplayStatics::GetPlayerController(Props.SourceCharacter, 0)))
 		{
 			PC->ClientShowDamageNum(Damage, Props.TargetCharacter);
@@ -199,14 +201,12 @@ void UMy_AuraAttributeSet::SetEffectProperty(const struct FGameplayEffectModCall
 }
 
 
-
-
 void UMy_AuraAttributeSet::OnRep_Health(const FGameplayAttributeData& OldHealth) const
 {
 	//宏，比较旧值和新值，不同调用OnRep，上面GetLifetimeReplicatedProps改了相同也调用
 	GAMEPLAYATTRIBUTE_REPNOTIFY(UMy_AuraAttributeSet, Health, OldHealth);
-
 }
+
 void UMy_AuraAttributeSet::OnRep_MaxHealth(const FGameplayAttributeData& OldMaxHealth) const
 {
 	GAMEPLAYATTRIBUTE_REPNOTIFY(UMy_AuraAttributeSet, MaxHealth, OldMaxHealth);
@@ -225,25 +225,21 @@ void UMy_AuraAttributeSet::OnRep_MaxMana(const FGameplayAttributeData& OldMaxMan
 void UMy_AuraAttributeSet::OnRep_Strength(const FGameplayAttributeData& OldStrength) const
 {
 	GAMEPLAYATTRIBUTE_REPNOTIFY(UMy_AuraAttributeSet, Strength, OldStrength);
-
 }
 
 void UMy_AuraAttributeSet::OnRep_Intelligence(const FGameplayAttributeData& OldIntelligence) const
 {
 	GAMEPLAYATTRIBUTE_REPNOTIFY(UMy_AuraAttributeSet, Intelligence, OldIntelligence);
-
 }
 
 void UMy_AuraAttributeSet::OnRep_Resilience(const FGameplayAttributeData& OldResilience) const
 {
 	GAMEPLAYATTRIBUTE_REPNOTIFY(UMy_AuraAttributeSet, Resilience, OldResilience);
-
 }
 
 void UMy_AuraAttributeSet::OnRep_VIgor(const FGameplayAttributeData& OldVIgor) const
 {
 	GAMEPLAYATTRIBUTE_REPNOTIFY(UMy_AuraAttributeSet, VIgor, OldVIgor);
-
 }
 
 void UMy_AuraAttributeSet::OnRep_Armor(const FGameplayAttributeData& OldArmor) const
@@ -254,19 +250,16 @@ void UMy_AuraAttributeSet::OnRep_Armor(const FGameplayAttributeData& OldArmor) c
 void UMy_AuraAttributeSet::OnRep_ArmorPenetration(const FGameplayAttributeData& OldArmorPenetration) const
 {
 	GAMEPLAYATTRIBUTE_REPNOTIFY(UMy_AuraAttributeSet, ArmorPenetration, OldArmorPenetration);
-
 }
 
 void UMy_AuraAttributeSet::OnRep_BlockChance(const FGameplayAttributeData& OldBlockChance) const
 {
 	GAMEPLAYATTRIBUTE_REPNOTIFY(UMy_AuraAttributeSet, BlockChance, OldBlockChance);
-
 }
 
 void UMy_AuraAttributeSet::OnRep_CriticalHitResistance(const FGameplayAttributeData& OldCriticalHitResistance) const
 {
 	GAMEPLAYATTRIBUTE_REPNOTIFY(UMy_AuraAttributeSet, CriticalHitResistance, OldCriticalHitResistance);
-
 }
 
 void UMy_AuraAttributeSet::OnRep_CriticalHitChance(const FGameplayAttributeData& OldCriticalHitChance) const
@@ -277,18 +270,14 @@ void UMy_AuraAttributeSet::OnRep_CriticalHitChance(const FGameplayAttributeData&
 void UMy_AuraAttributeSet::OnRep_CriticalHitDamage(const FGameplayAttributeData& OldCriticalHitDamage) const
 {
 	GAMEPLAYATTRIBUTE_REPNOTIFY(UMy_AuraAttributeSet, CriticalHitDamage, OldCriticalHitDamage);
-
 }
 
 void UMy_AuraAttributeSet::OnRep_HealthRegeneration(const FGameplayAttributeData& OldHealthRegeneration) const
 {
 	GAMEPLAYATTRIBUTE_REPNOTIFY(UMy_AuraAttributeSet, HealthRegeneration, OldHealthRegeneration);
-
 }
 
 void UMy_AuraAttributeSet::OnRep_ManaRegeneration(const FGameplayAttributeData& OldManaRegeneration) const
 {
 	GAMEPLAYATTRIBUTE_REPNOTIFY(UMy_AuraAttributeSet, ManaRegeneration, OldManaRegeneration);
-
 }
-
