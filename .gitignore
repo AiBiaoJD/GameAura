@@ -12,3 +12,10 @@ Build/
 .vs/
 .vscode/
 .idea/
+
+# 忽略 Front 目录下的所有 .uasset 文件
+Content/MyBlueprints/Front/*.uasset
+Content/MyBlueprints/Front/*.font.uasset
+
+# 或者更彻底地忽略整个 Front 目录
+# Content/MyBlueprints/Front/
