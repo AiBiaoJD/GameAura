@@ -55,10 +55,12 @@ void UMy_AuraProjectileSpell::SpawnProjectile(const FVector& ProjectileTargetLoc
 
 		const FGameplayEffectSpecHandle SpecHandle = SourceASC->MakeOutgoingSpec(DamageEffectClass, GetAbilityLevel(), EffectContextHandle);
 
-		float DamageValue = Damage.GetValueAtLevel(GetAbilityLevel());
-		SpecHandle.Data->SetSetByCallerMagnitude(FMy_AuraGameplayTags::GetInstance().My_EffectData_Damage, DamageValue);
+		for (auto& Pair : DamageTypes)
+		{
+			float DamageValue = Pair.Value.GetValueAtLevel(GetAbilityLevel());
+			SpecHandle.Data->SetSetByCallerMagnitude(Pair.Key, DamageValue);
+		}
 		Projectile->DamageEffectSpecHandle = SpecHandle;
-
 		Projectile->FinishSpawning(SpawnTransform);
 	}
 }

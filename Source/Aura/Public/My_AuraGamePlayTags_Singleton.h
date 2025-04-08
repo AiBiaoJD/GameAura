@@ -35,7 +35,11 @@ public:
 	FGameplayTag My_Attribute_Secondary_CriticalHitResistance;
 	FGameplayTag My_Attribute_Secondary_CriticalHitChance;
 	FGameplayTag My_Attribute_Secondary_CriticalHitDamage;
-
+	FGameplayTag My_Attribute_Secondary_Resistance_Fire;
+	FGameplayTag My_Attribute_Secondary_Resistance_Lighting;
+	FGameplayTag My_Attribute_Secondary_Resistance_Arcane;
+	FGameplayTag My_Attribute_Secondary_Resistance_Physical;
+		
 
 	// InputActions Tag
 	FGameplayTag My_InputTag_LMB;
@@ -52,7 +56,14 @@ public:
 	// Effect Granted Tag
 	FGameplayTag My_EffectGranted_HitReact;
 
+	// DamageType Tag
+	FGameplayTag My_DamageType_Fire;
+	FGameplayTag My_DamageType_Lighting;
+	FGameplayTag My_DamageType_Arcane;
+	FGameplayTag My_DamageType_Physical;
 
+	// Map: DamageType To  Resistance
+	TMap<FGameplayTag,FGameplayTag> DamageToResistance;
 
 private:
 	static FMy_AuraGameplayTags GameplayTagsInstance;

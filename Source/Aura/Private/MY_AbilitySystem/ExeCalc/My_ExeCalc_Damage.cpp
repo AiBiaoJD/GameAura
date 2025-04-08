@@ -20,6 +20,10 @@ struct My_AuraDamageStatics
 	DECLARE_ATTRIBUTE_CAPTUREDEF(CriticalHitResistance);
 	DECLARE_ATTRIBUTE_CAPTUREDEF(CriticalHitChance);
 	DECLARE_ATTRIBUTE_CAPTUREDEF(CriticalHitDamage);
+	DECLARE_ATTRIBUTE_CAPTUREDEF(FireResistance);
+	DECLARE_ATTRIBUTE_CAPTUREDEF(LightingResistance);
+	DECLARE_ATTRIBUTE_CAPTUREDEF(ArcaneResistance);
+	DECLARE_ATTRIBUTE_CAPTUREDEF(PhysicalResistance);
 
 	My_AuraDamageStatics()
 	{
@@ -29,6 +33,10 @@ struct My_AuraDamageStatics
 		DEFINE_ATTRIBUTE_CAPTUREDEF(UMy_AuraAttributeSet, CriticalHitResistance, Target, false);
 		DEFINE_ATTRIBUTE_CAPTUREDEF(UMy_AuraAttributeSet, CriticalHitChance, Source, false);
 		DEFINE_ATTRIBUTE_CAPTUREDEF(UMy_AuraAttributeSet, CriticalHitDamage, Source, false);
+		DEFINE_ATTRIBUTE_CAPTUREDEF(UMy_AuraAttributeSet, FireResistance, Target, false);
+		DEFINE_ATTRIBUTE_CAPTUREDEF(UMy_AuraAttributeSet, LightingResistance, Target, false);
+		DEFINE_ATTRIBUTE_CAPTUREDEF(UMy_AuraAttributeSet, ArcaneResistance, Target, false);
+		DEFINE_ATTRIBUTE_CAPTUREDEF(UMy_AuraAttributeSet, PhysicalResistance, Target, false);
 	}
 };
 
@@ -46,11 +54,14 @@ UMy_ExeCalc_Damage::UMy_ExeCalc_Damage()
 	RelevantAttributesToCapture.Add(My_DamageStatics().CriticalHitResistanceDef);
 	RelevantAttributesToCapture.Add(My_DamageStatics().CriticalHitChanceDef);
 	RelevantAttributesToCapture.Add(My_DamageStatics().CriticalHitDamageDef);
+	RelevantAttributesToCapture.Add(My_DamageStatics().FireResistanceDef);
+	RelevantAttributesToCapture.Add(My_DamageStatics().LightingResistanceDef);
+	RelevantAttributesToCapture.Add(My_DamageStatics().ArcaneResistanceDef);
+	RelevantAttributesToCapture.Add(My_DamageStatics().PhysicalResistanceDef);
 }
 
 
-void UMy_ExeCalc_Damage::Execute_Implementation(const FGameplayEffectCustomExecutionParameters& ExecutionParams,
-                                                FGameplayEffectCustomExecutionOutput& OutExecutionOutput) const
+void UMy_ExeCalc_Damage::Execute_Implementation(const FGameplayEffectCustomExecutionParameters& ExecutionParams, FGameplayEffectCustomExecutionOutput& OutExecutionOutput) const
 {
 	// 获取源和目标的能力系统组件及对应的Avatar Actor
 	const UAbilitySystemComponent* SourceASC = ExecutionParams.GetSourceAbilitySystemComponent();
@@ -71,13 +82,16 @@ void UMy_ExeCalc_Damage::Execute_Implementation(const FGameplayEffectCustomExecu
 
 	// ===== 获取所有相关属性 =====
 	// 基础伤害值
-	float Damage = Spec.GetSetByCallerMagnitude(FMy_AuraGameplayTags::GetInstance().My_EffectData_Damage);
+	float Damage = 0.f;
 
 	// 防御方属性
 	float TargetBlockChance = 0.f; // 格挡几率
 	float TargetArmor = 0.f; // 护甲值
 	float TargetCriticalHitResistance = 0.f; // 暴击抗性
-
+	float TargetFireResistance = 0.f; // 火焰抗性
+	float TargetLightingResistance = 0.f; // 雷电抗性
+	float TargetArcaneResistance = 0.f; // 奥术抗性
+	float TargetPhysicalResistance = 0.f; // 物理抗性
 	// 攻击方属性
 	float SourceArmorPenetration = 0.f; // 护甲穿透
 	float SourceCriticalHitChance = 0.f; // 暴击几率
@@ -90,6 +104,10 @@ void UMy_ExeCalc_Damage::Execute_Implementation(const FGameplayEffectCustomExecu
 	ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(My_DamageStatics().ArmorPenetrationDef, EvaluateParameters, SourceArmorPenetration);
 	ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(My_DamageStatics().CriticalHitChanceDef, EvaluateParameters, SourceCriticalHitChance);
 	ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(My_DamageStatics().CriticalHitDamageDef, EvaluateParameters, SourceCriticalHitDamage);
+	ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(My_DamageStatics().FireResistanceDef, EvaluateParameters, TargetFireResistance);
+	ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(My_DamageStatics().LightingResistanceDef, EvaluateParameters, TargetLightingResistance);
+	ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(My_DamageStatics().ArcaneResistanceDef, EvaluateParameters, TargetArcaneResistance);
+	ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(My_DamageStatics().PhysicalResistanceDef, EvaluateParameters, TargetPhysicalResistance);
 
 	// 确保所有属性值非负
 	TargetBlockChance = FMath::Max(0.f, TargetBlockChance);
@@ -98,6 +116,10 @@ void UMy_ExeCalc_Damage::Execute_Implementation(const FGameplayEffectCustomExecu
 	SourceArmorPenetration = FMath::Max(0.f, SourceArmorPenetration);
 	SourceCriticalHitChance = FMath::Max(0.f, SourceCriticalHitChance);
 	SourceCriticalHitDamage = FMath::Max(1.f, SourceCriticalHitDamage); // 暴击伤害至少为1倍
+	TargetFireResistance = FMath::Max(0.f, TargetFireResistance);
+	TargetLightingResistance = FMath::Max(0.f, TargetLightingResistance);
+	TargetArcaneResistance = FMath::Max(0.f, TargetArcaneResistance);
+	TargetPhysicalResistance = FMath::Max(0.f, TargetPhysicalResistance);
 
 	// ===== 获取伤害计算系数 =====
 	UMy_CharacterClassInfo* CharacterClassInfo = UMy_AuraAbilitySystemLibrary::GetCharacterClassInfo(SourceAvatar);
@@ -112,8 +134,36 @@ void UMy_ExeCalc_Damage::Execute_Implementation(const FGameplayEffectCustomExecu
 
 
 	// ===== 伤害计算流程 =====
+	// 1. 抗性计算
+	for (auto Pair : FMy_AuraGameplayTags::GetInstance().DamageToResistance)
+	{
+		float DamageValue = Spec.GetSetByCallerMagnitude(Pair.Key);
+		float ResistanceValue = 0.f;
+		if (Pair.Value == FMy_AuraGameplayTags::GetInstance().My_Attribute_Secondary_Resistance_Fire)
+		{
+			ResistanceValue = TargetFireResistance;
+		}
+		else if (Pair.Value == FMy_AuraGameplayTags::GetInstance().My_Attribute_Secondary_Resistance_Lighting)
+		{
+			ResistanceValue = TargetLightingResistance;
+		}
+		else if (Pair.Value == FMy_AuraGameplayTags::GetInstance().My_Attribute_Secondary_Resistance_Arcane)
+		{
+			ResistanceValue = TargetArcaneResistance;
+		}
+		else if (Pair.Value == FMy_AuraGameplayTags::GetInstance().My_Attribute_Secondary_Resistance_Physical)
+		{
+			ResistanceValue = TargetPhysicalResistance;
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Unknown damage resistance type: %s"), *Pair.Value.ToString());
+		}
+		ResistanceValue = FMath::Clamp(ResistanceValue, 0.f, 95.f);
+		Damage += DamageValue * (100.f - ResistanceValue) / 100.f;
+	}
 
-	// 1. 格挡判定
+	// 2. 格挡判定
 	const bool bIsBlocked = FMath::RandRange(0.f, 1.f) <= TargetBlockChance;
 	UMy_AuraAbilitySystemLibrary::SetIsBlockedHit(EffectContextHandle, bIsBlocked);
 	if (bIsBlocked)
@@ -122,19 +172,19 @@ void UMy_ExeCalc_Damage::Execute_Implementation(const FGameplayEffectCustomExecu
 		Damage *= 0.5f;
 	}
 
-	// 2. 护甲穿透计算
+	// 3. 护甲穿透计算
 	// 计算实际护甲穿透效果(限制在0-1范围内)
 	const float EffectivePenetration = FMath::Clamp(SourceArmorPenetration * ArmorPenetrationCoefficient, 0.f, 1.f);
 	// 计算剩余有效护甲
 	const float EffectiveArmor = (1 - EffectivePenetration) * TargetArmor;
 
-	// 3. 护甲减伤计算
+	// 4. 护甲减伤计算
 	// 计算护甲提供的伤害减免百分比(限制在0%-95%之间，避免完全免疫)
 	const float ArmorDamageReduction = FMath::Clamp(EffectiveArmor * EffectiveArmorCoefficient, 0.f, 95.f);
 	// 应用护甲减伤
 	Damage *= (100 - ArmorDamageReduction) / 100.f;
 
-	// 4. 暴击判定与计算 
+	// 5. 暴击判定与计算 
 	if (!bIsBlocked) // 通常格挡攻击不会暴击
 	{
 		// 计算实际暴击几率(考虑目标的暴击抗性)

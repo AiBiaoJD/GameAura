@@ -84,4 +84,57 @@ void FMy_AuraGameplayTags::InitializeNativeGameplayTags()
 
 	GameplayTagsInstance.My_EffectGranted_HitReact = UGameplayTagsManager::Get().AddNativeGameplayTag(FName("My_EffectGranted.HitReact"), FString("Tag Granted When Hit Reaction"));
 
+	
+	/*
+	 * DamageType Tags
+	 */
+	GameplayTagsInstance.My_DamageType_Fire = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("My_DamageType.Fire"), 
+		FString("Fire elemental damage type")
+	);
+
+	GameplayTagsInstance.My_DamageType_Lighting = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("My_DamageType.Lighting"), 
+		FString("Lighting elemental damage type")
+	);
+
+	GameplayTagsInstance.My_DamageType_Arcane = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("My_DamageType.Arcane"), 
+		FString("Arcane magical damage type")
+	);
+
+	GameplayTagsInstance.My_DamageType_Physical = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("My_DamageType.Physical"), 
+		FString("Physical blunt/sharp damage type")
+	);
+
+	/*
+	 * Resistance Tags
+	 */
+	GameplayTagsInstance.My_Attribute_Secondary_Resistance_Fire = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("My_Attribute.Secondary.Resistance.Fire"), 
+		FString("Reduces incoming fire damage")
+	);
+
+	GameplayTagsInstance.My_Attribute_Secondary_Resistance_Lighting = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("My_Attribute.Secondary.Resistance.Lighting"), 
+		FString("Reduces incoming lighting damage")
+	);
+
+	GameplayTagsInstance.My_Attribute_Secondary_Resistance_Arcane = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("My_Attribute.Secondary.Resistance.Arcane"), 
+		FString("Reduces incoming arcane damage")
+	);
+
+	GameplayTagsInstance.My_Attribute_Secondary_Resistance_Physical = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("My_Attribute.Secondary.Resistance.Physical"), 
+		FString("Reduces incoming physical damage")
+	);
+
+	// Map: DamageType To  Resistance
+	GameplayTagsInstance.DamageToResistance.Add(GameplayTagsInstance.My_DamageType_Fire,GameplayTagsInstance.My_Attribute_Secondary_Resistance_Fire);
+	GameplayTagsInstance.DamageToResistance.Add(GameplayTagsInstance.My_DamageType_Lighting,GameplayTagsInstance.My_Attribute_Secondary_Resistance_Lighting);
+	GameplayTagsInstance.DamageToResistance.Add(GameplayTagsInstance.My_DamageType_Arcane,GameplayTagsInstance.My_Attribute_Secondary_Resistance_Arcane);
+	GameplayTagsInstance.DamageToResistance.Add(GameplayTagsInstance.My_DamageType_Physical,GameplayTagsInstance.My_Attribute_Secondary_Resistance_Physical);
+
 }

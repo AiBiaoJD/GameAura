@@ -34,6 +34,10 @@ UMy_AuraAttributeSet::UMy_AuraAttributeSet()
 	M_TagsToAttribute.Add(GameplayTags.My_Attribute_Secondary_CriticalHitResistance, GetCriticalHitResistanceAttribute);
 	M_TagsToAttribute.Add(GameplayTags.My_Attribute_Secondary_CriticalHitChance, GetCriticalHitChanceAttribute);
 	M_TagsToAttribute.Add(GameplayTags.My_Attribute_Secondary_CriticalHitDamage, GetCriticalHitDamageAttribute);
+	M_TagsToAttribute.Add(GameplayTags.My_Attribute_Secondary_Resistance_Fire, GetFireResistanceAttribute);
+	M_TagsToAttribute.Add(GameplayTags.My_Attribute_Secondary_Resistance_Lighting, GetLightingResistanceAttribute);
+	M_TagsToAttribute.Add(GameplayTags.My_Attribute_Secondary_Resistance_Arcane, GetArcaneResistanceAttribute);
+	M_TagsToAttribute.Add(GameplayTags.My_Attribute_Secondary_Resistance_Physical, GetPhysicalResistanceAttribute);
 }
 
 //服务器通知客户端各种ATTribute的更新情况
@@ -61,7 +65,10 @@ void UMy_AuraAttributeSet::GetLifetimeReplicatedProps(TArray<class FLifetimeProp
 	DOREPLIFETIME_CONDITION_NOTIFY(UMy_AuraAttributeSet, ManaRegeneration, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UMy_AuraAttributeSet, Mana, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UMy_AuraAttributeSet, MaxMana, COND_None, REPNOTIFY_Always);
-
+	DOREPLIFETIME_CONDITION_NOTIFY(UMy_AuraAttributeSet, FireResistance, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UMy_AuraAttributeSet, LightingResistance, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UMy_AuraAttributeSet, ArcaneResistance, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UMy_AuraAttributeSet, PhysicalResistance, COND_None, REPNOTIFY_Always);
 
 	//---- Third Attribute -----
 	DOREPLIFETIME_CONDITION_NOTIFY(UMy_AuraAttributeSet, BlockChance, COND_None, REPNOTIFY_Always);
@@ -280,4 +287,24 @@ void UMy_AuraAttributeSet::OnRep_HealthRegeneration(const FGameplayAttributeData
 void UMy_AuraAttributeSet::OnRep_ManaRegeneration(const FGameplayAttributeData& OldManaRegeneration) const
 {
 	GAMEPLAYATTRIBUTE_REPNOTIFY(UMy_AuraAttributeSet, ManaRegeneration, OldManaRegeneration);
+}
+
+void UMy_AuraAttributeSet::OnRep_FireResistance(const FGameplayAttributeData& OldFireResistance) const
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UMy_AuraAttributeSet, FireResistance, OldFireResistance);
+}
+
+void UMy_AuraAttributeSet::OnRep_LightingResistance(const FGameplayAttributeData& OldLightingResistance) const
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UMy_AuraAttributeSet, LightingResistance, OldLightingResistance);
+}
+
+void UMy_AuraAttributeSet::OnRep_ArcaneResistance(const FGameplayAttributeData& OldArcaneResistance) const
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UMy_AuraAttributeSet, ArcaneResistance, OldArcaneResistance);
+}
+
+void UMy_AuraAttributeSet::OnRep_PhysicalResistance(const FGameplayAttributeData& OldPhysicalResistance) const
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UMy_AuraAttributeSet, PhysicalResistance, OldPhysicalResistance);
 }
