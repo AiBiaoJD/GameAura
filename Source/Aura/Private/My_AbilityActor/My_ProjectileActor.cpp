@@ -9,7 +9,6 @@
 #include "Aura/Aura.h"
 #include "Components/AudioComponent.h"
 #include "Kismet/GameplayStatics.h"
-#include "Net/UnrealNetwork.h"
 
 AMy_ProjectileActor::AMy_ProjectileActor()
 {
@@ -31,57 +30,44 @@ AMy_ProjectileActor::AMy_ProjectileActor()
 	ProjectileMovement->ProjectileGravityScale = 0.f;
 }
 
-void AMy_ProjectileActor::ClientDestroyPredictedProjectile_Implementation()
-{
-	if (bIsPredicted && IsValid(this))
-	{
-		Destroy();
-	}
-}
-
-
 void AMy_ProjectileActor::BeginPlay()
 {
 	Super::BeginPlay();
-	// 预测投射物最多存在0.5秒（避免与服务器投射物共存）
-	if (bIsPredicted) SetLifeSpan(1.f);
-	else SetLifeSpan(LifeSpan);
-	SpawnTimestamp = GetWorld()->GetTimeSeconds(); // 记录生成时间
+
+	SetLifeSpan(LifeSpan);
 	Sphere->OnComponentBeginOverlap.AddDynamic(this, &AMy_ProjectileActor::OnSphereOverlap);
 	LoopingSoundComponent = UGameplayStatics::SpawnSoundAttached(LoopingSound, GetRootComponent());
-	
-}
-
-void AMy_ProjectileActor::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
-{
-	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-	DOREPLIFETIME(AMy_ProjectileActor, bIsPredicted);
-	DOREPLIFETIME(AMy_ProjectileActor, SpawnTimestamp);
 }
 
 void AMy_ProjectileActor::OnSphereOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
-	// 客户端预测投射物：仅播放特效，不处理伤害
-	if (!HasAuthority() && bIsPredicted)
+	/*
+	 * 1.火球在PlayasCLient模式下,会与施法者发生碰撞,这是我们要避免的(客户端和服务器都要)
+	 * 
+	 *  方法：服务器DamageEffectSpecHandle.Data有效，客户端DamageEffectSpecHandle.Data无效
+	 *   
+	 *  我们要处理客户端和服务器火球与施法者碰撞问题，使用下面第2个if只能处理服务器。客户端解决不了。
+	 *
+	 * 
+	 * 2.因为客户端和服务器都会触发MulticastRPC,如果我们不加第1个if,客户端会触发MulticastRPC，导致视觉上火球和施法者发生碰撞
+	 *
+	 * 方法：所有逻辑在服务器上实现，即添加第1个if。
+	 * 这样会使MulticastRPC在Server调用,所有客户端同步显示特效。
+	 * 并且也能解决客户端火球和施法者碰撞
+	 * 
+	 */
+	if (!HasAuthority()) return;
+
+	if (DamageEffectSpecHandle.Data.Get()->GetContext().GetEffectCauser() == OtherActor) return;
+
+	MulticastPlayImpactEffects();
+
+	// 激活Effect,只能在服务器修改Attribute,Replicate Attribute到客户端
+	if (UAbilitySystemComponent* TargetASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(OtherActor))
 	{
-		PlayLocalImpactEffects();
-		Destroy(); // 立即销毁预测投射物
-		return;
+		TargetASC->ApplyGameplayEffectSpecToSelf(*DamageEffectSpecHandle.Data.Get());
 	}
-
-	// 服务器处理伤害和同步
-	if (HasAuthority())
-	{
-		MulticastPlayImpactEffects(); // 同步特效到所有客户端
-
-		// 应用伤害（仅服务器）
-
-		if (UAbilitySystemComponent* TargetASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(OtherActor))
-		{
-			TargetASC->ApplyGameplayEffectSpecToSelf(*DamageEffectSpecHandle.Data.Get());
-		}
-		Destroy(); // 服务器销毁投射物
-	}
+	Destroy();
 }
 
 void AMy_ProjectileActor::Destroyed()
@@ -92,13 +78,6 @@ void AMy_ProjectileActor::Destroyed()
 	}
 	Super::Destroyed();
 }
-
-void AMy_ProjectileActor::PlayLocalImpactEffects()
-{
-	UGameplayStatics::PlaySoundAtLocation(this, ImpactSound, GetActorLocation(), FRotator::ZeroRotator);
-	UNiagaraFunctionLibrary::SpawnSystemAtLocation(this, ImpactEffect, GetActorLocation());
-}
-
 
 void AMy_ProjectileActor::MulticastPlayImpactEffects_Implementation()
 {

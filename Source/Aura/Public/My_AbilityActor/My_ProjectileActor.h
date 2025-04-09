@@ -14,33 +14,18 @@ UCLASS()
 class AURA_API AMy_ProjectileActor : public AActor
 {
 	GENERATED_BODY()
-
-public:
+	
+public:	
 	AMy_ProjectileActor();
-	
-	// 服务器通知客户端销毁预测投射物的RPC
-	UFUNCTION(Client, Reliable)
-	void ClientDestroyPredictedProjectile();
-	
+
 	UPROPERTY(VisibleAnywhere)
 	TObjectPtr<UProjectileMovementComponent> ProjectileMovement;
 
 	// 暴露给蓝图的变量，并在生成时显示
 	UPROPERTY(BlueprintReadWrite, meta=(ExposeOnSpawn = true))
 	FGameplayEffectSpecHandle DamageEffectSpecHandle;
-
-	UPROPERTY(Replicated)
-	bool bIsPredicted = false; // 标记是否为预测火球
-
-	UPROPERTY(Replicated)
-	float SpawnTimestamp = 0.f;
-
-
-
 protected:
 	virtual void BeginPlay() override;
-
-	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 	UFUNCTION()
 	void OnSphereOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
@@ -51,7 +36,6 @@ protected:
 	void MulticastPlayImpactEffects();
 
 private:
-	void PlayLocalImpactEffects();
 
 	UPROPERTY(EditDefaultsOnly)
 	float LifeSpan = 15.f;

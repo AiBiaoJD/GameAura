@@ -28,7 +28,8 @@ void AMy_Aura_Controller::PlayerTick(float DeltaTime)
 
 void AMy_Aura_Controller::ClientShowDamageNum_Implementation(float DamageAmount, ACharacter* TargetCharacter, bool IsBlockedHit, bool IsCriticalHit)
 {
-	if (IsValid(TargetCharacter) && DamageTextComponentClass)
+	// 防御性检查：确保目标有效、组件类有效，且是本地客户端
+	if (IsValid(TargetCharacter) && DamageTextComponentClass && IsLocalController()) 
 	{
 		UMy_DamageTextComponent* DamageText = NewObject<UMy_DamageTextComponent>(TargetCharacter, DamageTextComponentClass);
 		DamageText->RegisterComponent(); //必须注册显示Widget

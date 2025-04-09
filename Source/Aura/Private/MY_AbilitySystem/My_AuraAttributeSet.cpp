@@ -121,7 +121,7 @@ void UMy_AuraAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffec
 	/*
 	 * MetaAttribute部分
 	 */
-	if (Data.EvaluatedData.Attribute == GetIncomingDamageAttribute())
+	if (Data.EvaluatedData.Attribute == GetIncomingDamageAttribute()) // 这个属性只会在服务器变化
 	{
 		const float LocalIncomingDamage = GetIncomingDamage();
 		SetIncomingDamage(0.f);
@@ -154,13 +154,16 @@ void UMy_AuraAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffec
 	}
 }
 
+/*
+ * 服务器检查到IncomingDamageAttribute变化后,获取对应变化Actor的PlayerController去实现显示Text
+ */
 void UMy_AuraAttributeSet::ShowDamageText(const FMy_EffectProperties& Props, float Damage, bool IsBlockedHit, bool IsCriticalHit) const
 {
 	if (Props.SourceCharacter != Props.TargetCharacter)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Isblockhit: %d"), IsBlockedHit);
 		UE_LOG(LogTemp, Warning, TEXT("isCriticalHit: %d"), IsCriticalHit);
-		if (AMy_Aura_Controller* PC = Cast<AMy_Aura_Controller>(UGameplayStatics::GetPlayerController(Props.SourceCharacter, 0)))
+		if (AMy_Aura_Controller* PC = Cast<AMy_Aura_Controller>(Props.SourceCharacter->Controller))
 		{
 			PC->ClientShowDamageNum(Damage, Props.TargetCharacter, IsBlockedHit, IsCriticalHit);
 		}
