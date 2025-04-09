@@ -9,6 +9,7 @@
 #include "Aura/Aura.h"
 #include "Components/AudioComponent.h"
 #include "Kismet/GameplayStatics.h"
+#include "Net/UnrealNetwork.h"
 
 AMy_ProjectileActor::AMy_ProjectileActor()
 {
@@ -28,33 +29,59 @@ AMy_ProjectileActor::AMy_ProjectileActor()
 	ProjectileMovement->InitialSpeed = 550.f;
 	ProjectileMovement->MaxSpeed = 550.f;
 	ProjectileMovement->ProjectileGravityScale = 0.f;
-
-
 }
+
+void AMy_ProjectileActor::ClientDestroyPredictedProjectile_Implementation()
+{
+	if (bIsPredicted && IsValid(this))
+	{
+		Destroy();
+	}
+}
+
 
 void AMy_ProjectileActor::BeginPlay()
 {
 	Super::BeginPlay();
-
-	SetLifeSpan(LifeSpan);
+	// 预测投射物最多存在0.5秒（避免与服务器投射物共存）
+	if (bIsPredicted) SetLifeSpan(1.f);
+	else SetLifeSpan(LifeSpan);
+	SpawnTimestamp = GetWorld()->GetTimeSeconds(); // 记录生成时间
 	Sphere->OnComponentBeginOverlap.AddDynamic(this, &AMy_ProjectileActor::OnSphereOverlap);
 	LoopingSoundComponent = UGameplayStatics::SpawnSoundAttached(LoopingSound, GetRootComponent());
+	
+}
+
+void AMy_ProjectileActor::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+	DOREPLIFETIME(AMy_ProjectileActor, bIsPredicted);
+	DOREPLIFETIME(AMy_ProjectileActor, SpawnTimestamp);
 }
 
 void AMy_ProjectileActor::OnSphereOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
-	if (HasAuthority()) // 确保只在服务器上调用
+	// 客户端预测投射物：仅播放特效，不处理伤害
+	if (!HasAuthority() && bIsPredicted)
 	{
-		MulticastPlayImpactEffects(); // 调用 NetMulticast RPC,播放声音和特效
+		PlayLocalImpactEffects();
+		Destroy(); // 立即销毁预测投射物
+		return;
+	}
 
-		// 激活Effect,只能在服务器修改Attribute,Replicate Attribute到客户端
+	// 服务器处理伤害和同步
+	if (HasAuthority())
+	{
+		MulticastPlayImpactEffects(); // 同步特效到所有客户端
+
+		// 应用伤害（仅服务器）
+
 		if (UAbilitySystemComponent* TargetASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(OtherActor))
 		{
 			TargetASC->ApplyGameplayEffectSpecToSelf(*DamageEffectSpecHandle.Data.Get());
 		}
-		Destroy(); // 销毁 Actor
+		Destroy(); // 服务器销毁投射物
 	}
-
 }
 
 void AMy_ProjectileActor::Destroyed()
@@ -66,11 +93,15 @@ void AMy_ProjectileActor::Destroyed()
 	Super::Destroyed();
 }
 
-void AMy_ProjectileActor::MulticastPlayImpactEffects_Implementation()
+void AMy_ProjectileActor::PlayLocalImpactEffects()
 {
 	UGameplayStatics::PlaySoundAtLocation(this, ImpactSound, GetActorLocation(), FRotator::ZeroRotator);
 	UNiagaraFunctionLibrary::SpawnSystemAtLocation(this, ImpactEffect, GetActorLocation());
 }
 
 
-
+void AMy_ProjectileActor::MulticastPlayImpactEffects_Implementation()
+{
+	UGameplayStatics::PlaySoundAtLocation(this, ImpactSound, GetActorLocation(), FRotator::ZeroRotator);
+	UNiagaraFunctionLibrary::SpawnSystemAtLocation(this, ImpactEffect, GetActorLocation());
+}

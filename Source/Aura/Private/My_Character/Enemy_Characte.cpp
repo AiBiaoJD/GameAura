@@ -22,7 +22,6 @@ void AEnemy_Characte::HighlightActor()
 	GetMesh()->SetCustomDepthStencilValue(CUSTOM_DEPTH_RED);
 	Weapon->SetRenderCustomDepth(true);
 	Weapon->SetCustomDepthStencilValue(CUSTOM_DEPTH_RED);
-
 }
 
 void AEnemy_Characte::UnHighlightActor()
@@ -30,7 +29,6 @@ void AEnemy_Characte::UnHighlightActor()
 	// 不启用 Custom Depth
 	GetMesh()->SetRenderCustomDepth(false);
 	Weapon->SetRenderCustomDepth(false);
-
 }
 
 int32 AEnemy_Characte::GetPlayerLevel()
@@ -76,7 +74,7 @@ void AEnemy_Characte::BeginPlay()
 	 * 血量UI WidgetController部分
 	 */
 
-	 // SetWidgetController,因为里面是对委托绑定（也可以后绑定,但绑定后要广播初始值,保证UI正确）
+	// SetWidgetController,因为里面是对委托绑定（也可以后绑定,但绑定后要广播初始值,保证UI正确）
 	if (UMy_AuraUserWidget* AuraUserWidget = CastChecked<UMy_AuraUserWidget>(HealthBar->GetUserWidgetObject()))
 	{
 		AuraUserWidget->SetWidgetController(this);
@@ -86,14 +84,14 @@ void AEnemy_Characte::BeginPlay()
 	if (UMy_AuraAttributeSet* AuraAS = CastChecked<UMy_AuraAttributeSet>(AttributeSet))
 	{
 		AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(AuraAS->GetHealthAttribute()).AddLambda([this](const FOnAttributeChangeData& Data)
-			{
-				OnHealthChanged.Broadcast(Data.NewValue);
-			});
+		{
+			OnHealthChanged.Broadcast(Data.NewValue);
+		});
 
 		AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(AuraAS->GetMaxHealthAttribute()).AddLambda([this](const FOnAttributeChangeData& Data)
-			{
-				OnMaxHealthChanged.Broadcast(Data.NewValue);
-			});
+		{
+			OnMaxHealthChanged.Broadcast(Data.NewValue);
+		});
 
 		// 广播初始值
 		OnHealthChanged.Broadcast(AuraAS->GetHealth());
@@ -126,7 +124,10 @@ void AEnemy_Characte::My_InitAbilityActorInfo()
 // 初始化敌人的Attribute和Ability 从DataAsset中
 void AEnemy_Characte::InitializeDefaultAttribute() const
 {
-	UMy_AuraAbilitySystemLibrary::InitializeDefaultAttributes(this, CharacterClass, Level, AbilitySystemComponent);
+	if (HasAuthority())
+	{
+		UMy_AuraAbilitySystemLibrary::InitializeDefaultAttributes(this, CharacterClass, Level, AbilitySystemComponent);
 
-	UMy_AuraAbilitySystemLibrary::InitStartupAbilities(this, AbilitySystemComponent);
+		UMy_AuraAbilitySystemLibrary::InitStartupAbilities(this, AbilitySystemComponent);
+	}
 }
