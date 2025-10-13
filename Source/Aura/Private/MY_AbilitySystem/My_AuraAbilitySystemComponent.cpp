@@ -24,7 +24,7 @@ void UMy_AuraAbilitySystemComponent::ClientEffectApplied_Implementation(UAbility
 {
 	FGameplayTagContainer TagContainer;
 	EffectSpec.GetAllAssetTags(TagContainer);
-
+	
 	//使用委托进行TagContainer的广播,这样WidgetController就可以接受到
 	//这样My_ASC不知道WidgetController,而WidgetController知道ASC
 	EffectAssetTags.Broadcast(TagContainer);

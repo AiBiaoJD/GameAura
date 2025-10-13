@@ -14,8 +14,8 @@ UCLASS()
 class AURA_API AMy_ProjectileActor : public AActor
 {
 	GENERATED_BODY()
-	
-public:	
+
+public:
 	AMy_ProjectileActor();
 
 	UPROPERTY(VisibleAnywhere)
@@ -24,6 +24,7 @@ public:
 	// 暴露给蓝图的变量，并在生成时显示
 	UPROPERTY(BlueprintReadWrite, meta=(ExposeOnSpawn = true))
 	FGameplayEffectSpecHandle DamageEffectSpecHandle;
+
 protected:
 	virtual void BeginPlay() override;
 
@@ -36,7 +37,6 @@ protected:
 	void MulticastPlayImpactEffects();
 
 private:
-
 	UPROPERTY(EditDefaultsOnly)
 	float LifeSpan = 15.f;
 
