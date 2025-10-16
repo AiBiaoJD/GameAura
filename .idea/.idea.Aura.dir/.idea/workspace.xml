@@ -7,31 +7,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="e1b54914-3a26-404a-9b44-73a4632e1fe2" name="更改" comment="">
-      <change beforePath="$PROJECT_DIR$/Config/DefaultEngine.ini" beforeDir="false" afterPath="$PROJECT_DIR$/Config/DefaultEngine.ini" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/Blueprints/AbilitySystem/Enemy/Abilities/GA_HitReact.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/Blueprints/AbilitySystem/Enemy/Abilities/GA_HitReact.uasset" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/Actor/Area/My_BP_FireArea.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/Actor/Area/My_BP_FireArea.uasset" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/Actor/Area/My_GE_Fire.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/Actor/Area/My_GE_Fire.uasset" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/Actor/Crystal/My_BP_CrystalHealth.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/Actor/Crystal/My_BP_CrystalHealth.uasset" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/Actor/Crystal/My_BP_CrystalMana.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/Actor/Crystal/My_BP_CrystalMana.uasset" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/Actor/Potion/My_BP_HealthPotion.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/Actor/Potion/My_BP_HealthPotion.uasset" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/Actor/Potion/My_BP_ManaPotion.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/Actor/Potion/My_BP_ManaPotion.uasset" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/Actor/Potion/My_GE_PotionHealth.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/Actor/Potion/My_GE_PotionHealth.uasset" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/Actor/TestActor/My_BP_TestActor.uasset" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/Actor/TestActor/My_GE_TestAttributeBased.uasset" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/Character/Goblin/BP_Goblin.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/Character/Goblin/BP_Goblin.uasset" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/Character/Goblin2/BP_Goblin2.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/Character/Goblin2/BP_Goblin2.uasset" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/Character/MY_BP_EnemyBase.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/Character/MY_BP_EnemyBase.uasset" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/UI/Overlay/My_WBP_Overlap.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/UI/Overlay/My_WBP_Overlap.uasset" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/UI/PrograssBar/My_WBP_Globe_Base.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/UI/PrograssBar/My_WBP_Globe_Base.uasset" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/UI/PrograssBar/My_WBP_Health.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/UI/PrograssBar/My_WBP_Health.uasset" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/UI/PrograssBar/My_WBP_Mana.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/UI/PrograssBar/My_WBP_Mana.uasset" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/MyMap/MyMap.umap" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyMap/MyMap.umap" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/Aura/Private/MY_AbilitySystem/My_AuraAttributeSet.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Private/MY_AbilitySystem/My_AuraAttributeSet.cpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/Aura/Private/My_Character/Enemy_Characte.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Private/My_Character/Enemy_Characte.cpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/Aura/Private/My_EffectActor/My_AuraEffectActor.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Private/My_EffectActor/My_AuraEffectActor.cpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/Aura/Public/My_EffectActor/My_AuraEffectActor.h" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Public/My_EffectActor/My_AuraEffectActor.h" afterDir="false" />
-    </list>
+    <list default="true" id="e1b54914-3a26-404a-9b44-73a4632e1fe2" name="更改" comment="" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -197,7 +173,7 @@
       <workItem from="1760467590331" duration="14000" />
       <workItem from="1760467667058" duration="1024000" />
       <workItem from="1760540546647" duration="1405000" />
-      <workItem from="1760619332732" duration="6359000" />
+      <workItem from="1760619332732" duration="7216000" />
     </task>
     <servers />
   </component>
