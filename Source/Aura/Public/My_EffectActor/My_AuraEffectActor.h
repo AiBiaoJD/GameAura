@@ -50,9 +50,11 @@ protected:
 
 	//Effect是否在移除后销毁Actor
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Applied Effects")
-	bool bDestroyOnEffectRemove = false;
-
-	//Instant Effect
+	bool bDestroyOnEffecctApplication = false;
+	//Effect是否影响敌人
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Applied Effects")
+	bool bApplyEffectToEnemies = false;
+	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Applied Effects")
 	TSubclassOf<UGameplayEffect> InstantGameplayEffectClass;
 

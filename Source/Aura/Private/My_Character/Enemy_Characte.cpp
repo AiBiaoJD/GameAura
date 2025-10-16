@@ -61,6 +61,14 @@ AEnemy_Characte::AEnemy_Characte()
 	AbilitySystemComponent->SetIsReplicated(true);
 	AbilitySystemComponent->SetReplicationMode(EGameplayEffectReplicationMode::Minimal);
 
+	//设置转向
+	bUseControllerRotationPitch = false;
+	bUseControllerRotationYaw = false;
+	bUseControllerRotationRoll = false;
+	GetCharacterMovement()->bOrientRotationToMovement = true; //移动使用
+	GetCharacterMovement()->bUseControllerDesiredRotation = false; //攻击使用
+	GetCharacterMovement()->RotationRate = FRotator(0.0f, 540.0f, 0.0f);
+	
 	AttributeSet = CreateDefaultSubobject<UMy_AuraAttributeSet>("AttributeSet");
 
 	HealthBar = CreateDefaultSubobject<UWidgetComponent>("HealthBar");

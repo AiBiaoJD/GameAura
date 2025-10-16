@@ -130,7 +130,6 @@ void UMy_AuraAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffec
 			const float NewHealth = GetHealth() - LocalIncomingDamage;
 			SetHealth(FMath::Clamp(NewHealth, 0.f, GetMaxHealth()));
 			UE_LOG(LogTemp, Warning, TEXT("changed Health on %s, Health %f"), *Props.TargetAvatarActor->GetName(), GetHealth());
-
 			const bool bFatal = NewHealth <= 0.f;
 			if (bFatal)
 			{
