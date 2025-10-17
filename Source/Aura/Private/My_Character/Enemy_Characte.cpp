@@ -68,7 +68,7 @@ AEnemy_Characte::AEnemy_Characte()
 	GetCharacterMovement()->bOrientRotationToMovement = true; //移动使用
 	GetCharacterMovement()->bUseControllerDesiredRotation = false; //攻击使用
 	GetCharacterMovement()->RotationRate = FRotator(0.0f, 540.0f, 0.0f);
-	
+
 	AttributeSet = CreateDefaultSubobject<UMy_AuraAttributeSet>("AttributeSet");
 
 	HealthBar = CreateDefaultSubobject<UWidgetComponent>("HealthBar");
@@ -84,7 +84,8 @@ void AEnemy_Characte::PossessedBy(AController* NewController)
 
 	AuraAIController->GetBlackboardComponent()->InitializeBlackboard(*BehaviorTree->BlackboardAsset);
 	AuraAIController->RunBehaviorTree(BehaviorTree);
-	
+	AuraAIController->GetBlackboardComponent()->SetValueAsBool(FName("HitReacting"), false);
+	AuraAIController->GetBlackboardComponent()->SetValueAsBool(FName("RangeAttack"), CharacterClass != EMy_CharacterClass::Warrior);
 }
 
 void AEnemy_Characte::BeginPlay()
@@ -134,6 +135,7 @@ void AEnemy_Characte::HitReatTagChanged(const FGameplayTag Tag, int32 NewCount)
 {
 	bHitReacting = NewCount > 0;
 	GetCharacterMovement()->MaxWalkSpeed = bHitReacting ? 0.f : BaseWalkSpeed;
+	AuraAIController->GetBlackboardComponent()->SetValueAsBool(FName("HitReacting"), bHitReacting);
 }
 
 void AEnemy_Characte::My_InitAbilityActorInfo()

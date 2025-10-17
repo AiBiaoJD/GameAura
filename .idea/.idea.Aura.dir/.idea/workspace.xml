@@ -7,7 +7,12 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="e1b54914-3a26-404a-9b44-73a4632e1fe2" name="更改" comment="" />
+    <list default="true" id="e1b54914-3a26-404a-9b44-73a4632e1fe2" name="更改" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/.idea.Aura.dir/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/.idea.Aura.dir/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/AI/My_BB_EnemyBlackBoard.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/AI/My_BB_EnemyBlackBoard.uasset" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/AI/My_BT_EnemyBehaviorTree.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/AI/My_BT_EnemyBehaviorTree.uasset" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Source/Aura/Private/My_Character/Enemy_Characte.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Private/My_Character/Enemy_Characte.cpp" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -174,6 +179,9 @@
       <workItem from="1760467667058" duration="1024000" />
       <workItem from="1760540546647" duration="1405000" />
       <workItem from="1760619332732" duration="7216000" />
+      <workItem from="1760637311993" duration="2979000" />
+      <workItem from="1760657933711" duration="1611000" />
+      <workItem from="1760698857335" duration="1851000" />
     </task>
     <servers />
   </component>
