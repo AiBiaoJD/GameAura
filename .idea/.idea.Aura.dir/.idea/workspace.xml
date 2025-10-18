@@ -9,9 +9,8 @@
   <component name="ChangeListManager">
     <list default="true" id="e1b54914-3a26-404a-9b44-73a4632e1fe2" name="更改" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/.idea.Aura.dir/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/.idea.Aura.dir/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/AI/My_BB_EnemyBlackBoard.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/AI/My_BB_EnemyBlackBoard.uasset" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/AI/My_BT_EnemyBehaviorTree.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/AI/My_BT_EnemyBehaviorTree.uasset" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/Aura/Private/My_Character/Enemy_Characte.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Private/My_Character/Enemy_Characte.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/AI/EQS/My_EQ_FindRangeAttackPosition.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/AI/EQS/My_EQ_FindRangeAttackPosition.uasset" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/MyMap/EQS_TestMap.umap" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyMap/EQS_TestMap.umap" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -182,6 +181,7 @@
       <workItem from="1760637311993" duration="2979000" />
       <workItem from="1760657933711" duration="1611000" />
       <workItem from="1760698857335" duration="1851000" />
+      <workItem from="1760753239637" duration="1568000" />
     </task>
     <servers />
   </component>
