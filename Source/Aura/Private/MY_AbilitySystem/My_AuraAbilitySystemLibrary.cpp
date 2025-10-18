@@ -7,6 +7,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "My_Controler/My_AuraPlayerState.h"
 #include "MY_GameMode/MyGameModeBase.h"
+#include "My_Interraction/My_CombatInterface.h"
 #include "My_UI/HUD/My_AuraHUD.h"
 
 UMy_OverlayWidgetController* UMy_AuraAbilitySystemLibrary::My_GetOverlayWidgetController(
@@ -45,9 +46,9 @@ UMy_AttributeMenuWidgetController* UMy_AuraAbilitySystemLibrary::My_GetMenuWidge
 	return nullptr;
 }
 
-void UMy_AuraAbilitySystemLibrary::InitializeDefaultAttributes(const UObject* WorldContextObject,
-                                                               EMy_CharacterClass CharacterType, float level,
-                                                               UAbilitySystemComponent* ASC)
+void UMy_AuraAbilitySystemLibrary::GiveDefaultAttributes(const UObject* WorldContextObject,
+                                                         EMy_CharacterClass CharacterType, float level,
+                                                         UAbilitySystemComponent* ASC)
 {
 	UMy_CharacterClassInfo* ClassInfo = GetCharacterClassInfo(WorldContextObject);
 	FMy_CharacterClassDefaultInfo ClassDefaultInfo = ClassInfo->GetClassDefaultInfo(CharacterType);
@@ -68,12 +69,24 @@ void UMy_AuraAbilitySystemLibrary::InitializeDefaultAttributes(const UObject* Wo
 	ASC->ApplyGameplayEffectSpecToSelf(*VitalSpecHandle.Data.Get());
 }
 
-void UMy_AuraAbilitySystemLibrary::InitStartupAbilities(const UObject* WorldContextObject, UAbilitySystemComponent* ASC)
+void UMy_AuraAbilitySystemLibrary::GiveStartupAbilities(const UObject* WorldContextObject, UAbilitySystemComponent* ASC, EMy_CharacterClass CharacterType)
 {
 	UMy_CharacterClassInfo* ClassInfo = GetCharacterClassInfo(WorldContextObject);
+	if (ClassInfo == nullptr) return;
+
+	//共有能力
 	for (auto Ability : ClassInfo->CommonAbility)
 	{
 		FGameplayAbilitySpec AbilitySpec = FGameplayAbilitySpec(Ability, 1);
+		ASC->GiveAbility(AbilitySpec);
+	}
+
+	//特定能力
+	const FMy_CharacterClassDefaultInfo& DefaultInfo = ClassInfo->GetClassDefaultInfo(CharacterType);
+	for (TSubclassOf<UGameplayAbility> AbilityClass : DefaultInfo.StartupAbilities)
+	{
+		IMy_CombatInterface* CombatInterface = Cast<IMy_CombatInterface>(ASC->GetAvatarActor());
+		FGameplayAbilitySpec AbilitySpec = FGameplayAbilitySpec(AbilityClass, CombatInterface->GetPlayerLevel());
 		ASC->GiveAbility(AbilitySpec);
 	}
 }

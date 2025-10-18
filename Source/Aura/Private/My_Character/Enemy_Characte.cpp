@@ -151,8 +151,8 @@ void AEnemy_Characte::InitializeDefaultAttribute() const
 {
 	if (HasAuthority())
 	{
-		UMy_AuraAbilitySystemLibrary::InitializeDefaultAttributes(this, CharacterClass, Level, AbilitySystemComponent);
+		UMy_AuraAbilitySystemLibrary::GiveDefaultAttributes(this, CharacterClass, Level, AbilitySystemComponent);
 
-		UMy_AuraAbilitySystemLibrary::InitStartupAbilities(this, AbilitySystemComponent);
+		UMy_AuraAbilitySystemLibrary::GiveStartupAbilities(this, AbilitySystemComponent, CharacterClass);
 	}
 }

@@ -12,11 +12,12 @@ class UGameplayEffect;
 UENUM(BlueprintType)
 enum class EMy_CharacterClass : uint8
 {
-	Elementalist, // ???
-	Warrior,      // ??
-	Ranger		  // ????
+	Elementalist, // 巫师
+	Warrior,      // 战士
+	Ranger		  // 远程
 };
 
+//每个敌人类，包含自己特别的能力等相关
 USTRUCT(BlueprintType)
 struct FMy_CharacterClassDefaultInfo
 {
@@ -24,11 +25,12 @@ struct FMy_CharacterClassDefaultInfo
 
 	UPROPERTY(EditDefaultsOnly, Category = "Class Defaults")
 	TSubclassOf<UGameplayEffect> PrimaryAttributes;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Class Defaults")
+	TArray<TSubclassOf<UGameplayAbility>> StartupAbilities;
 };
 
-/**
- *
- */
+
 UCLASS()
 class AURA_API UMy_CharacterClassInfo : public UDataAsset
 {

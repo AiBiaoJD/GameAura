@@ -14,7 +14,7 @@ void FMy_AuraGameplayTags::InitializeNativeGameplayTags()
 	/*
 	 * Primary Attribute Tag
 	 */
-	 // Strength: Increases physical damage.
+	// Strength: Increases physical damage.
 	GameplayTagsInstance.My_Attribute_Primary_Strength = UGameplayTagsManager::Get().AddNativeGameplayTag(FName("My_Attribute.Primary.Strength"), FString("Increases physical damage."));
 
 	// Intelligence: Increases magical damage.
@@ -27,11 +27,10 @@ void FMy_AuraGameplayTags::InitializeNativeGameplayTags()
 	GameplayTagsInstance.My_Attribute_Primary_VIgor = UGameplayTagsManager::Get().AddNativeGameplayTag(FName("My_Attribute.Primary.VIgor"), FString("Increases health and related attributes."));
 
 
-
 	/*
 	 * SecondaryAttribute Tag
 	 */
-	 // Armor: Reduces damage taken by a percentage and increases Block Chance (halves damage taken) and reduces critical damage from enemies.
+	// Armor: Reduces damage taken by a percentage and increases Block Chance (halves damage taken) and reduces critical damage from enemies.
 	GameplayTagsInstance.My_Attribute_Secondary_Armor = UGameplayTagsManager::Get().AddNativeGameplayTag(FName("My_Attribute.Secondary.Armor"), FString("Reduces damage taken by a percentage and increases Block Chance (halves damage taken) and reduces critical damage from enemies."));
 
 	// Armor Penetration: Ignores a portion of the enemy's armor and increases critical hit chance.
@@ -84,27 +83,27 @@ void FMy_AuraGameplayTags::InitializeNativeGameplayTags()
 
 	GameplayTagsInstance.My_EffectGranted_HitReact = UGameplayTagsManager::Get().AddNativeGameplayTag(FName("My_EffectGranted.HitReact"), FString("Tag Granted When Hit Reaction"));
 
-	
+
 	/*
 	 * DamageType Tags
 	 */
 	GameplayTagsInstance.My_DamageType_Fire = UGameplayTagsManager::Get().AddNativeGameplayTag(
-		FName("My_DamageType.Fire"), 
+		FName("My_DamageType.Fire"),
 		FString("Fire elemental damage type")
 	);
 
 	GameplayTagsInstance.My_DamageType_Lighting = UGameplayTagsManager::Get().AddNativeGameplayTag(
-		FName("My_DamageType.Lighting"), 
+		FName("My_DamageType.Lighting"),
 		FString("Lighting elemental damage type")
 	);
 
 	GameplayTagsInstance.My_DamageType_Arcane = UGameplayTagsManager::Get().AddNativeGameplayTag(
-		FName("My_DamageType.Arcane"), 
+		FName("My_DamageType.Arcane"),
 		FString("Arcane magical damage type")
 	);
 
 	GameplayTagsInstance.My_DamageType_Physical = UGameplayTagsManager::Get().AddNativeGameplayTag(
-		FName("My_DamageType.Physical"), 
+		FName("My_DamageType.Physical"),
 		FString("Physical blunt/sharp damage type")
 	);
 
@@ -112,29 +111,37 @@ void FMy_AuraGameplayTags::InitializeNativeGameplayTags()
 	 * Resistance Tags
 	 */
 	GameplayTagsInstance.My_Attribute_Secondary_Resistance_Fire = UGameplayTagsManager::Get().AddNativeGameplayTag(
-		FName("My_Attribute.Secondary.Resistance.Fire"), 
+		FName("My_Attribute.Secondary.Resistance.Fire"),
 		FString("Reduces incoming fire damage")
 	);
 
 	GameplayTagsInstance.My_Attribute_Secondary_Resistance_Lighting = UGameplayTagsManager::Get().AddNativeGameplayTag(
-		FName("My_Attribute.Secondary.Resistance.Lighting"), 
+		FName("My_Attribute.Secondary.Resistance.Lighting"),
 		FString("Reduces incoming lighting damage")
 	);
 
 	GameplayTagsInstance.My_Attribute_Secondary_Resistance_Arcane = UGameplayTagsManager::Get().AddNativeGameplayTag(
-		FName("My_Attribute.Secondary.Resistance.Arcane"), 
+		FName("My_Attribute.Secondary.Resistance.Arcane"),
 		FString("Reduces incoming arcane damage")
 	);
 
 	GameplayTagsInstance.My_Attribute_Secondary_Resistance_Physical = UGameplayTagsManager::Get().AddNativeGameplayTag(
-		FName("My_Attribute.Secondary.Resistance.Physical"), 
+		FName("My_Attribute.Secondary.Resistance.Physical"),
 		FString("Reduces incoming physical damage")
 	);
 
-	// Map: DamageType To  Resistance
-	GameplayTagsInstance.DamageToResistance.Add(GameplayTagsInstance.My_DamageType_Fire,GameplayTagsInstance.My_Attribute_Secondary_Resistance_Fire);
-	GameplayTagsInstance.DamageToResistance.Add(GameplayTagsInstance.My_DamageType_Lighting,GameplayTagsInstance.My_Attribute_Secondary_Resistance_Lighting);
-	GameplayTagsInstance.DamageToResistance.Add(GameplayTagsInstance.My_DamageType_Arcane,GameplayTagsInstance.My_Attribute_Secondary_Resistance_Arcane);
-	GameplayTagsInstance.DamageToResistance.Add(GameplayTagsInstance.My_DamageType_Physical,GameplayTagsInstance.My_Attribute_Secondary_Resistance_Physical);
 
+	/*
+	* Abilities Tags
+	*/
+	GameplayTagsInstance.My_Attribute_Secondary_Resistance_Physical = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("My_Abilities.Attack;"),
+		FString("Attack Melee Tag")
+	);
+
+	// Map: DamageType To  Resistance
+	GameplayTagsInstance.DamageToResistance.Add(GameplayTagsInstance.My_DamageType_Fire, GameplayTagsInstance.My_Attribute_Secondary_Resistance_Fire);
+	GameplayTagsInstance.DamageToResistance.Add(GameplayTagsInstance.My_DamageType_Lighting, GameplayTagsInstance.My_Attribute_Secondary_Resistance_Lighting);
+	GameplayTagsInstance.DamageToResistance.Add(GameplayTagsInstance.My_DamageType_Arcane, GameplayTagsInstance.My_Attribute_Secondary_Resistance_Arcane);
+	GameplayTagsInstance.DamageToResistance.Add(GameplayTagsInstance.My_DamageType_Physical, GameplayTagsInstance.My_Attribute_Secondary_Resistance_Physical);
 }
