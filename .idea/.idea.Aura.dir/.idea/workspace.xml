@@ -9,8 +9,10 @@
   <component name="ChangeListManager">
     <list default="true" id="e1b54914-3a26-404a-9b44-73a4632e1fe2" name="更改" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/.idea.Aura.dir/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/.idea.Aura.dir/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/AI/BehaviorTree/My_BT_EnemyBehaviorTree.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/AI/BehaviorTree/My_BT_EnemyBehaviorTree.uasset" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/AI/EQS/My_EQ_FindRangeAttackPosition.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/AI/EQS/My_EQ_FindRangeAttackPosition.uasset" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/MyMap/EQS_TestMap.umap" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyMap/EQS_TestMap.umap" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/Character/Aura/My_BP_Aura.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/Character/Aura/My_BP_Aura.uasset" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/MyMap/MyMap.umap" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyMap/MyMap.umap" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -48,6 +50,7 @@
     <setting file="file://$PROJECT_DIR$/../../UE Engine/UE_5.2/Engine/Source/Runtime/CoreUObject/Private/UObject/ScriptCore.cpp" root0="FORCE_HIGHLIGHTING" />
     <setting file="file://$PROJECT_DIR$/../../UE Engine/UE_5.2/Engine/Source/Runtime/Engine/Classes/GameFramework/Actor.h" root0="FORCE_HIGHLIGHTING" />
     <setting file="file://$PROJECT_DIR$/../../UE Engine/UE_5.2/Engine/Source/Runtime/Engine/Private/Actor.cpp" root0="FORCE_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/../../UE Engine/UE_5.2/Engine/Source/Runtime/Engine/Private/Components/SplineComponent.cpp" root0="FORCE_HIGHLIGHTING" />
     <setting file="file://$PROJECT_DIR$/../../UE Engine/UE_5.2/Engine/Source/Runtime/Engine/Private/GameplayStatics.cpp" root0="FORCE_HIGHLIGHTING" />
     <setting file="file://$PROJECT_DIR$/../../UE Engine/UE_5.2/Engine/Source/Runtime/Engine/Private/WorldSettings.cpp" root0="FORCE_HIGHLIGHTING" />
     <setting file="file://$PROJECT_DIR$/../../UE Engine/UE_5.2/Engine/Source/Runtime/Engine/Public/Net/UnrealNetwork.h" root0="FORCE_HIGHLIGHTING" />
@@ -181,7 +184,7 @@
       <workItem from="1760637311993" duration="2979000" />
       <workItem from="1760657933711" duration="1611000" />
       <workItem from="1760698857335" duration="1851000" />
-      <workItem from="1760753239637" duration="1568000" />
+      <workItem from="1760753239637" duration="3133000" />
     </task>
     <servers />
   </component>
