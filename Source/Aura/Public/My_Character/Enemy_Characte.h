@@ -17,13 +17,14 @@ class AMy_AuraAIController;
  *
  */
 UCLASS()
-class AURA_API AEnemy_Characte : public AMyCharacter_Base, public  IMy_Enemy_Interface
+class AURA_API AEnemy_Characte : public AMyCharacter_Base, public IMy_Enemy_Interface
 {
 	GENERATED_BODY()
+
 public:
 	AEnemy_Characte();
 	virtual void PossessedBy(AController* NewController) override;
-	
+
 	/** Enemy interface **/
 	virtual void HighlightActor() override;
 	virtual void UnHighlightActor() override;
@@ -32,6 +33,8 @@ public:
 	/** Combat interface **/
 	virtual int32 GetPlayerLevel() override;
 	virtual void Die() override;
+	virtual void SetCombatTarget_Implementation(AActor* InCombatTarget) override;
+	virtual AActor* GetCombatTarget_Implementation() override;
 	/** end Combat interface **/
 
 
@@ -51,9 +54,10 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "My_Combat")
 	float LifeSpan = 5.f;
+
 protected:
-	virtual  void BeginPlay() override;
-	virtual  void My_InitAbilityActorInfo() override;
+	virtual void BeginPlay() override;
+	virtual void My_InitAbilityActorInfo() override;
 	virtual void InitializeDefaultAttribute() const;
 
 
@@ -80,4 +84,7 @@ protected:
 
 	UPROPERTY()
 	TObjectPtr<AMy_AuraAIController> AuraAIController;
+
+	UPROPERTY(BlueprintReadWrite, Category = "My_Combat")
+	TObjectPtr<AActor> CombatTarget;
 };

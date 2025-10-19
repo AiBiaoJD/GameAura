@@ -45,6 +45,16 @@ void AEnemy_Characte::Die()
 	Super::Die();
 }
 
+void AEnemy_Characte::SetCombatTarget_Implementation(AActor* InCombatTarget)
+{
+	CombatTarget = InCombatTarget;
+}
+
+AActor* AEnemy_Characte::GetCombatTarget_Implementation()
+{
+	return CombatTarget;
+}
+
 AEnemy_Characte::AEnemy_Characte()
 {
 	/*
