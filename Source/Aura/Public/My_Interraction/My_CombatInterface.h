@@ -26,7 +26,7 @@ public:
 	virtual FVector GetWeaponSockLocation();
 
 	UFUNCTION(BlueprintImplementableEvent, BlueprintCallable)
-	void UpdateFireBoltFacingTarget(const FVector& TargetLoc);
+	void My_UpdateFacingTarget(const FVector& TargetLoc);
 
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable)
 	UAnimMontage* GetHitReactMontage();
