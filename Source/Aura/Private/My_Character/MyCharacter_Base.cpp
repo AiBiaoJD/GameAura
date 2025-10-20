@@ -69,7 +69,7 @@ void AMyCharacter_Base::BeginPlay()
 
 }
 
-FVector AMyCharacter_Base::GetWeaponSockLocation()
+FVector AMyCharacter_Base::GetWeaponSockLocation_Implementation()
 {
 	check(Weapon);
 	return Weapon->GetSocketLocation(WeaponTipSockName);

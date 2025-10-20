@@ -8,9 +8,3 @@ int32 IMy_CombatInterface::GetPlayerLevel()
 {
 	return 0;
 }
-
-FVector IMy_CombatInterface::GetWeaponSockLocation()
-{
-	return FVector();
-}
-

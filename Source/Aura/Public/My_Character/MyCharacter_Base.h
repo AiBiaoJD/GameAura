@@ -34,7 +34,7 @@ protected:
 	TObjectPtr<USkeletalMeshComponent> Weapon;
 	UPROPERTY(EditAnywhere, Category = "My_Combat")
 	FName WeaponTipSockName;
-	virtual FVector GetWeaponSockLocation() override;
+	virtual FVector GetWeaponSockLocation_Implementation() override;
 
 	/*
 	 * GAS
