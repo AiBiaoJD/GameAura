@@ -9,20 +9,7 @@
   <component name="ChangeListManager">
     <list default="true" id="e1b54914-3a26-404a-9b44-73a4632e1fe2" name="更改" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/.idea.Aura.dir/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/.idea.Aura.dir/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Config/DefaultGameplayTags.ini" beforeDir="false" afterPath="$PROJECT_DIR$/Config/DefaultGameplayTags.ini" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/Assets/Characters/Aura/Animations/Abilities/My_AM_Cast_FireBolt.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/Assets/Characters/Aura/Animations/Abilities/My_AM_Cast_FireBolt.uasset" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/Assets/Enemies/Goblin/Animations/Spear/My_AM_AttackGoblinSpear.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/Assets/Enemies/Goblin/Animations/Spear/My_AM_AttackGoblinSpear.uasset" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/Assets/Enemies/Goblin/Spear/SKM_Spear_Skeleton.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/Assets/Enemies/Goblin/Spear/SKM_Spear_Skeleton.uasset" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/GamePlayAbility/AuraDamage/My_GA_FireSpell.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/GamePlayAbility/AuraDamage/My_GA_FireSpell.uasset" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/GamePlayAbility/EnemyAttack/My_GA_MeleeAttack.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/GamePlayAbility/EnemyAttack/My_GA_MeleeAttack.uasset" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/AnimNoticefiles/My_AN_MontageEvent.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/AnimNoticefiles/My_AN_MontageEvent.uasset" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/Character/Goblin/BP_Goblin.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/Character/Goblin/BP_Goblin.uasset" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/MyMap/MyMap.umap" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyMap/MyMap.umap" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/Aura/Private/MY_AbilitySystem/Ability/My_AuraProjectileSpell.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Private/MY_AbilitySystem/Ability/My_AuraProjectileSpell.cpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/Aura/Private/My_Character/MyCharacter_Base.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Private/My_Character/MyCharacter_Base.cpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/Aura/Private/My_Interraction/My_CombatInterface.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Private/My_Interraction/My_CombatInterface.cpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/Aura/Public/My_Character/MyCharacter_Base.h" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Public/My_Character/MyCharacter_Base.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/Aura/Public/My_Interraction/My_CombatInterface.h" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Public/My_Interraction/My_CombatInterface.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Source/Aura/Private/My_Character/Enemy_Characte.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Private/My_Character/Enemy_Characte.cpp" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -83,6 +70,8 @@
     <setting file="mock:///dummy.cpp" root0="SKIP_HIGHLIGHTING" />
     <setting file="cidr-memory-view://2" root0="FORCE_HIGHLIGHTING" />
     <setting file="file://$PROJECT_DIR$/../../UE Engine/UE_5.2/Engine/Source/Editor/UnrealEd/Private/Kismet2/KismetReinstanceUtilities.cpp" root0="FORCE_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/../../UE Engine/UE_5.2/Engine/Source/Runtime/AIModule/Classes/Blueprint/AIAsyncTaskBlueprintProxy.h" root0="FORCE_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/../../UE Engine/UE_5.2/Engine/Source/Runtime/AIModule/Private/AIController.cpp" root0="FORCE_HIGHLIGHTING" />
     <setting file="file://$PROJECT_DIR$/../../UE Engine/UE_5.2/Engine/Source/Runtime/Core/Private/HAL/MallocMimalloc.cpp" root0="FORCE_HIGHLIGHTING" />
     <setting file="file://$PROJECT_DIR$/../../UE Engine/UE_5.2/Engine/Source/Runtime/Core/Private/Logging/StructuredLog.cpp" root0="FORCE_HIGHLIGHTING" />
     <setting file="file://$PROJECT_DIR$/../../UE Engine/UE_5.2/Engine/Source/Runtime/Core/Public/Containers/Array.h" root0="FORCE_HIGHLIGHTING" />
@@ -233,7 +222,7 @@
       <workItem from="1760753239637" duration="3270000" />
       <workItem from="1760793760712" duration="1460000" />
       <workItem from="1760872385569" duration="9623000" />
-      <workItem from="1760917503696" duration="5279000" />
+      <workItem from="1760917503696" duration="6413000" />
     </task>
     <servers />
   </component>
