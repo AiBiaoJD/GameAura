@@ -10,7 +10,7 @@
 
 UCLASS(ABSTRACT)
 class AURA_API AMyCharacter_Base : public ACharacter, public IAbilitySystemInterface, public
-	IMy_CombatInterface
+                                   IMy_CombatInterface
 {
 	GENERATED_BODY()
 
@@ -19,13 +19,20 @@ public:
 
 	//角色ASC通过这个函数从PlayerState获取
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
-	UAttributeSet* GetAttributeSet()const;
+	UAttributeSet* GetAttributeSet() const;
 
 	virtual UAnimMontage* GetHitReactMontage_Implementation() override;
-	virtual void Die() override;
 
 	UFUNCTION(NetMulticast, Reliable)
 	virtual void MulticastHandleDeath();
+
+	/** Combat interface **/
+	virtual FVector GetWeaponSockLocation_Implementation() override;
+	virtual void Die() override;
+	virtual bool IsDead_Implementation() const override;
+	virtual AActor* GetAvatar_Implementation() override;
+	/** end Combat interface **/
+	
 protected:
 	virtual void BeginPlay() override;
 
@@ -34,7 +41,8 @@ protected:
 	TObjectPtr<USkeletalMeshComponent> Weapon;
 	UPROPERTY(EditAnywhere, Category = "My_Combat")
 	FName WeaponTipSockName;
-	virtual FVector GetWeaponSockLocation_Implementation() override;
+
+	bool bDead = false;
 
 	/*
 	 * GAS
@@ -45,7 +53,6 @@ protected:
 	TObjectPtr<UAbilitySystemComponent> AbilitySystemComponent;
 	UPROPERTY()
 	TObjectPtr<UAttributeSet> AttributeSet;
-
 
 	//Effect 初始化相关属性
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Attribute")

@@ -24,10 +24,9 @@ AMyCharacter_Base::AMyCharacter_Base()
 }
 
 
-
 UAbilitySystemComponent* AMyCharacter_Base::GetAbilitySystemComponent() const
 {
-	return  AbilitySystemComponent;
+	return AbilitySystemComponent;
 }
 
 UAttributeSet* AMyCharacter_Base::GetAttributeSet() const
@@ -38,6 +37,16 @@ UAttributeSet* AMyCharacter_Base::GetAttributeSet() const
 UAnimMontage* AMyCharacter_Base::GetHitReactMontage_Implementation()
 {
 	return HitReactMontage;
+}
+
+bool AMyCharacter_Base::IsDead_Implementation() const
+{
+	return bDead;
+}
+
+AActor* AMyCharacter_Base::GetAvatar_Implementation()
+{
+	return this;
 }
 
 void AMyCharacter_Base::Die()
@@ -60,13 +69,14 @@ void AMyCharacter_Base::MulticastHandleDeath_Implementation()
 	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
 	Dissolve();
+
+	bDead = true;
 }
 
 // Called when the game starts or when spawned
 void AMyCharacter_Base::BeginPlay()
 {
 	Super::BeginPlay();
-
 }
 
 FVector AMyCharacter_Base::GetWeaponSockLocation_Implementation()
@@ -94,7 +104,7 @@ void AMyCharacter_Base::ApplyEffectToSelf(TSubclassOf<UGameplayEffect> GamePlayE
 	}
 }
 
-void AMyCharacter_Base::InitializeDefaultAttribute()const
+void AMyCharacter_Base::InitializeDefaultAttribute() const
 {
 	ApplyEffectToSelf(DefaultPrimaryAttributeEffectClass, 1.0f);
 	ApplyEffectToSelf(DefaultSecondAttributeEffectClass, 1.0f);
@@ -109,7 +119,6 @@ void AMyCharacter_Base::AddCharacterAbilities()
 	UMy_AuraAbilitySystemComponent* ASC = CastChecked<UMy_AuraAbilitySystemComponent>(AbilitySystemComponent);
 
 	ASC->AddCharacterAbilitiesFromASC(StartupAbility);
-
 }
 
 void AMyCharacter_Base::Dissolve()
@@ -128,4 +137,3 @@ void AMyCharacter_Base::Dissolve()
 		StartWeaponDissolveTimeline(DynamicMaterial);
 	}
 }
-
