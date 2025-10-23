@@ -160,9 +160,13 @@ void UMy_AuraAttributeSet::ShowDamageText(const FMy_EffectProperties& Props, flo
 {
 	if (Props.SourceCharacter != Props.TargetCharacter)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("Isblockhit: %d"), IsBlockedHit);
-		UE_LOG(LogTemp, Warning, TEXT("isCriticalHit: %d"), IsCriticalHit);
+		// Source是Player,Target是Enemy
 		if (AMy_Aura_Controller* PC = Cast<AMy_Aura_Controller>(Props.SourceCharacter->Controller))
+		{
+			PC->ClientShowDamageNum(Damage, Props.TargetCharacter, IsBlockedHit, IsCriticalHit);
+		}
+		// Source是Enemy,Target是Player
+		if (AMy_Aura_Controller* PC = Cast<AMy_Aura_Controller>(Props.TargetCharacter->Controller))
 		{
 			PC->ClientShowDamageNum(Damage, Props.TargetCharacter, IsBlockedHit, IsCriticalHit);
 		}

@@ -28,6 +28,7 @@ void AMy_Aura_Controller::PlayerTick(float DeltaTime)
 
 void AMy_Aura_Controller::ClientShowDamageNum_Implementation(float DamageAmount, ACharacter* TargetCharacter, bool IsBlockedHit, bool IsCriticalHit)
 {
+	UE_LOG(LogTemp, Warning, TEXT("4. Client RPC actually executing on client"));
 	// 防御性检查：确保目标有效、组件类有效，且是本地客户端
 	if (IsValid(TargetCharacter) && DamageTextComponentClass && IsLocalController()) 
 	{

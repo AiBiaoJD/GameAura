@@ -14,6 +14,9 @@ class AURA_API UMy_AuraDamageGameplayAbility : public UMy_AuraGameplayAbilityBas
 {
 	GENERATED_BODY()
 
+public:
+	UFUNCTION(BlueprintCallable)
+	void CauseDamage(AActor* TargetActor);
 protected:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
