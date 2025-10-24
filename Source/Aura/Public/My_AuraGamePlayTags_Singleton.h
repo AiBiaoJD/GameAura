@@ -64,6 +64,12 @@ public:
 
 	// Attack
 	FGameplayTag My_Abilities_Attack;
+
+	// Montage
+	FGameplayTag My_Montage_Attack_Weapon;
+	FGameplayTag My_Montage_Attack_LeftHand;
+	FGameplayTag My_Montage_Attack_RightHand;
+
 	
 	// Map: DamageType To  Resistance
 	TMap<FGameplayTag,FGameplayTag> DamageToResistance;

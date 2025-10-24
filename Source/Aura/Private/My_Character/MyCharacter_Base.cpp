@@ -49,6 +49,11 @@ AActor* AMyCharacter_Base::GetAvatar_Implementation()
 	return this;
 }
 
+TArray<FMy_TaggedMontage> AMyCharacter_Base::GetAttackMontage_Implementation()
+{
+	return AttackMontage;
+}
+
 void AMyCharacter_Base::Die()
 {
 	Weapon->DetachFromComponent(FDetachmentTransformRules(EDetachmentRule::KeepWorld, true));

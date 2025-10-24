@@ -139,6 +139,22 @@ void FMy_AuraGameplayTags::InitializeNativeGameplayTags()
 		FString("Attack Melee Tag")
 	);
 
+	/*
+	* Montage
+	*/
+	GameplayTagsInstance.My_Montage_Attack_Weapon = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("My__Montage.Attack.Weapon"),
+		FString("Attack By Weapon")
+	);
+	GameplayTagsInstance.My_Montage_Attack_LeftHand = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("My__Montage.Attack.LeftHand"),
+		FString("Attack By LeftHand")
+	);
+	GameplayTagsInstance.My_Montage_Attack_RightHand = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("My__Montage.Attack.RightHand"),
+		FString("Attack By RightHand")
+	);
+
 	// Map: DamageType To  Resistance
 	GameplayTagsInstance.DamageToResistance.Add(GameplayTagsInstance.My_DamageType_Fire, GameplayTagsInstance.My_Attribute_Secondary_Resistance_Fire);
 	GameplayTagsInstance.DamageToResistance.Add(GameplayTagsInstance.My_DamageType_Lighting, GameplayTagsInstance.My_Attribute_Secondary_Resistance_Lighting);

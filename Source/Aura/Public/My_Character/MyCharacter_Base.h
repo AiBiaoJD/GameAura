@@ -31,8 +31,11 @@ public:
 	virtual void Die() override;
 	virtual bool IsDead_Implementation() const override;
 	virtual AActor* GetAvatar_Implementation() override;
+	virtual TArray<FMy_TaggedMontage> GetAttackMontage_Implementation() override;
 	/** end Combat interface **/
-	
+
+	UPROPERTY(EditAnywhere, Category = "My_Combat")
+	TArray<FMy_TaggedMontage> AttackMontage;
 protected:
 	virtual void BeginPlay() override;
 
