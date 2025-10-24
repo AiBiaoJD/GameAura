@@ -3,7 +3,9 @@
 
 #include "My_Character/MyCharacter_Base.h"
 
+#include "My_AuraGamePlayTags_Singleton.h"
 #include "Aura/Aura.h"
+#include "Chaos/ChaosPerfTest.h"
 #include "Components/CapsuleComponent.h"
 #include "MY_AbilitySystem/My_AuraAbilitySystemComponent.h"
 
@@ -84,10 +86,23 @@ void AMyCharacter_Base::BeginPlay()
 	Super::BeginPlay();
 }
 
-FVector AMyCharacter_Base::GetWeaponSockLocation_Implementation()
+FVector AMyCharacter_Base::GetWeaponSockLocation_Implementation(const FGameplayTag& MontageTag)
 {
-	check(Weapon);
-	return Weapon->GetSocketLocation(WeaponTipSockName);
+	const FMy_AuraGameplayTags& GameplayTags = FMy_AuraGameplayTags::GetInstance();
+	if (MontageTag.MatchesTagExact(GameplayTags.My_Montage_Attack_Weapon) && IsValid(Weapon))
+	{
+		return Weapon->GetSocketLocation(WeaponTipSockName);
+	}
+	if (MontageTag.MatchesTagExact(GameplayTags.My_Montage_Attack_LeftHand))
+	{
+		return GetMesh()->GetSocketLocation(LeftHandSockName);
+		
+	}
+	if (MontageTag.MatchesTagExact(GameplayTags.My_Montage_Attack_RightHand))
+	{
+		return GetMesh()->GetSocketLocation(RightHandSockName);
+	}
+	return  FVector();
 }
 
 

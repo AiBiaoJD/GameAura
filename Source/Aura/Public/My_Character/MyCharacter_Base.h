@@ -27,7 +27,7 @@ public:
 	virtual void MulticastHandleDeath();
 
 	/** Combat interface **/
-	virtual FVector GetWeaponSockLocation_Implementation() override;
+	virtual FVector GetWeaponSockLocation_Implementation(const FGameplayTag& MontageTag) override;
 	virtual void Die() override;
 	virtual bool IsDead_Implementation() const override;
 	virtual AActor* GetAvatar_Implementation() override;
@@ -45,6 +45,11 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "My_Combat")
 	FName WeaponTipSockName;
 
+	UPROPERTY(EditAnywhere, Category = "My_Combat")
+	FName LeftHandSockName;
+
+	UPROPERTY(EditAnywhere, Category = "My_Combat")
+	FName RightHandSockName;
 	bool bDead = false;
 
 	/*

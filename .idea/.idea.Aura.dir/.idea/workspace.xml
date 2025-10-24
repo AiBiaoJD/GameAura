@@ -9,14 +9,12 @@
   <component name="ChangeListManager">
     <list default="true" id="e1b54914-3a26-404a-9b44-73a4632e1fe2" name="更改" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/.idea.Aura.dir/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/.idea.Aura.dir/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/Assets/Enemies/Goblin/Animations/Spear/My_AM_AttackGoblinSpear.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/Assets/Enemies/Goblin/Animations/Spear/My_AM_AttackGoblinSpear.uasset" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Config/DefaultGameplayTags.ini" beforeDir="false" afterPath="$PROJECT_DIR$/Config/DefaultGameplayTags.ini" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/Assets/Enemies/Ghoul/SK_Ghoul.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/Assets/Enemies/Ghoul/SK_Ghoul.uasset" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/GamePlayAbility/EnemyAttack/My_GA_MeleeAttack.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/GamePlayAbility/EnemyAttack/My_GA_MeleeAttack.uasset" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/Character/Goblin/BP_Goblin.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/Character/Goblin/BP_Goblin.uasset" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/UI/FloatingText/My_WBP_DamageText.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/UI/FloatingText/My_WBP_DamageText.uasset" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Content/MyMap/MyMap.umap" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyMap/MyMap.umap" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/Aura/Private/My_AuraGamePlayTags_Singleton.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Private/My_AuraGamePlayTags_Singleton.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Source/Aura/Private/MY_AbilitySystem/Ability/My_AuraProjectileSpell.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Private/MY_AbilitySystem/Ability/My_AuraProjectileSpell.cpp" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Source/Aura/Private/My_Character/MyCharacter_Base.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Private/My_Character/MyCharacter_Base.cpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/Aura/Public/My_AuraGamePlayTags_Singleton.h" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Public/My_AuraGamePlayTags_Singleton.h" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Source/Aura/Public/My_Character/MyCharacter_Base.h" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Public/My_Character/MyCharacter_Base.h" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Source/Aura/Public/My_Interraction/My_CombatInterface.h" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Public/My_Interraction/My_CombatInterface.h" afterDir="false" />
     </list>
@@ -217,7 +215,7 @@
       <workItem from="1761003111841" duration="3430000" />
       <workItem from="1761010305231" duration="9763000" />
       <workItem from="1761203740763" duration="13368000" />
-      <workItem from="1761271861603" duration="2213000" />
+      <workItem from="1761271861603" duration="4638000" />
     </task>
     <servers />
   </component>
