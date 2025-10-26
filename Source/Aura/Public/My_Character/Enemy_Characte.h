@@ -49,7 +49,7 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "My_Combat")
 	bool bHitReacting = false;
 
-	UPROPERTY(BlueprintReadOnly, Category = "My_Combat")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "My_Combat")
 	float BaseWalkSpeed = 250.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "My_Combat")

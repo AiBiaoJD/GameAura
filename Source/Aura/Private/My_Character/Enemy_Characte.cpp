@@ -146,7 +146,6 @@ void AEnemy_Characte::HitReatTagChanged(const FGameplayTag Tag, int32 NewCount)
 	bHitReacting = NewCount > 0;
 	GetCharacterMovement()->MaxWalkSpeed = bHitReacting ? 0.f : BaseWalkSpeed;
 	
-	//BUG::在client模式下，Aura火球攻击敌人AuraAIController == Nullptr
 	if (AuraAIController&&AuraAIController->GetBlackboardComponent())
 	{
 		AuraAIController->GetBlackboardComponent()->SetValueAsBool(FName("HitReacting"), bHitReacting);
