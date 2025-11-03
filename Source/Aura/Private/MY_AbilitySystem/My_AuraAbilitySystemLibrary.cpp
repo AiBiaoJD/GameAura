@@ -145,7 +145,22 @@ void UMy_AuraAbilitySystemLibrary::GetLivePlayersWithRadius(const UObject* World
 		{
 			if (Overlap.GetActor()->Implements<UMy_CombatInterface>() && !IMy_CombatInterface::Execute_IsDead(Overlap.GetActor()))
 			{
-				OutOverLappingActors.Add(IMy_CombatInterface::Execute_GetAvatar(Overlap.GetActor()));
+				AActor* Avatar = IMy_CombatInterface::Execute_GetAvatar(Overlap.GetActor());
+				UE_LOG(LogTemp, Warning, TEXT("------------1------------"));
+
+				// 关键：添加去重检查
+				if (Avatar && !OutOverLappingActors.Contains(Avatar))
+				{
+					OutOverLappingActors.Add(Avatar);
+					UE_LOG(LogTemp, Warning, TEXT("Add new Character: %s"), *Avatar->GetName());
+				}
+				else if (Avatar)
+				{
+					UE_LOG(LogTemp, Warning, TEXT("Ignore same Character: %s"), *Avatar->GetName());
+				}
+
+				UE_LOG(LogTemp, Warning, TEXT("------------2------------"));
+
 			}
 		}
 	}
