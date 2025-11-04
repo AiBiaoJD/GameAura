@@ -9,14 +9,16 @@
   <component name="ChangeListManager">
     <list default="true" id="e1b54914-3a26-404a-9b44-73a4632e1fe2" name="更改" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/.idea.Aura.dir/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/.idea.Aura.dir/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/AI/BehaviorTree/My_BT_EnemyBehaviorTree.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/AI/BehaviorTree/My_BT_EnemyBehaviorTree.uasset" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/Assets/Enemies/Ghoul/Materials/M_Ghoul.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/Assets/Enemies/Ghoul/Materials/M_Ghoul.uasset" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/GamePlayAbility/EnemyAttack/My_GA_MeleeAttack.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/GamePlayAbility/EnemyAttack/My_GA_MeleeAttack.uasset" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/GamePlayEffects/DefaultAttributeSet/Aura/My_GE_SecondAttribute_Aura.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/GamePlayEffects/DefaultAttributeSet/Aura/My_GE_SecondAttribute_Aura.uasset" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/GamePlayEffects/DefaultAttributeSet/My_GE_SecondAttribute_Enemy.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/GamePlayEffects/DefaultAttributeSet/My_GE_SecondAttribute_Enemy.uasset" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/Character/Ghoul/My_BP_Ghoul.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/Character/Ghoul/My_BP_Ghoul.uasset" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/Character/Goblin/BP_Goblin.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/Character/Goblin/BP_Goblin.uasset" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/Character/Goblin2/BP_Goblin2.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/Character/Goblin2/BP_Goblin2.uasset" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/Character/MY_BP_EnemyBase.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/Character/MY_BP_EnemyBase.uasset" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Content/MyMap/MyMap.umap" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyMap/MyMap.umap" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/Aura/Private/MY_AbilitySystem/ExeCalc/My_ExeCalc_Damage.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Private/MY_AbilitySystem/ExeCalc/My_ExeCalc_Damage.cpp" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Source/Aura/Private/MY_AbilitySystem/My_AuraAbilitySystemLibrary.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Private/MY_AbilitySystem/My_AuraAbilitySystemLibrary.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Source/Aura/Public/MY_AbilitySystem/My_AuraAbilitySystemLibrary.h" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Public/MY_AbilitySystem/My_AuraAbilitySystemLibrary.h" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -220,7 +222,8 @@
       <workItem from="1761440930429" duration="7127000" />
       <workItem from="1761621403655" duration="782000" />
       <workItem from="1762078036481" duration="1199000" />
-      <workItem from="1762138770461" duration="9066000" />
+      <workItem from="1762138770461" duration="11342000" />
+      <workItem from="1762229304545" duration="3260000" />
     </task>
     <servers />
   </component>
