@@ -83,6 +83,7 @@ void UMy_ExeCalc_Damage::Execute_Implementation(const FGameplayEffectCustomExecu
 	// ===== 获取所有相关属性 =====
 	// 基础伤害值
 	float Damage = 0.f;
+	
 
 	// 防御方属性
 	float TargetBlockChance = 0.f; // 格挡几率
@@ -137,6 +138,7 @@ void UMy_ExeCalc_Damage::Execute_Implementation(const FGameplayEffectCustomExecu
 	// 1. 抗性计算
 	for (auto Pair : FMy_AuraGameplayTags::GetInstance().DamageToResistance)
 	{
+		// 从这里获取之前设置的 Set By Caller 数值
 		float DamageValue = Spec.GetSetByCallerMagnitude(Pair.Key);
 		float ResistanceValue = 0.f;
 		if (Pair.Value == FMy_AuraGameplayTags::GetInstance().My_Attribute_Secondary_Resistance_Fire)

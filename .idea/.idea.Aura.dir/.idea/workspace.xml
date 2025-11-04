@@ -8,17 +8,40 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="e1b54914-3a26-404a-9b44-73a4632e1fe2" name="更改" comment="">
+      <change afterPath="$PROJECT_DIR$/Content/Assets/Enemies/Goblin/Animations/Slingshot/My_AM_Attack_Goblin_SlingShot.uasset" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/Aura/Effect/My_GE_CauseDamage.uasset" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/Data/My_CT_AbilityDamage.uasset" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/Enemy/Ability/My_BP_RockProjectile.uasset" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/Enemy/Ability/My_GA_RangerAttack.uasset" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/Enemy/Effect/BaseAttribute/CurveTable/My_CT_PrimaryAttribute_Elementalist.uasset" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/Enemy/Effect/BaseAttribute/CurveTable/My_CT_PrimaryAttribute_Ranger.uasset" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/Enemy/Effect/My_GE_HitReact.uasset" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/.idea.Aura.dir/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/.idea.Aura.dir/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/Assets/Enemies/Ghoul/Materials/M_Ghoul.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/Assets/Enemies/Ghoul/Materials/M_Ghoul.uasset" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/GamePlayAbility/EnemyAttack/My_GA_MeleeAttack.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/GamePlayAbility/EnemyAttack/My_GA_MeleeAttack.uasset" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/GamePlayEffects/DefaultAttributeSet/My_GE_SecondAttribute_Enemy.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/GamePlayEffects/DefaultAttributeSet/My_GE_SecondAttribute_Enemy.uasset" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/Character/Ghoul/My_BP_Ghoul.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/Character/Ghoul/My_BP_Ghoul.uasset" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/Assets/Enemies/Goblin/Animations/Spear/My_AM_AttackGoblinSpear.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/Assets/Enemies/Goblin/Animations/Spear/My_AM_AttackGoblin_Spear.uasset" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/Assets/Enemies/Goblin/Slingshot/Centered/SK_Slingshot.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/Assets/Enemies/Goblin/Slingshot/Centered/SK_Slingshot.uasset" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/Data/My_DA_CharacterClassInfo.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/Data/My_DA_CharacterClassInfo.uasset" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/GamePlayAbility/AuraDamage/My_BP_FireBoltActor.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/Aura/Ability/My_BP_FireBoltActor.uasset" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/GamePlayAbility/AuraDamage/My_CT_AbilityDamage.uasset" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/GamePlayAbility/AuraDamage/My_GA_FireSpell.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/Aura/Ability/My_GA_FireSpell.uasset" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/GamePlayAbility/EnemyAttack/My_GA_MeleeAttack.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/Enemy/Ability/My_GA_MeleeAttack.uasset" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/GamePlayAbility/EnemyHitReact/My_GA_HitReact.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/Enemy/Ability/My_GA_HitReact.uasset" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/GamePlayEffects/DefaultAttributeSet/Aura/My_GE_AuraPrimaryAttribute.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/Aura/Effect/My_GE_PrimaryAttribute_Aura.uasset" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/GamePlayEffects/DefaultAttributeSet/Aura/My_GE_SecondAttribute_Aura.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/Aura/Effect/My_GE_SecondAttribute_Aura.uasset" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/GamePlayEffects/DefaultAttributeSet/Enemy/CurveTable/My_CT_PrimaryAttribute_Elementalist.uasset" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/GamePlayEffects/DefaultAttributeSet/Enemy/CurveTable/My_CT_PrimaryAttribute_Ranger.uasset" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/GamePlayEffects/DefaultAttributeSet/Enemy/CurveTable/My_CT_PrimaryAttributes_Worrior.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/Enemy/Effect/BaseAttribute/CurveTable/My_CT_PrimaryAttributes_Worrior.uasset" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/GamePlayEffects/DefaultAttributeSet/Enemy/My_GE_PrimaryAttribute_Elementalist.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/Enemy/Effect/BaseAttribute/My_GE_PrimaryAttribute_Elementalist.uasset" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/GamePlayEffects/DefaultAttributeSet/Enemy/My_GE_PrimaryAttribute_Ranger.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/Enemy/Effect/BaseAttribute/My_GE_PrimaryAttribute_Ranger.uasset" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/GamePlayEffects/DefaultAttributeSet/Enemy/My_GE_PrimaryAttribute_Worrior.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/Enemy/Effect/BaseAttribute/My_GE_PrimaryAttribute_Worrior.uasset" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/GamePlayEffects/DefaultAttributeSet/My_GE_SecondAttribute_Enemy.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/Enemy/Effect/BaseAttribute/My_GE_SecondAttribute_Enemy.uasset" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/GamePlayEffects/DefaultAttributeSet/My_GE_Vitale.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/Enemy/Effect/BaseAttribute/My_GE_Vitale_Enemy.uasset" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/GamePlayEffects/My_GE_CauseDamage.uasset" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/GamePlayEffects/My_GE_HitReact.uasset" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/Character/Aura/My_BP_Aura.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/Character/Aura/My_BP_Aura.uasset" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/Character/Goblin/BP_Goblin.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/Character/Goblin/BP_Goblin.uasset" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/Character/Goblin2/BP_Goblin2.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/Character/Goblin2/BP_Goblin2.uasset" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/Character/MY_BP_EnemyBase.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/Character/MY_BP_EnemyBase.uasset" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Content/MyMap/MyMap.umap" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyMap/MyMap.umap" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/Aura/Private/MY_AbilitySystem/My_AuraAbilitySystemLibrary.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Private/MY_AbilitySystem/My_AuraAbilitySystemLibrary.cpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/Aura/Public/MY_AbilitySystem/My_AuraAbilitySystemLibrary.h" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Public/MY_AbilitySystem/My_AuraAbilitySystemLibrary.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Source/Aura/Private/MY_AbilitySystem/ExeCalc/My_ExeCalc_Damage.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Private/MY_AbilitySystem/ExeCalc/My_ExeCalc_Damage.cpp" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -223,7 +246,7 @@
       <workItem from="1761621403655" duration="782000" />
       <workItem from="1762078036481" duration="1199000" />
       <workItem from="1762138770461" duration="11342000" />
-      <workItem from="1762229304545" duration="3260000" />
+      <workItem from="1762229304545" duration="13100000" />
     </task>
     <servers />
   </component>
