@@ -9,6 +9,7 @@
 #include "Aura/Aura.h"
 #include "Components/AudioComponent.h"
 #include "Kismet/GameplayStatics.h"
+#include "MY_AbilitySystem/My_AuraAbilitySystemLibrary.h"
 
 AMy_ProjectileActor::AMy_ProjectileActor()
 {
@@ -60,6 +61,8 @@ void AMy_ProjectileActor::OnSphereOverlap(UPrimitiveComponent* OverlappedCompone
 
 	if (DamageEffectSpecHandle.Data.Get()->GetContext().GetEffectCauser() == OtherActor) return;
 
+	if (!UMy_AuraAbilitySystemLibrary::IsNotFriend(DamageEffectSpecHandle.Data.Get()->GetContext().GetEffectCauser(), OtherActor)) return;
+	
 	MulticastPlayImpactEffects();
 
 	// 激活Effect,只能在服务器修改Attribute,Replicate Attribute到客户端

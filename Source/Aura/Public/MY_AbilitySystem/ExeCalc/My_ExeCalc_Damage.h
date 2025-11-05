@@ -1,6 +1,6 @@
 // Copyright ABiao
 
-#pragma once
+#pragma once 
 
 #include "CoreMinimal.h"
 #include "GameplayEffectExecutionCalculation.h"
