@@ -9,15 +9,10 @@
   <component name="ChangeListManager">
     <list default="true" id="e1b54914-3a26-404a-9b44-73a4632e1fe2" name="更改" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/.idea.Aura.dir/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/.idea.Aura.dir/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/Assets/Enemies/Goblin/Animations/Slingshot/My_AM_Attack_Goblin_SlingShot.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/Assets/Enemies/Goblin/Animations/Slingshot/My_AM_Attack_Goblin_SlingShot.uasset" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/Assets/Enemies/Goblin/Slingshot/Materials/SlingshotRock/M_SlingshotRock.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/Assets/Enemies/Goblin/Slingshot/Materials/SlingshotRock/M_SlingshotRock.uasset" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/Aura/Ability/My_GA_FireSpell.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/Aura/Ability/My_GA_FireSpell.uasset" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/Enemy/Ability/My_BP_RockProjectile.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/Enemy/Ability/My_BP_RockProjectile.uasset" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/Enemy/Ability/My_GA_MeleeAttack.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/Enemy/Ability/My_GA_MeleeAttack.uasset" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/Enemy/Ability/My_GA_RangerAttack.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/Enemy/Ability/My_GA_RangerAttack.uasset" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/MyMap/EQS_TestMap.umap" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyMap/EQS_TestMap.umap" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/Aura/Private/My_AbilityActor/My_ProjectileActor.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Private/My_AbilityActor/My_ProjectileActor.cpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/Aura/Public/MY_AbilitySystem/ExeCalc/My_ExeCalc_Damage.h" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Public/MY_AbilitySystem/ExeCalc/My_ExeCalc_Damage.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/Assets/Enemies/Goblin/SK_Goblin.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/Assets/Enemies/Goblin/SK_Goblin.uasset" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/Character/Goblin2/BP_Goblin2.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/Character/Goblin2/BP_Goblin2.uasset" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/Character/Goblin2/MY_ABP_Goblin2.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/Character/Goblin2/MY_ABP_Goblin2.uasset" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/MyMap/MyMap.umap" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyMap/MyMap.umap" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -223,7 +218,7 @@
       <workItem from="1762078036481" duration="1199000" />
       <workItem from="1762138770461" duration="11342000" />
       <workItem from="1762229304545" duration="14070000" />
-      <workItem from="1762323283771" duration="5639000" />
+      <workItem from="1762323283771" duration="6758000" />
     </task>
     <servers />
   </component>
