@@ -36,11 +36,12 @@ public:
 
 	UPROPERTY(EditAnywhere, Category = "My_Combat")
 	TArray<FMy_TaggedMontage> AttackMontage;
+
 protected:
 	virtual void BeginPlay() override;
 
 	//´´½¨ÎäÆ÷
-	UPROPERTY(EditAnywhere, Category = "My_Combat")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "My_Combat")
 	TObjectPtr<USkeletalMeshComponent> Weapon;
 	UPROPERTY(EditAnywhere, Category = "My_Combat")
 	FName WeaponTipSockName;

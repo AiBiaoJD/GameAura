@@ -38,7 +38,7 @@ protected:
 
 private:
 	UPROPERTY(EditDefaultsOnly)
-	float LifeSpan = 15.f;
+	float LifeSpan = 8.f;
 
 	UPROPERTY(VisibleAnywhere)
 	TObjectPtr<USphereComponent> Sphere;
