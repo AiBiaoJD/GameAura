@@ -8,7 +8,22 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="e1b54914-3a26-404a-9b44-73a4632e1fe2" name="更改" comment="">
-      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/Character/Goblin2/MY_ABP_Goblin2.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/Character/Goblin2/MY_ABP_Goblin2.uasset" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/.idea.Aura.dir/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/.idea.Aura.dir/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/Assets/Enemies/Goblin/Animations/Slingshot/My_AM_Attack_Goblin_SlingShot.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/Assets/Enemies/Goblin/Animations/Slingshot/My_AM_Attack_Goblin_SlingShot.uasset" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/Assets/Enemies/Shaman/SKM_Shaman.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/Assets/Enemies/Shaman/SKM_Shaman.uasset" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/Assets/Enemies/Shaman/SK_Shaman.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/Assets/Enemies/Shaman/SK_Shaman.uasset" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/Assets/Enemies/Shaman/ShamanStaff/SM_ShamanStaff.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/Assets/Enemies/Shaman/ShamanStaff/SM_ShamanStaff.uasset" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/Aura/Ability/My_BP_FireBoltActor.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/Aura/Ability/My_BP_FireBoltActor.uasset" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/Data/My_CT_AbilityDamage.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/Data/My_CT_AbilityDamage.uasset" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/Data/My_DA_CharacterClassInfo.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/Data/My_DA_CharacterClassInfo.uasset" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/Character/Ghoul/My_BP_Ghoul.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/Character/Ghoul/My_BP_Ghoul.uasset" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/Character/Goblin/BP_Goblin.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/Character/Goblin/BP_Goblin.uasset" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/Character/Goblin2/BP_Goblin2.uasset" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/Character/Goblin2/MY_ABP_Goblin2.uasset" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/Character/Goblin2/My_ABP_SlingShot.uasset" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/Character/Goblin2/My_BP_Goblin2.uasset" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/Character/MY_BP_EnemyBase.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/Character/MY_BP_EnemyBase.uasset" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/MyMap/MyMap.umap" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyMap/MyMap.umap" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -214,7 +229,9 @@
       <workItem from="1762078036481" duration="1199000" />
       <workItem from="1762138770461" duration="11342000" />
       <workItem from="1762229304545" duration="14070000" />
-      <workItem from="1762323283771" duration="11493000" />
+      <workItem from="1762323283771" duration="11764000" />
+      <workItem from="1762594088830" duration="3364000" />
+      <workItem from="1762614129783" duration="3536000" />
     </task>
     <servers />
   </component>
