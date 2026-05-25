@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx skills *)",
+      "WebFetch(domain:www.bilibili.com)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "Bash(npx skills@latest *)",
+      "Bash(claude plugin *)",
+      "WebFetch(domain:skills.sh)",
+      "Bash(start *)",
+      "Bash(echo *)",
+      "Bash(xargs wc -l)",
+      "Bash(xargs grep -l 'class ')",
+      "Bash(xargs grep -c '#include')",
+      "Bash(sort -t: -k2 -rn)",
+      "Bash(awk 'NR>1 && NR<=11 {printf \"%5d lines  %s\\\\n\", $1, $2}')",
+      "Bash(xargs grep -l 'DECLARE_DYNAMIC_MULTICAST_DELEGATE\\\\|DECLARE_DYNAMIC_DELEGATE\\\\|DECLARE_DELEGATE')",
+      "Bash(xargs -I{} basename {})",
+      "Bash(awk 'NR>1 && NR<=11 {printf \"%5d  %s\\\\n\", $1, $2}')",
+      "WebFetch(domain:blog.csdn.net)",
+      "WebFetch(domain:www.gamestudy.top)",
+      "Bash(mkdir -p __TRACKED_VAR__/.claude/skills)",
+      "Bash(cp -r 'D:/UE5 Project/GameplayAbilitySystem_Aura-main/.agents/skills/*' __TRACKED_VAR__/.claude/skills/)",
+      "Bash(where gitkraken *)",
+      "Read(//c/Program Files/**)",
+      "Read(//c/Users/79467/AppData/Local/gitkraken/**)",
+      "Read(//c/Users/79467/AppData/Roaming/GitKraken/**)",
+      "Bash(reg query *)"
+    ]
+  }
+}

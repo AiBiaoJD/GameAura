@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aura 项目文件依赖关系图</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+  :root {
+    --bg: #f8f9fa;
+    --card-bg: #ffffff;
+    --text: #333333;
+    --accent: #2563eb;
+    --border: #dee2e6;
+    --header-bg: #e8f0fe;
+    --tag-bg: #f0f4ff;
+    --btn-bg: #2563eb;
+    --btn-hover: #1d4ed8;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+  }
+  header {
+    background: #fff;
+    padding: 32px 24px;
+    text-align: center;
+    border-bottom: 1px solid var(--border);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+    margin-bottom: 24px;
+  }
+  header h1 { font-size: 1.8em; color: #1a1a1a; margin-bottom: 6px; }
+  header p { color: #666; font-size: 0.95em; }
+  .container { max-width: 1300px; margin: 0 auto; padding: 0 20px 40px; }
+
+  .diagram-card {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin: 20px 0;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+  .diagram-card .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 20px;
+    background: #fafbfc;
+    border-bottom: 1px solid var(--border);
+  }
+  .diagram-card .header h2 {
+    font-size: 1.05em;
+    font-weight: 600;
+    color: #1a1a1a;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .diagram-card .header h2 .num {
+    background: var(--accent);
+    color: #fff;
+    border-radius: 50%;
+    width: 26px;
+    height: 26px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.8em;
+    flex-shrink: 0;
+  }
+  .diagram-card .desc {
+    padding: 8px 20px;
+    color: #666;
+    font-size: 0.85em;
+    background: #fefefe;
+    border-bottom: 1px solid #f0f0f0;
+  }
+  .diagram-card .mermaid-wrap {
+    padding: 16px 12px;
+    display: flex;
+    justify-content: center;
+    overflow-x: auto;
+    background: #fff;
+  }
+  .btn-download {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 6px 14px;
+    background: var(--btn-bg);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.82em;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.2s;
+  }
+  .btn-download:hover { background: var(--btn-hover); }
+
+  .toc {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 24px;
+    margin-bottom: 24px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+  .toc h3 { color: var(--accent); font-size: 0.95em; margin-bottom: 10px; }
+  .toc .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 4px; }
+  .toc a { color: #444; text-decoration: none; padding: 4px 8px; border-radius: 4px; font-size: 0.88em; display: block; }
+  .toc a:hover { background: var(--tag-bg); color: var(--accent); }
+
+  svg { max-width: 100%; height: auto; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Aura — UE5 GameplayAbilitySystem 项目文件依赖关系</h1>
+  <p>展示 C++ 源文件之间的 include / 引用 / 继承 / 组合关系 · 点击右上角按钮下载 SVG 图片</p>
+</header>
+
+<div class="container">
+
+<div class="toc">
+  <h3>目录</h3>
+  <div class="grid">
+    <a href="#d1">1. 角色系统 — Character 文件依赖</a>
+    <a href="#d2">2. 技能系统 — Ability 继承与引用链</a>
+    <a href="#d3">3. GAS 核心 — ASC / AttributeSet / Globals 关联</a>
+    <a href="#d4">4. UI 系统 — HUD → WidgetController → Widget 数据流</a>
+    <a href="#d5">5. Actor / 投射物 — 场景对象依赖</a>
+    <a href="#d6">6. 玩家系统 — PlayerController / PlayerState 依赖</a>
+    <a href="#d7">7. 伤害计算 — EffectContext → ExecCalc → AttributeSet</a>
+    <a href="#d8">8. AI 系统 — AIController 与行为树</a>
+    <a href="#d9">9. 接口 — 5 个 Interface 的实现关系</a>
+    <a href="#d10">10. 数据资产 — DataAsset 生产与消费</a>
+    <a href="#d11">11. 跨模块 — Public/ 目录整体依赖总图</a>
+  </div>
+</div>
+
+<!-- Diagram 1: Character System -->
+<div class="diagram-card" id="d1">
+  <div class="header">
+    <h2><span class="num">1</span> 角色系统 — Character 文件依赖</h2>
+    <button class="btn-download" onclick="downloadSVG(this)" title="下载 SVG 图片">下载 SVG</button>
+  </div>
+  <div class="desc">
+    <b>核心文件：</b>Character/AuraCharacterBase.h · Character/AuraCharacter.h · Character/AuraEnemy.h<br>
+    <b>说明：</b>AuraCharacterBase 是玩家和敌人的共同基类，持有 ASC、AttributeSet、Niagara 特效组件的指针。
+  </div>
+  <div class="mermaid-wrap">
+<div class="mermaid">
+graph TD
+    subgraph UE5["UE5 引擎类"]
+        ACharacter["ACharacter<br/>UE5 原生角色"]
+        IAbilityInterface["IAbilitySystemInterface<br/>UE5 GAS 接口"]
+    end
+
+    subgraph CharDir["Source/Aura/Public/Character/"]
+        AuraCharBase["<b>AuraCharacterBase.h</b><br/>AAuraCharacterBase<br/>├─ UAbilitySystemComponent*<br/>├─ UAttributeSet*<br/>├─ ANiagaraComponent* ×5"]
+        AuraChar["<b>AuraCharacter.h</b><br/>AAuraCharacter<br/>├─ UCameraComponent*<br/>├─ USpringArmComponent*<br/>└─ 经验/等级/属性点"]
+        AuraEnemy["<b>AuraEnemy.h</b><br/>AAuraEnemy<br/>├─ UWidgetComponent* 血条<br/>├─ UBehaviorTree*<br/>└─ 掉落/存活时间"]
+    end
+
+    subgraph Interfaces["Source/Aura/Public/Interaction/"]
+        ICombat["<b>CombatInterface.h</b><br/>ICombatInterface<br/>GetCombatSocketLocation()<br/>GetPlayerLevel()<br/>Die()"]
+        IPlayer["<b>PlayerInterface.h</b><br/>IPlayerInterface<br/>AddToXP()<br/>LevelUp()<br/>ShowMagicCircle()"]
+        IEnemy["<b>EnemyInterface.h</b><br/>IEnemyInterface<br/>SetCombatTarget()<br/>GetCombatTarget()"]
+        IHighlight["<b>HighlightInterface.h</b><br/>IHighlightInterface<br/>HighlightActor()<br/>UnHighlightActor()"]
+    end
+
+    subgraph OtherDeps["其他依赖文件"]
+        DebuffNC["AbilitySystem/Debuff/<br/><b>DebuffNiagaraComponent.h</b>"]
+        PassiveNC["AbilitySystem/Passive/<br/><b>PassiveNiagaraComponent.h</b>"]
+        AICtrlFile["AI/<b>AuraAIController.h</b>"]
+    end
+
+    ACharacter -->|"public 继承"| AuraCharBase
+    IAbilityInterface -->|"public 实现"| AuraCharBase
+    ICombat -->|"public 实现"| AuraCharBase
+
+    AuraCharBase -->|"public 继承"| AuraChar
+    AuraCharBase -->|"public 继承"| AuraEnemy
+
+    IPlayer -->|"public 实现"| AuraChar
+    IEnemy -->|"public 实现"| AuraEnemy
+    IHighlight -->|"public 实现"| AuraEnemy
+
+    DebuffNC -.->|"#include 成员变量"| AuraCharBase
+    PassiveNC -.->|"#include 成员变量"| AuraCharBase
+    AICtrlFile -.->|"#include SpawnDefaultController"| AuraEnemy
+</div>
+  </div>
+</div>
+
+<!-- Diagram 2: Ability System -->
+<div class="diagram-card" id="d2">
+  <div class="header">
+    <h2><span class="num">2</span> 技能系统 — Ability 继承与引用链</h2>
+    <button class="btn-download" onclick="downloadSVG(this)" title="下载 SVG 图片">下载 SVG</button>
+  </div>
+  <div class="desc">
+    <b>核心文件：</b>Abilities/ 目录下 10 个技能类<br>
+    <b>说明：</b>从 UGameplayAbility → UAuraGameplayAbility → UAuraDamageGameplayAbility → 具体技能，每层增加功能。
+  </div>
+  <div class="mermaid-wrap">
+<div class="mermaid">
+graph TD
+    subgraph UE5_GA["UE5 GAS 基类"]
+        UGA["UGameplayAbility<br/>引擎原生"]
+    end
+
+    subgraph BaseLayer["Abilities/ 基础层"]
+        AuraGA["<b>AuraGameplayAbility.h</b><br/>UAuraGameplayAbility<br/>+StartupInputTag<br/>+GetDescription()<br/>+GetManaCost()<br/>+GetCooldown()"]
+    end
+
+    subgraph DamageLayer["Abilities/ 伤害技能层"]
+        DmgGA["<b>AuraDamageGameplayAbility.h</b><br/>UAuraDamageGameplayAbility<br/>+DamageEffectClass<br/>+DamageType + Damage 数值<br/>+Debuff参数<br/>+DeathImpulse/Knockback<br/>+CauseDamage()"]
+    end
+
+    subgraph ConcreteAbilities["Abilities/ 具体技能实现"]
+        Projectile["<b>AuraProjectileSpell.h</b><br/>UAuraProjectileSpell<br/>+ProjectileClass<br/>+SpawnProjectile()"]
+        Melee["<b>AuraMeleeAttack.h</b><br/>UAuraMeleeAttack"]
+        Beam["<b>AuraBeamSpell.h</b><br/>UAuraBeamSpell<br/>+MouseHitTarget<br/>+MaxNumShockTargets"]
+        FireBlast["<b>AuraFireBlast.h</b><br/>UAuraFireBlast<br/>+FireBallClass<br/>+SpawnFireBalls()"]
+        Arcane["<b>ArcaneShards.h</b><br/>UArcaneShards<br/>+MaxNumShards"]
+        Passive["<b>AuraPassiveAbility.h</b><br/>UAuraPassiveAbility"]
+        Summon["<b>AuraSummonAbility.h</b><br/>UAuraSummonAbility<br/>+NumMinions<br/>+MinionClasses[]"]
+    end
+
+    subgraph LeafAbilities["Abilities/ 叶子技能"]
+        FireBolt["<b>AuraFireBolt.h</b><br/>UAuraFireBolt<br/>+弹幕扩散参数<br/>+追踪加速度"]
+        Electrocute["<b>Electrocute.h</b><br/>UElectrocute<br/>+覆盖描述"]
+    end
+
+    subgraph Deps["依赖的其他文件"]
+        ProjectileActor["Actor/<b>AuraProjectile.h</b><br/>AAuraProjectile"]
+        FireBallActor["Actor/<b>AuraFireBall.h</b><br/>AAuraFireBall"]
+        AbilityTypes["<b>AuraAbilityTypes.h</b><br/>FDamageEffectParams<br/>FAuraGameplayEffectContext"]
+    end
+
+    UGA -->|"public 继承"| AuraGA
+    AuraGA -->|"public 继承"| DmgGA
+    AuraGA -->|"public 继承"| Passive
+    AuraGA -->|"public 继承"| Summon
+
+    DmgGA -->|"public 继承"| Projectile
+    DmgGA -->|"public 继承"| Melee
+    DmgGA -->|"public 继承"| Beam
+    DmgGA -->|"public 继承"| FireBlast
+    DmgGA -->|"public 继承"| Arcane
+
+    Projectile -->|"public 继承"| FireBolt
+    Beam -->|"public 继承"| Electrocute
+
+    Projectile -.->|"TSubclassOf 引用"| ProjectileActor
+    FireBlast -.->|"TSubclassOf 引用"| FireBallActor
+    DmgGA -.->|"#include 参数结构体"| AbilityTypes
+</div>
+  </div>
+</div>
+
+<!-- Diagram 3: GAS Core -->
+<div class="diagram-card" id="d3">
+  <div class="header">
+    <h2><span class="num">3</span> GAS 核心 — ASC / AttributeSet / Globals 关联</h2>
+    <button class="btn-download" onclick="downloadSVG(this)" title="下载 SVG 图片">下载 SVG</button>
+  </div>
+  <div class="desc">
+    <b>核心文件：</b>AbilitySystem/AuraAbilitySystemComponent.h · AuraAttributeSet.h · AuraAbilitySystemGlobals.h · AuraAbilitySystemLibrary.h<br>
+    <b>说明：</b>这四个文件构成 GAS 核心，ASC 管理技能授予/激活，AttributeSet 存储属性，Globals 自定义 EffectContext。
+  </div>
+  <div class="mermaid-wrap">
+<div class="mermaid">
+graph TB
+    subgraph GASFiles["Source/Aura/Public/AbilitySystem/"]
+
+        ASC["<b>AuraAbilitySystemComponent.h</b><br/>UAuraAbilitySystemComponent<br/>: UAbilitySystemComponent<br/><br/>功能：<br/>· 授予能力<br/>· 输入标签→技能映射<br/>· 能力状态/装备委托<br/>· 法术点管理"]
+
+        AttrSet["<b>AuraAttributeSet.h</b><br/>UAuraAttributeSet<br/>: UAttributeSet<br/><br/>属性(20+)：<br/>· 主要: Strength/Intelligence/Resilience/Vigor<br/>· 次要: Armor/BlockChance/Critical...<br/>· 重要: Health/Mana<br/>· 抗性: Fire/Lightning/Arcane/Physical"]
+
+        Globals["<b>AuraAbilitySystemGlobals.h</b><br/>UAuraAbilitySystemGlobals<br/>: UAbilitySystemGlobals<br/><br/>覆盖：<br/>· AllocGameplayEffectContext()<br/>→ 返回 FAuraGameplayEffectContext"]
+
+        Library["<b>AuraAbilitySystemLibrary.h</b><br/>UAuraAbilitySystemLibrary<br/>: UBlueprintFunctionLibrary<br/><br/>静态工具方法：<br/>· 获取 WidgetController<br/>· 初始化角色属性<br/>· 赋予初始技能<br/>· 获取 DataAsset<br/>· 半径内存活玩家"]
+
+        AbilityTypes["<b>AuraAbilityTypes.h</b><br/>FAuraGameplayEffectContext<br/>: FGameplayEffectContext<br/>FDamageEffectParams<br/><br/>网络序列化额外数据：<br/>· bIsBlockedHit<br/>· bIsCriticalHit<br/>· bIsSuccessfulDebuff<br/>· DebuffDamage/Duration/Freq"]
+    end
+
+    subgraph CalcFiles["AbilitySystem/ExecCalc & ModMagCalc"]
+        ExecCalc["<b>ExecCalc_Damage.h</b><br/>UExecCalc_Damage<br/>: UGameplayEffectExecutionCalculation"]
+        MMC_Health["<b>MMC_MaxHealth.h</b><br/>UMMC_MaxHealth<br/>: UGameplayModMagnitudeCalculation"]
+        MMC_Mana["<b>MMC_MaxMana.h</b><br/>UMMC_MaxMana<br/>: UGameplayModMagnitudeCalculation"]
+    end
+
+    subgraph TaskFiles["AbilitySystem/AbilityTasks & AsyncTasks"]
+        TaskMouse["<b>TargetDataUnderMouse.h</b><br/>UTargetDataUnderMouse<br/>: UAbilityTask"]
+        AsyncCD["<b>WaitCooldownChange.h</b><br/>UWaitCooldownChange<br/>: UBlueprintAsyncActionBase"]
+    end
+
+    ASC -->|"管理 AttributeSet"| AttrSet
+    ASC -->|"引用 AbilityTypes"| AbilityTypes
+    Globals -->|"创建"| AbilityTypes
+    Library -->|"操作"| ASC
+    Library -->|"操作"| AttrSet
+
+    ExecCalc -->|"捕获属性"| AttrSet
+    MMC_Health -->|"捕获 Vigor → MaxHealth"| AttrSet
+    MMC_Mana -->|"捕获 Intelligence → MaxMana"| AttrSet
+
+    ASC -.->|"使用"| TaskMouse
+    ASC -.->|"使用"| AsyncCD
+
+    Library -.->|"获取"| ExecCalc
+</div>
+  </div>
+</div>
+
+<!-- Diagram 4: UI System -->
+<div class="diagram-card" id="d4">
+  <div class="header">
+    <h2><span class="num">4</span> UI 系统 — HUD → WidgetController → Widget 数据流</h2>
+    <button class="btn-download" onclick="downloadSVG(this)" title="下载 SVG 图片">下载 SVG</button>
+  </div>
+  <div class="desc">
+    <b>核心文件：</b>UI/HUD/AuraHUD.h · UI/WidgetController/*.h · UI/Widget/*.h · UI/ViewModel/*.h<br>
+    <b>说明：</b>HUD 创建 WidgetController，WidgetController 绑定数据源（ASC/AttributeSet/PlayerState），驱动 Widget 更新。
+  </div>
+  <div class="mermaid-wrap">
+<div class="mermaid">
+graph LR
+    subgraph DataSources["数据源 (非UI文件)"]
+        ASC["AbilitySystem/<br/><b>AuraAbilitySystemComponent.h</b>"]
+        AttrSet["AbilitySystem/<br/><b>AuraAttributeSet.h</b>"]
+        PState["Player/<br/><b>AuraPlayerState.h</b><br/>XP/Level/Points"]
+        PController["Player/<br/><b>AuraPlayerController.h</b>"]
+    end
+
+    subgraph HUDLayer["UI/HUD/"]
+        AuraHUD["<b>AuraHUD.h</b><br/>AAuraHUD : AHUD<br/><br/>持有：<br/>· OverlayWidgetController*<br/>· AttributeMenuWidgetController*<br/>· SpellMenuWidgetController*<br/>· UUserWidget* OverlayWidget"]
+        LoadHUD["<b>LoadScreenHUD.h</b><br/>ALoadScreenHUD : AHUD<br/><br/>持有：<br/>· LoadScreenWidget<br/>· LoadScreenViewModel"]
+    end
+
+    subgraph WCLayer["UI/WidgetController/"]
+        BaseWC["<b>AuraWidgetController.h</b><br/>UAuraWidgetController<br/>FWidgeControllerParams<br/>BroadcastInitialValues()<br/>BindCallbacksToDependencies()"]
+        OverlayWC["<b>OverlayWidgetController.h</b><br/>UOverlayWidgetController<br/>委托: Health/Mana/XP变化<br/>MessageWidgetRow"]
+        AttrWC["<b>AttributeMenuWidgetController.h</b><br/>UAttributeMenuWidgetController<br/>委托: 属性信息/点数变化<br/>UpgradeAttribute()"]
+        SpellWC["<b>SpellMenuWidgetController.h</b><br/>USpellMenuWidgetController<br/>委托: 法术点/选择/装备<br/>SpellGlobeSelected()"]
+    end
+
+    subgraph WidgetLayer["UI/Widget/"]
+        UserWidget["<b>AuraUserWidget.h</b><br/>UAuraUserWidget<br/>WidgetController Setter/Getter"]
+        DamageText["<b>DamageTextComponent.h</b><br/>UDamageTextComponent<br/>SetDamageText()"]
+        LoadWidget["<b>LoadScreenWidget.h</b><br/>ULoadScreenWidget"]
+    end
+
+    subgraph MVVMLayer["UI/ViewModel/"]
+        VM_Screen["<b>MVVM_LoadScreen.h</b><br/>UMVVM_LoadScreen<br/>3个存档槽<br/>新游戏/选择/删除"]
+        VM_Slot["<b>MVVM_LoadSlot.h</b><br/>UMVVM_LoadSlot<br/>PlayerName/MapName/Level"]
+    end
+
+    AuraHUD -->|"创建并持有"| BaseWC
+    BaseWC -->|"public 继承"| OverlayWC
+    BaseWC -->|"public 继承"| AttrWC
+    BaseWC -->|"public 继承"| SpellWC
+
+    AuraHUD -->|"持有"| UserWidget
+
+    OverlayWC -.->|"绑定委托"| ASC
+    OverlayWC -.->|"绑定委托"| AttrSet
+    AttrWC -.->|"绑定委托"| AttrSet
+    AttrWC -.->|"绑定委托"| PState
+    SpellWC -.->|"绑定委托"| ASC
+    SpellWC -.->|"绑定委托"| PState
+
+    UserWidget -.->|"持有"| BaseWC
+    PController -.->|"创建"| DamageText
+
+    LoadHUD -->|"持有"| LoadWidget
+    LoadHUD -->|"持有"| VM_Screen
+    VM_Screen -->|"持有 3个"| VM_Slot
+    VM_Slot -.->|"读取"| PState
+</div>
+  </div>
+</div>
+
+<!-- Diagram 5: Actor / Projectile System -->
+<div class="diagram-card" id="d5">
+  <div class="header">
+    <h2><span class="num">5</span> Actor / 投射物 / 场景对象 — 文件依赖</h2>
+    <button class="btn-download" onclick="downloadSVG(this)" title="下载 SVG 图片">下载 SVG</button>
+  </div>
+  <div class="desc">
+    <b>核心文件：</b>Actor/ 目录下 7 个类，以及 Checkpoint/ 目录下 2 个类<br>
+    <b>说明：</b>投射物携带伤害参数飞行 → 碰撞 → 应用 GE；EffectActor 在重叠时施加 GE；MagicCircle 是玩家技能的目标指示器。
+  </div>
+  <div class="mermaid-wrap">
+<div class="mermaid">
+graph TB
+    subgraph ActorDir["Source/Aura/Public/Actor/"]
+        Projectile["<b>AuraProjectile.h</b><br/>AAuraProjectile : AActor<br/>├─ USphereComponent* 碰撞<br/>├─ UProjectileMovementComponent* 移动<br/>├─ FDamageEffectParams 伤害参数<br/>└─ OnOverlap → 应用GE → Destroy()"]
+
+        FireBall["<b>AuraFireBall.h</b><br/>AAuraFireBall : AAuraProjectile<br/>├─ ExplosionDamageParams<br/>└─ StartOutgoingTimeline()"]
+
+        EffectActor["<b>AuraEffectActor.h</b><br/>AAuraEffectActor : AActor<br/>├─ InstantGE / DurationGE / InfiniteGE<br/>├─ ApplyPolicy<br/>└─ OnOverlap → ApplyEffectToTarget()"]
+
+        SpawnVolume["<b>AuraEnemySpawnVolume.h</b><br/>AAuraEnemySpawnVolume : AActor<br/>├─ UBoxComponent* 触发区域<br/>├─ SpawnPoints[]<br/>└─ ISaveInterface"]
+
+        SpawnPoint["<b>AuraEnemySpawnPoint.h</b><br/>AAuraEnemySpawnPoint : ATargetPoint"]
+
+        MagicCircle["<b>MagicCircle.h</b><br/>AMagicCircle : AActor<br/>└─ UDecalComponent* 贴花指示"]
+
+        PointCollection["<b>PointCollection.h</b><br/>APointCollection : AActor<br/>└─ 11×USceneComponent 定位点"]
+    end
+
+    subgraph CheckpointDir["Source/Aura/Public/Checkpoint/"]
+        Checkpoint["<b>Checkpoint.h</b><br/>ACheckpoint : APlayerStart<br/>├─ UStaticMeshComponent*<br/>├─ USphereComponent*<br/>├─ bReached<br/>├─ ISaveInterface<br/>└─ IHighlightInterface"]
+
+        MapEntrance["<b>MapEntrance.h</b><br/>AMapEntrance : ACheckpoint<br/>├─ DestinationMap<br/>└─ DestinationPlayerStartTag"]
+    end
+
+    subgraph Refs["引用的外部文件"]
+        AbilityTypes["AbilitySystem/<b>AuraAbilityTypes.h</b><br/>FDamageEffectParams"]
+        SaveIF["Interaction/<b>SaveInterface.h</b>"]
+        HighlightIF["Interaction/<b>HighlightInterface.h</b>"]
+    end
+
+    Projectile -->|"public 继承"| FireBall
+    Projectile -.->|"#include 参数结构体"| AbilityTypes
+    FireBall -.->|"#include 父类"| Projectile
+
+    SpawnVolume -.->|"#include"| SpawnPoint
+    SpawnVolume -.->|"public 实现"| SaveIF
+    Checkpoint -.->|"public 实现"| SaveIF
+    Checkpoint -.->|"public 实现"| HighlightIF
+    Checkpoint -->|"public 继承"| MapEntrance
+</div>
+  </div>
+</div>
+
+<!-- Diagram 6: Player System -->
+<div class="diagram-card" id="d6">
+  <div class="header">
+    <h2><span class="num">6</span> 玩家系统 — PlayerController / PlayerState / 输入</h2>
+    <button class="btn-download" onclick="downloadSVG(this)" title="下载 SVG 图片">下载 SVG</button>
+  </div>
+  <div class="desc">
+    <b>核心文件：</b>Player/AuraPlayerController.h · Player/AuraPlayerState.h · Input/AuraInputConfig.h · Input/AuraInputComponent.h<br>
+    <b>说明：</b>PlayerController 处理输入 → 映射到 GameplayTag → 激活 ASC 能力；PlayerState 持有 ASC + 复制 XP/Level 等属性。
+  </div>
+  <div class="mermaid-wrap">
+<div class="mermaid">
+graph TB
+    subgraph PlayerDir["Source/Aura/Public/Player/"]
+        PC["<b>AuraPlayerController.h</b><br/>AAuraPlayerController<br/>: APlayerController<br/><br/>持有：<br/>· USplineComponent* 自动移动<br/>· UAuraInputConfig* 输入配置<br/>· UAuraAbilitySystemComponent*<br/>· TSubclassOf&lt;UDamageTextComponent&gt;<br/>· TSubclassOf&lt;AMagicCircle&gt;<br/><br/>功能：<br/>· 游标追踪 / 高亮<br/>· 输入标签(按下/释放/按住)<br/>· 伤害数字显示"]
+
+        PS["<b>AuraPlayerState.h</b><br/>AAuraPlayerState<br/>: APlayerState<br/>+ IAbilitySystemInterface<br/><br/>持有：<br/>· UAbilitySystemComponent*<br/>· UAttributeSet*<br/>· ULevelUpInfo*<br/><br/>复制属性：<br/>· Level / XP<br/>· AttributePoints / SpellPoints<br/><br/>委托：<br/>· OnXPChanged<br/>· OnLevelChanged<br/>· OnAttributePointsChanged<br/>· OnSpellPointsChanged"]
+    end
+
+    subgraph InputDir["Source/Aura/Public/Input/"]
+        InputConfig["<b>AuraInputConfig.h</b><br/>UAuraInputConfig : UDataAsset<br/>TArray&lt;FAuraInputAction&gt;<br/>每个 InputAction → FGameplayTag"]
+        InputComp["<b>AuraInputComponent.h</b><br/>UAuraInputComponent<br/>: UEnhancedInputComponent<br/>BindActionByTag()"]
+    end
+
+    subgraph Refs["被引用的文件"]
+        ASC["AbilitySystem/<b>AuraAbilitySystemComponent.h</b>"]
+        AttrSet["AbilitySystem/<b>AuraAttributeSet.h</b>"]
+        LevelUpInfo["AbilitySystem/Data/<b>LevelUpInfo.h</b>"]
+        DamageTextWC["UI/Widget/<b>DamageTextComponent.h</b>"]
+        MagicCircleActor["Actor/<b>MagicCircle.h</b>"]
+    end
+
+    PC -->|"#include 持有"| InputConfig
+    PC -->|"#include 持有"| InputComp
+    PC -->|"#include 持有指针"| ASC
+    PC -.->|"TSubclassOf 引用"| DamageTextWC
+    PC -.->|"TSubclassOf 引用"| MagicCircleActor
+
+    PS -->|"#include 持有"| ASC
+    PS -->|"#include 持有"| AttrSet
+    PS -.->|"#include 持有"| LevelUpInfo
+
+    PC -.->|"获取 ASC 通过"| PS
+</div>
+  </div>
+</div>
+
+<!-- Diagram 7: Damage Calculation Flow -->
+<div class="diagram-card" id="d7">
+  <div class="header">
+    <h2><span class="num">7</span> 伤害计算 — EffectContext → ExecCalc → AttributeSet 调用链</h2>
+    <button class="btn-download" onclick="downloadSVG(this)" title="下载 SVG 图片">下载 SVG</button>
+  </div>
+  <div class="desc">
+    <b>核心文件：</b>AuraAbilityTypes.h · ExecCalc_Damage.h · AuraAttributeSet.h · MMC_MaxHealth.h · MMC_MaxMana.h<br>
+    <b>说明：</b>一次完整的伤害计算流程：技能构建参数 → 自定义 EffectContext → ExecCalc 执行 → AttributeSet 处理 → UI 通知。
+  </div>
+  <div class="mermaid-wrap">
+<div class="mermaid">
+sequenceDiagram
+    participant GA as <b>AuraDamageGameplayAbility.h</b><br/>UAuraDamageGameplayAbility
+    participant Types as <b>AuraAbilityTypes.h</b><br/>FAuraGameplayEffectContext<br/>FDamageEffectParams
+    participant ASC as <b>AuraAbilitySystemComponent.h</b><br/>UAuraAbilitySystemComponent
+    participant Exec as <b>ExecCalc_Damage.h</b><br/>UExecCalc_Damage
+    participant Attr as <b>AuraAttributeSet.h</b><br/>UAuraAttributeSet
+    participant MMC as <b>MMC_MaxHealth.h</b><br/>UMMC_MaxHealth
+
+    GA->>GA: MakeDamageEffectParamsFromClassDefaults()
+    Note over GA: 构建 FDamageEffectParams<br/>包含伤害值/类型/减益/击退等
+
+    GA->>Types: 填充 FDamageEffectParams → FAuraGameplayEffectContext
+    Note over Types: 网络可序列化<br/>bIsBlockedHit<br/>bIsCriticalHit<br/>bIsSuccessfulDebuff<br/>DebuffDamage/Duration/Frequency<br/>DamageType<br/>DeathImpulse/KnockbackForce<br/>bIsRadialDamage
+
+    GA->>ASC: ApplyGameplayEffectSpecToTarget( DamageGE, Context )
+    ASC->>Exec: Execute( ExecutionParams, EvaluationData )
+    Note over Exec: 1. 捕获 Source/Target 属性<br/>2. 应用 DamageCalculationCoefficients 曲线<br/>3. 计算暴击/格挡/减益<br/>4. SetOutput → 最终伤害值
+
+    Exec->>Attr: 修改 IncomingDamage (Meta Attribute)
+    Attr->>Attr: PreAttributeChange(IncomingDamage)
+    Note over Attr: Clamp(0, MaxHealth)
+
+    Attr->>Attr: PostGameplayEffectExecute()
+    Note over Attr: Health -= IncomingDamage<br/>触发 OnHealthChanged 委托<br/>检查 Health <= 0 → Die()
+
+    Attr-->>GA: 委托广播 → UI 更新
+
+    Note over MMC: MMC_MaxHealth:<br/>捕获 Vigor → 计算 MaxHealth<br/>MMC_MaxMana:<br/>捕获 Intelligence → 计算 MaxMana
+</div>
+  </div>
+</div>
+
+<!-- Diagram 8: AI System -->
+<div class="diagram-card" id="d8">
+  <div class="header">
+    <h2><span class="num">8</span> AI 系统 — AIController 与行为树节点</h2>
+    <button class="btn-download" onclick="downloadSVG(this)" title="下载 SVG 图片">下载 SVG</button>
+  </div>
+  <div class="desc">
+    <b>核心文件：</b>AI/AuraAIController.h · AI/BTService_FindNearestPlayer.h · AI/BTTask_Attack.h<br>
+    <b>说明：</b>敌人由 AAuraAIController 驱动，行为树中 BTService 寻找最近玩家，BTTask 执行攻击。
+  </div>
+  <div class="mermaid-wrap">
+<div class="mermaid">
+graph LR
+    subgraph AIFiles["Source/Aura/Public/AI/"]
+        AICtrl["<b>AuraAIController.h</b><br/>AAuraAIController<br/>: AAIController<br/><br/>持有：<br/>· UBehaviorTreeComponent*<br/>· UBlackboardComponent*<br/><br/>功能：<br/>· 运行行为树<br/>· 黑板数据读写"]
+        BTService["<b>BTService_FindNearestPlayer.h</b><br/>UBTService_FindNearestPlayer<br/>: UBTService_BlueprintBase<br/><br/>更新黑板键：<br/>· TargetToFollowSelector<br/>· DistanceToTargetSelector"]
+        BTTask["<b>BTTask_Attack.h</b><br/>UBTTask_Attack<br/>: UBTTask_BlueprintBase<br/><br/>执行攻击：<br/>· 调用 CombatInterface<br/>· 触发 Ability"]
+    end
+
+    subgraph EnemyFile["Character/"]
+        Enemy["<b>AuraEnemy.h</b><br/>AAuraEnemy<br/>持有 UBehaviorTree*<br/>SpawnDefaultController → AuraAIController"]
+    end
+
+    subgraph Interfaces["Interaction/"]
+        ICombat["<b>CombatInterface.h</b><br/>ICombatInterface<br/>GetAttackMontages()"]
+        IEnemy["<b>EnemyInterface.h</b><br/>IEnemyInterface<br/>SetCombatTarget()"]
+    end
+
+    Enemy -->|"SpawnDefaultController"| AICtrl
+    AICtrl -->|"运行行为树"| BTService
+    AICtrl -->|"运行行为树"| BTTask
+
+    BTTask -.->|"调用"| ICombat
+    BTService -.->|"设置"| IEnemy
+</div>
+  </div>
+</div>
+
+<!-- Diagram 9: Interfaces -->
+<div class="diagram-card" id="d9">
+  <div class="header">
+    <h2><span class="num">9</span> 接口 — 5 个 Interface 文件及其实现关系</h2>
+    <button class="btn-download" onclick="downloadSVG(this)" title="下载 SVG 图片">下载 SVG</button>
+  </div>
+  <div class="desc">
+    <b>核心文件：</b>Interaction/CombatInterface.h · EnemyInterface.h · HighlightInterface.h · PlayerInterface.h · SaveInterface.h<br>
+    <b>说明：</b>每个接口定义了一组跨类行为契约，哪个类实现哪个接口一目了然。
+  </div>
+  <div class="mermaid-wrap">
+<div class="mermaid">
+graph TB
+    subgraph IF_Files["Source/Aura/Public/Interaction/ (接口定义)"]
+        IF_Combat["<b>CombatInterface.h</b><br/>ICombatInterface<br/>────────<br/>GetPlayerLevel()<br/>GetCombatSocketLocation()<br/>Die() / IsDead()<br/>GetAttackMontages()<br/>GetAvatar()"]
+        IF_Player["<b>PlayerInterface.h</b><br/>IPlayerInterface<br/>────────<br/>AddToXP()<br/>LevelUp()<br/>GetXP() / FindLevelForXP()<br/>ShowMagicCircle()<br/>SaveProgress()"]
+        IF_Enemy["<b>EnemyInterface.h</b><br/>IEnemyInterface<br/>────────<br/>SetCombatTarget()<br/>GetCombatTarget()"]
+        IF_Highlight["<b>HighlightInterface.h</b><br/>IHighlightInterface<br/>────────<br/>HighlightActor()<br/>UnHighlightActor()<br/>SetMoveToLocation()"]
+        IF_Save["<b>SaveInterface.h</b><br/>ISaveInterface<br/>────────<br/>ShouldLoadTransform()<br/>LoadActor()"]
+    end
+
+    subgraph Implementors["实现这些接口的类"]
+        CharBase["<b>Character/AuraCharacterBase.h</b><br/>AAuraCharacterBase"]
+        AuraChar["<b>Character/AuraCharacter.h</b><br/>AAuraCharacter"]
+        AuraEnemy["<b>Character/AuraEnemy.h</b><br/>AAuraEnemy"]
+        Checkpoint["<b>Checkpoint/Checkpoint.h</b><br/>ACheckpoint"]
+        SpawnVol["<b>Actor/AuraEnemySpawnVolume.h</b><br/>AAuraEnemySpawnVolume"]
+    end
+
+    IF_Combat -->|"实现"| CharBase
+    IF_Player -->|"实现"| AuraChar
+    IF_Enemy -->|"实现"| AuraEnemy
+    IF_Highlight -->|"实现"| AuraEnemy
+    IF_Highlight -->|"实现"| Checkpoint
+    IF_Save -->|"实现"| Checkpoint
+    IF_Save -->|"实现"| SpawnVol
+</div>
+  </div>
+</div>
+
+<!-- Diagram 10: DataAssets -->
+<div class="diagram-card" id="d10">
+  <div class="header">
+    <h2><span class="num">10</span> 数据资产 — DataAsset 文件的生产与消费</h2>
+    <button class="btn-download" onclick="downloadSVG(this)" title="下载 SVG 图片">下载 SVG</button>
+  </div>
+  <div class="desc">
+    <b>核心文件：</b>AbilitySystem/Data/ 目录下 5 个 DataAsset + Input/AuraInputConfig.h<br>
+    <b>说明：</b>展示哪个文件定义了 DataAsset 类型，哪个文件持有并使用了该 DataAsset。
+  </div>
+  <div class="mermaid-wrap">
+<div class="mermaid">
+graph LR
+    subgraph DataFiles["定义 DataAsset 类型的文件"]
+        CharClassInfo["AbilitySystem/Data/<br/><b>CharacterClassInfo.h</b><br/>UCharacterClassInfo<br/>职业配置 + GE类 + 伤害曲线"]
+        AbilityInfo["AbilitySystem/Data/<br/><b>AbilityInfo.h</b><br/>UAbilityInfo<br/>能力元数据(图标/名称/等级需求)"]
+        AttrInfo["AbilitySystem/Data/<br/><b>AttributeInfo.h</b><br/>UAttributeInfo<br/>属性描述(名称/值)"]
+        LevelUpInfo["AbilitySystem/Data/<br/><b>LevelUpInfo.h</b><br/>ULevelUpInfo<br/>每级XP需求 + 点数奖励"]
+        LootTiers["AbilitySystem/Data/<br/><b>LootTiers.h</b><br/>ULootTiers<br/>敌人掉落配置"]
+        InputConfig["Input/<br/><b>AuraInputConfig.h</b><br/>UAuraInputConfig<br/>InputAction → GameplayTag 映射"]
+    end
+
+    subgraph Consumers["持有并使用 DataAsset 的文件"]
+        GameMode["Game/<b>AuraGameModeBase.h</b><br/>AAuraGameModeBase<br/>持有: CharacterClassInfo*<br/>持有: AbilityInfo*<br/>持有: LootTiers*"]
+        PState["Player/<b>AuraPlayerState.h</b><br/>AAuraPlayerState<br/>持有: LevelUpInfo*"]
+        PC["Player/<b>AuraPlayerController.h</b><br/>AAuraPlayerController<br/>持有: InputConfig*"]
+        ASC["AbilitySystem/<b>AuraAbilitySystemComponent.h</b><br/>使用: AbilityInfo*"]
+        AttrWC["UI/WidgetController/<br/><b>AttributeMenuWidgetController.h</b><br/>持有: AttributeInfo*"]
+    end
+
+    CharClassInfo -->|"TSubclassOf / 指针 持有"| GameMode
+    AbilityInfo -->|"指针 持有"| GameMode
+    LootTiers -->|"指针 持有"| GameMode
+    LevelUpInfo -->|"指针 持有"| PState
+    InputConfig -->|"指针 持有"| PC
+    AbilityInfo -.->|"查询能力元数据"| ASC
+    AttrInfo -->|"指针 持有"| AttrWC
+</div>
+  </div>
+</div>
+
+<!-- Diagram 11: Overall -->
+<div class="diagram-card" id="d11">
+  <div class="header">
+    <h2><span class="num">11</span> 跨模块总览 — Public/ 目录整体依赖关系</h2>
+    <button class="btn-download" onclick="downloadSVG(this)" title="下载 SVG 图片">下载 SVG</button>
+  </div>
+  <div class="desc">
+    <b>说明：</b>展示 Public/ 下各子目录之间的 #include 引用关系。箭头方向 = 依赖方向（A→B = B 被 A 引用）。
+  </div>
+  <div class="mermaid-wrap">
+<div class="mermaid">
+graph LR
+    subgraph Character["Character/"]
+        C_Base["AuraCharacterBase.h"]
+        C_Player["AuraCharacter.h"]
+        C_Enemy["AuraEnemy.h"]
+    end
+
+    subgraph Player["Player/"]
+        P_Ctrl["AuraPlayerController.h"]
+        P_State["AuraPlayerState.h"]
+    end
+
+    subgraph AbilitySystem["AbilitySystem/"]
+        AS_ASC["AuraAbilitySystemComponent.h"]
+        AS_AttrSet["AuraAttributeSet.h"]
+        AS_Globals["AuraAbilitySystemGlobals.h"]
+        AS_Library["AuraAbilitySystemLibrary.h"]
+        AS_Types["AuraAbilityTypes.h"]
+    end
+
+    subgraph Abilities["Abilities/"]
+        AB_Base["AuraGameplayAbility.h"]
+        AB_Damage["AuraDamageGameplayAbility.h"]
+        AB_Projectile["AuraProjectileSpell.h"]
+    end
+
+    subgraph Actor["Actor/"]
+        AC_Projectile["AuraProjectile.h"]
+        AC_Effect["AuraEffectActor.h"]
+    end
+
+    subgraph AI["AI/"]
+        AI_Ctrl["AuraAIController.h"]
+    end
+
+    subgraph UI["UI/"]
+        UI_HUD["HUD/AuraHUD.h"]
+        UI_WC["WidgetController/AuraWidgetController.h"]
+        UI_Widget["Widget/AuraUserWidget.h"]
+    end
+
+    subgraph Interaction["Interaction/"]
+        IF_Combat["CombatInterface.h"]
+        IF_Player["PlayerInterface.h"]
+        IF_Enemy["EnemyInterface.h"]
+        IF_Highlight["HighlightInterface.h"]
+        IF_Save["SaveInterface.h"]
+    end
+
+    subgraph Data["AbilitySystem/Data/"]
+        DA_CharClass["CharacterClassInfo.h"]
+        DA_Ability["AbilityInfo.h"]
+        DA_LevelUp["LevelUpInfo.h"]
+    end
+
+    C_Base --> AS_ASC
+    C_Base --> AS_AttrSet
+    C_Base --> IF_Combat
+    C_Player --> IF_Player
+    C_Enemy --> IF_Enemy
+    C_Enemy --> IF_Highlight
+    C_Enemy --> AI_Ctrl
+
+    P_Ctrl --> AS_ASC
+    P_State --> AS_ASC
+    P_State --> AS_AttrSet
+    P_State --> DA_LevelUp
+
+    AS_ASC --> AS_Types
+    AS_Globals --> AS_Types
+
+    AB_Base --> AS_ASC
+    AB_Damage --> AS_Types
+    AB_Projectile --> AC_Projectile
+
+    AC_Projectile --> AS_Types
+
+    UI_HUD --> UI_WC
+    UI_WC --> AS_ASC
+    UI_WC --> AS_AttrSet
+    UI_Widget --> UI_WC
+</div>
+  </div>
+</div>
+
+</div>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'neutral',
+    securityLevel: 'loose',
+    flowchart: { useMaxWidth: true, htmlLabels: true, curve: 'basis' },
+    sequence: { useMaxWidth: true, showSequenceNumbers: false },
+  });
+
+  function downloadSVG(btn) {
+    const card = btn.closest('.diagram-card');
+    const svg = card.querySelector('svg');
+    if (!svg) { alert('图表尚未渲染完成，请稍候再试'); return; }
+
+    const clone = svg.cloneNode(true);
+    // Set white background
+    const bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    bg.setAttribute('width', '100%');
+    bg.setAttribute('height', '100%');
+    bg.setAttribute('fill', 'white');
+    clone.insertBefore(bg, clone.firstChild);
+
+    const svgData = new XMLSerializer().serializeToString(clone);
+    const blob = new Blob([svgData], { type: 'image/svg+xml' });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement('a');
+    const title = card.querySelector('h2').textContent.replace(/[^\w一-鿿]/g, '_').slice(0, 50);
+    a.href = url;
+    a.download = title + '.svg';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+</script>
+
+</body>
+</html>

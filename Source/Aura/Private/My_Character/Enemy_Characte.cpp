@@ -42,6 +42,8 @@ int32 AEnemy_Characte::GetPlayerLevel()
 void AEnemy_Characte::Die()
 {
 	SetLifeSpan(LifeSpan);
+	if (AuraAIController)
+		AuraAIController->GetBlackboardComponent()->SetValueAsBool(FName("Dead"), true);
 	Super::Die();
 }
 
@@ -145,11 +147,10 @@ void AEnemy_Characte::HitReatTagChanged(const FGameplayTag Tag, int32 NewCount)
 {
 	bHitReacting = NewCount > 0;
 	GetCharacterMovement()->MaxWalkSpeed = bHitReacting ? 0.f : BaseWalkSpeed;
-	
-	if (AuraAIController&&AuraAIController->GetBlackboardComponent())
+
+	if (AuraAIController && AuraAIController->GetBlackboardComponent())
 	{
 		AuraAIController->GetBlackboardComponent()->SetValueAsBool(FName("HitReacting"), bHitReacting);
-		
 	}
 }
 

@@ -206,16 +206,16 @@ void AMy_Aura_Controller::AbilityInputTagReleased(FGameplayTag InputTag)
 				for (const FVector& PathLoc : NavigationPath->PathPoints)
 				{
 					Spline->AddSplinePoint(PathLoc, ESplineCoordinateSpace::World);
-					DrawDebugSphere(GetWorld(), PathLoc, 8.f, 8.f, FColor::Blue, false, 1.0f); // 绘制路径点
+					//DrawDebugSphere(GetWorld(), PathLoc, 8.f, 8.f, FColor::Blue, false, 1.0f); // 绘制路径点
 				}
 
 				// 绘制路径线
-				for (int32 i = 0; i < NavigationPath->PathPoints.Num() - 1; i++)
-				{
-					FVector StartPoint = NavigationPath->PathPoints[i];
-					FVector EndPoint = NavigationPath->PathPoints[i + 1];
-					DrawDebugLine(GetWorld(), StartPoint, EndPoint, FColor::Green, false, 1.0f, 0, 2.0f); // 绘制路径线
-				}
+				//for (int32 i = 0; i < NavigationPath->PathPoints.Num() - 1; i++)
+				//{
+					//FVector StartPoint = NavigationPath->PathPoints[i];
+					//FVector EndPoint = NavigationPath->PathPoints[i + 1];
+					//DrawDebugLine(GetWorld(), StartPoint, EndPoint, FColor::Green, false, 1.0f, 0, 2.0f); // 绘制路径线
+				//}
 
 				// 更新目标点为路径的最后一个点
 				if (NavigationPath->PathPoints.Num() > 0)
