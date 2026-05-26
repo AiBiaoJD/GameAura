@@ -58,11 +58,12 @@ void AMy_ProjectileActor::OnSphereOverlap(UPrimitiveComponent* OverlappedCompone
 	 * 
 	 */
 	if (!HasAuthority()) return;
-
+	// 碰到施法者
 	if (DamageEffectSpecHandle.Data.Get()->GetContext().GetEffectCauser() == OtherActor) return;
-
+	// 碰到友军？
 	if (!UMy_AuraAbilitySystemLibrary::IsNotFriend(DamageEffectSpecHandle.Data.Get()->GetContext().GetEffectCauser(), OtherActor)) return;
-	
+
+	// 碰到敌人！
 	MulticastPlayImpactEffects();
 
 	// 激活Effect,只能在服务器修改Attribute,Replicate Attribute到客户端
