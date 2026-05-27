@@ -5,9 +5,10 @@
 #include "CoreMinimal.h"
 #include "Data/My_CharacterClassInfo.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
-#include "My_UI/WidgetController/My_AttributeMenuWidgetController.h"
-#include "My_UI/WidgetController/My_OverlayWidgetController.h"
 #include "My_AuraAbilitySystemLibrary.generated.h"
+
+class UMy_OverlayWidgetController;
+class UMy_AttributeMenuWidgetController;
 
 /**
  *

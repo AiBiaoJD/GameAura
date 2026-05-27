@@ -56,6 +56,11 @@ TArray<FMy_TaggedMontage> AMyCharacter_Base::GetAttackMontage_Implementation()
 	return AttackMontage;
 }
 
+UNiagaraSystem* AMyCharacter_Base::GetBloodEffect_Implementation()
+{
+	return BloodEffect;
+}
+
 void AMyCharacter_Base::Die()
 {
 	Weapon->DetachFromComponent(FDetachmentTransformRules(EDetachmentRule::KeepWorld, true));

@@ -7,6 +7,8 @@
 #include "My_Interraction/My_CombatInterface.h"
 #include "MyCharacter_Base.generated.h"
 
+class UNiagaraSystem;
+
 
 UCLASS(ABSTRACT)
 class AURA_API AMyCharacter_Base : public ACharacter, public IAbilitySystemInterface, public
@@ -32,6 +34,7 @@ public:
 	virtual bool IsDead_Implementation() const override;
 	virtual AActor* GetAvatar_Implementation() override;
 	virtual TArray<FMy_TaggedMontage> GetAttackMontage_Implementation() override;
+	virtual UNiagaraSystem* GetBloodEffect_Implementation() override;
 	/** end Combat interface **/
 
 	UPROPERTY(EditAnywhere, Category = "My_Combat")
@@ -95,6 +98,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	TObjectPtr<UMaterialInstance> WeaponDissolveMaterialInstance;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "My_Combat")
+	UNiagaraSystem* BloodEffect;
+	
+	
 private:
 	UPROPERTY(EditAnywhere, Category = "My_Abilities")
 	TArray<TSubclassOf<UGameplayAbility>> StartupAbility;

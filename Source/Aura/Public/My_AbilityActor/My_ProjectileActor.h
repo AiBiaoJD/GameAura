@@ -4,7 +4,8 @@
 
 #include "CoreMinimal.h"
 #include "GameplayEffectTypes.h"
-#include "NiagaraComponent.h"
+#include "NiagaraSystem.h"
+#include "Components/AudioComponent.h"
 #include "Components/SphereComponent.h"
 #include "GameFramework/Actor.h"
 #include "GameFramework/ProjectileMovementComponent.h"

@@ -7,6 +7,8 @@
 #include "UObject/Interface.h"
 #include "My_CombatInterface.generated.h"
 
+class UNiagaraSystem;
+
 USTRUCT(BlueprintType)
 struct FMy_TaggedMontage
 {
@@ -17,6 +19,9 @@ struct FMy_TaggedMontage
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	FGameplayTag MontageTag;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	USoundBase* ImpactSound = nullptr;
 };
 
 
@@ -57,4 +62,9 @@ public:
 
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable)
 	TArray<FMy_TaggedMontage> GetAttackMontage();
+
+	UFUNCTION(BlueprintNativeEvent,BlueprintCallable)
+	UNiagaraSystem* GetBloodEffect();
+	
+
 };

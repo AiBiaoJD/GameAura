@@ -5,7 +5,6 @@
 #include "CoreMinimal.h"
 #include "My_AuraDamageGameplayAbility.h"
 #include "My_AbilityActor/My_ProjectileActor.h"
-#include "MY_AbilitySystem/Ability/My_AuraGameplayAbilityBase.h"
 #include "My_AuraProjectileSpell.generated.h"
 
 /**

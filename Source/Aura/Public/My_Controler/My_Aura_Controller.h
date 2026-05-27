@@ -8,12 +8,12 @@
 #include "Components/SplineComponent.h"
 #include "MY_AbilitySystem/My_AuraAbilitySystemComponent.h"
 #include "My_Input/My_AuraInputConfig.h"
-#include "My_Interraction/My_Enemy_Interface.h"
 #include "My_Aura_Controller.generated.h"
 
 
 class UDamageTextComponent;
 class UMy_DamageTextComponent;
+class IMy_Enemy_Interface;
 /**
  *
  */

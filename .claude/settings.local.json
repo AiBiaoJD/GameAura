@@ -26,7 +26,21 @@
       "Read(//c/Program Files/**)",
       "Read(//c/Users/79467/AppData/Local/gitkraken/**)",
       "Read(//c/Users/79467/AppData/Roaming/GitKraken/**)",
-      "Bash(reg query *)"
+      "Bash(reg query *)",
+      "Bash(git checkout *)",
+      "Bash(sed -i '/^#include \"NiagaraSystem.h\"$/d' Source/Aura/Public/My_Character/MyCharacter_Base.h)",
+      "Bash(sed -i '/^#include \"MyCharacter_Base.generated.h\"$/a\\\\\\\\nclass UNiagaraSystem;' Source/Aura/Public/My_Character/MyCharacter_Base.h)",
+      "Bash(sed -i '/^#include \"My_UI\\\\/WidgetController\\\\/My_AttributeMenuWidgetController.h\"$/d' Source/Aura/Public/MY_AbilitySystem/My_AuraAbilitySystemLibrary.h)",
+      "Bash(sed -i '/^#include \"My_UI\\\\/WidgetController\\\\/My_OverlayWidgetController.h\"$/d' Source/Aura/Public/MY_AbilitySystem/My_AuraAbilitySystemLibrary.h)",
+      "Bash(sed -i '/^#include \"My_AuraAbilitySystemLibrary.generated.h\"$/a\\\\\\\\nclass UMy_OverlayWidgetController;\\\\nclass UMy_AttributeMenuWidgetController;' Source/Aura/Public/MY_AbilitySystem/My_AuraAbilitySystemLibrary.h)",
+      "Bash(sed -i '/^#include \"AbilitySystemComponent.h\"$/d' Source/Aura/Public/MY_AbilitySystem/My_AuraAttributeSet.h)",
+      "Bash(sed -i '/^#include \"My_AuraAttributeSet.generated.h\"$/a\\\\\\\\nclass UAbilitySystemComponent;' Source/Aura/Public/MY_AbilitySystem/My_AuraAttributeSet.h)",
+      "Bash(python3 -c ' *)",
+      "Bash(python -c ' *)",
+      "Bash(git status *)",
+      "Bash(python -c ')",
+      "Bash(where gitkraken.exe)",
+      "Read(//c/Users/79467/AppData/Local/Programs/**)"
     ]
   }
 }
