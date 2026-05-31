@@ -40,7 +40,10 @@
       "Bash(git status *)",
       "Bash(python -c ')",
       "Bash(where gitkraken.exe)",
-      "Read(//c/Users/79467/AppData/Local/Programs/**)"
+      "Read(//c/Users/79467/AppData/Local/Programs/**)",
+      "Bash(powershell *)",
+      "Bash(dir \"C:\\\\Users\\\\79467\\\\Desktop\\\\GitKraken.lnk\")",
+      "Bash(C:\\\\Users\\\\79467\\\\AppData\\\\Local\\\\gitkraken\\\\gitkraken.exe *)"
     ]
   }
 }

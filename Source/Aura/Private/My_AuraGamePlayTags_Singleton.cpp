@@ -6,7 +6,7 @@
 #include "GameplayTagsManager.h"
 
 
-FMy_AuraGameplayTags FMy_AuraGameplayTags::GameplayTagsInstance;
+FMy_AuraGameplayTags FMy_AuraGameplayTags::GameplayTagsInstance; //C++：定义，才分配内存，不能省
 
 
 void FMy_AuraGameplayTags::InitializeNativeGameplayTags()

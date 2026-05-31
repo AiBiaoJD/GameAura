@@ -25,6 +25,7 @@ void UMy_TargetDateUnderMouse::Activate()
 		AbilitySystemComponent.Get()->AbilityTargetDataSetDelegate(GetAbilitySpecHandle(), GetActivationPredictionKey()).AddUObject(this, &UMy_TargetDateUnderMouse::OnTargetDataReplicatedCallback);
 
 		/*
+		 * 竞态问题
 		 * 服务器在上面委托绑定回调函数前,已经执行了委托的广播,错误的
 		 * 因此要再广播上面的委托,直到服务器收到TargetDate
 		 * ture表明收到TargetData;false为没收到TargetData,上面委托需要广播

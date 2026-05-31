@@ -14,8 +14,8 @@
 struct FMy_AuraGameplayTags
 {
 public:
-	static const FMy_AuraGameplayTags& GetInstance() { return GameplayTagsInstance; }
-	static void InitializeNativeGameplayTags();
+	static const FMy_AuraGameplayTags& GetInstance() { return GameplayTagsInstance; } //全局访问入口，const引用防拷贝
+	static void InitializeNativeGameplayTags(); //静态方法，操作静态实例
 
 	// Primary Attributes Tag
 	FGameplayTag My_Attribute_Primary_Strength;
@@ -75,5 +75,5 @@ public:
 	TMap<FGameplayTag,FGameplayTag> DamageToResistance;
 
 private:
-	static FMy_AuraGameplayTags GameplayTagsInstance;
+	static FMy_AuraGameplayTags GameplayTagsInstance; // C++：声明，必须在这里
 };
