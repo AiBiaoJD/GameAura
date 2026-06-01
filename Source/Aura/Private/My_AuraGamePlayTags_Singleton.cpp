@@ -140,19 +140,39 @@ void FMy_AuraGameplayTags::InitializeNativeGameplayTags()
 	);
 
 	/*
-	* Montage
+	* Combat Socket
 	*/
-	GameplayTagsInstance.My_Montage_Attack_Weapon = UGameplayTagsManager::Get().AddNativeGameplayTag(
-		FName("My__Montage.Attack.Weapon"),
+	GameplayTagsInstance.My_CombatSocket_Weapon = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("My_CombatSocket.Weapon"),
 		FString("Attack By Weapon")
 	);
-	GameplayTagsInstance.My_Montage_Attack_LeftHand = UGameplayTagsManager::Get().AddNativeGameplayTag(
-		FName("My__Montage.Attack.LeftHand"),
+	GameplayTagsInstance.My_CombatSocket_LeftHand = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("My_CombatSocket.LeftHand"),
 		FString("Attack By LeftHand")
 	);
-	GameplayTagsInstance.My_Montage_Attack_RightHand = UGameplayTagsManager::Get().AddNativeGameplayTag(
-		FName("My__Montage.Attack.RightHand"),
+	GameplayTagsInstance.My_CombatSocket_RightHand = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("My_CombatSocket.RightHand"),
 		FString("Attack By RightHand")
+	);
+
+	/*
+	* Montage Tag
+	*/
+	GameplayTagsInstance.My_Montage_Attack1 = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("My_Montage.Attack.1"),
+		FString("Montage Attack 1")
+	);
+	GameplayTagsInstance.My_Montage_Attack2 = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("My_Montage.Attack.2"),
+		FString("Montage Attack 2")
+	);
+	GameplayTagsInstance.My_Montage_Attack3 = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("My_Montage.Attack.3"),
+		FString("Montage Attack 3")
+	);
+	GameplayTagsInstance.My_Montage_Attack4 = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("My_Montage.Attack.4"),
+		FString("Montage Attack 4")
 	);
 
 	// Map: DamageType To  Resistance

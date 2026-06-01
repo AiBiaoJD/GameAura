@@ -66,9 +66,14 @@ public:
 	FGameplayTag My_Abilities_Attack;
 
 	// Montage
-	FGameplayTag My_Montage_Attack_Weapon;
-	FGameplayTag My_Montage_Attack_LeftHand;
-	FGameplayTag My_Montage_Attack_RightHand;
+	FGameplayTag My_CombatSocket_Weapon;
+	FGameplayTag My_CombatSocket_LeftHand;
+	FGameplayTag My_CombatSocket_RightHand;
+
+	FGameplayTag My_Montage_Attack1;
+	FGameplayTag My_Montage_Attack2;
+	FGameplayTag My_Montage_Attack3;
+	FGameplayTag My_Montage_Attack4;
 
 	
 	// Map: DamageType To  Resistance

@@ -35,6 +35,7 @@ public:
 	virtual AActor* GetAvatar_Implementation() override;
 	virtual TArray<FMy_TaggedMontage> GetAttackMontage_Implementation() override;
 	virtual UNiagaraSystem* GetBloodEffect_Implementation() override;
+	virtual FMy_TaggedMontage GetTaggedMontageByTag_Implementation(const FGameplayTag& MontageTag) override;
 	/** end Combat interface **/
 
 	UPROPERTY(EditAnywhere, Category = "My_Combat")
