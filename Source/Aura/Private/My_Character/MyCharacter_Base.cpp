@@ -7,6 +7,7 @@
 #include "Aura/Aura.h"
 #include "Chaos/ChaosPerfTest.h"
 #include "Components/CapsuleComponent.h"
+#include "Kismet/GameplayStatics.h"
 #include "MY_AbilitySystem/My_AuraAbilitySystemComponent.h"
 
 // Sets default values
@@ -81,6 +82,8 @@ void AMyCharacter_Base::Die()
 
 void AMyCharacter_Base::MulticastHandleDeath_Implementation()
 {
+	UGameplayStatics::PlaySoundAtLocation(this,DeathSound,GetActorLocation());
+	
 	Weapon->SetSimulatePhysics(true);
 	Weapon->SetEnableGravity(true);
 	Weapon->SetCollisionEnabled(ECollisionEnabled::PhysicsOnly);
@@ -96,6 +99,24 @@ void AMyCharacter_Base::MulticastHandleDeath_Implementation()
 
 	bDead = true;
 }
+
+void AMyCharacter_Base::Dissolve()
+{
+	if (IsValid(DissolveMaterialInstance))
+	{
+		UMaterialInstanceDynamic* DynamicMaterial = UMaterialInstanceDynamic::Create(DissolveMaterialInstance, this);
+		GetMesh()->SetMaterial(0, DynamicMaterial);
+		StartDissolveTimeline(DynamicMaterial);
+	}
+
+	if (IsValid(WeaponDissolveMaterialInstance))
+	{
+		UMaterialInstanceDynamic* DynamicMaterial = UMaterialInstanceDynamic::Create(DissolveMaterialInstance, this);
+		Weapon->SetMaterial(0, DynamicMaterial);
+		StartWeaponDissolveTimeline(DynamicMaterial);
+	}
+}
+
 
 // Called when the game starts or when spawned
 void AMyCharacter_Base::BeginPlay()
@@ -158,19 +179,3 @@ void AMyCharacter_Base::AddCharacterAbilities()
 	ASC->AddCharacterAbilitiesFromASC(StartupAbility);
 }
 
-void AMyCharacter_Base::Dissolve()
-{
-	if (IsValid(DissolveMaterialInstance))
-	{
-		UMaterialInstanceDynamic* DynamicMaterial = UMaterialInstanceDynamic::Create(DissolveMaterialInstance, this);
-		GetMesh()->SetMaterial(0, DynamicMaterial);
-		StartDissolveTimeline(DynamicMaterial);
-	}
-
-	if (IsValid(WeaponDissolveMaterialInstance))
-	{
-		UMaterialInstanceDynamic* DynamicMaterial = UMaterialInstanceDynamic::Create(DissolveMaterialInstance, this);
-		Weapon->SetMaterial(0, DynamicMaterial);
-		StartWeaponDissolveTimeline(DynamicMaterial);
-	}
-}

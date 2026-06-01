@@ -21,4 +21,7 @@ protected:
 
 	UPROPERTY(BlueprintReadOnly, EditAnywhere)
 	FBlackboardKeySelector DistanceToTargetSelector;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "AI")
+	float SearchRadius = 1500.f;
 };

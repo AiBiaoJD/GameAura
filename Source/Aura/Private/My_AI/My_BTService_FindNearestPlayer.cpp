@@ -24,7 +24,7 @@ void UMy_BTService_FindNearestPlayer::TickNode(UBehaviorTreeComponent& OwnerComp
 		if (IsValid(Actor) && IsValid(OwningPawn))
 		{
 			const float Distance = OwningPawn->GetDistanceTo(Actor);
-			if (Distance < ClosestDistance)
+			if (Distance < ClosestDistance && Distance <= SearchRadius)
 			{
 				ClosestDistance = Distance;
 				ClosestActor = Actor;
