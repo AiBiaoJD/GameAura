@@ -19,7 +19,7 @@ class AURA_API AMyCharacter_Base : public ACharacter, public IAbilitySystemInter
 public:
 	AMyCharacter_Base();
 
-	//½ÇÉ«ASCÍ¨¹ıÕâ¸öº¯Êı´ÓPlayerState»ñÈ¡
+	//è§’è‰²ASCé€šè¿‡è¿™ä¸ªå‡½æ•°ä»PlayerStateè·å–
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 	UAttributeSet* GetAttributeSet() const;
 
@@ -44,7 +44,7 @@ public:
 protected:
 	virtual void BeginPlay() override;
 
-	//´´½¨ÎäÆ÷
+	//åˆ›å»ºæ­¦å™¨
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "My_Combat")
 	TObjectPtr<USkeletalMeshComponent> Weapon;
 	UPROPERTY(EditAnywhere, Category = "My_Combat")
@@ -59,15 +59,15 @@ protected:
 
 	/*
 	 * GAS
-	 * Aura£ºÊµÏÖÏÂÃæÔÚcontroler/playerstaterÖĞ
-	 * µĞÈË£ºÊµÏÖÏÂÃæÔÚ¹¹Ôìº¯ÊıÖĞ
+	 * Auraï¼šå®ç°ä¸‹é¢åœ¨controler/playerstaterä¸­
+	 * æ•Œäººï¼šå®ç°ä¸‹é¢åœ¨æ„é€ å‡½æ•°ä¸­
 	 */
 	UPROPERTY()
 	TObjectPtr<UAbilitySystemComponent> AbilitySystemComponent;
 	UPROPERTY()
 	TObjectPtr<UAttributeSet> AttributeSet;
 
-	//Effect ³õÊ¼»¯Ïà¹ØÊôĞÔ
+	//Effect åˆå§‹åŒ–ç›¸å…³å±æ€§
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Attribute")
 	TSubclassOf<UGameplayEffect> DefaultPrimaryAttributeEffectClass;
 
@@ -82,7 +82,7 @@ protected:
 	virtual void My_InitAbilityActorInfo();
 	virtual void InitializeDefaultAttribute() const;
 
-	// Ability³õÊ¼»¯Ïà¹Ø
+	// Abilityåˆå§‹åŒ–ç›¸å…³
 	void AddCharacterAbilities();
 
 	/* Dissolve Effect*/

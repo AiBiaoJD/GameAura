@@ -53,11 +53,11 @@ private:
 
 
 	/*
-	 * Êó±ê¸ßÁÁ²¿·Ö
+	 * é¼ æ ‡é«˜äº®éƒ¨åˆ†
 	 */
 	void CursorTrace();
 	FHitResult CursorHit;
-	//TObjectPtr Ö»ÄÜÓÃÓÚ UObject µÄÅÉÉúÀà£¬²»ÄÜÓÃÓÚ½Ó¿Ú£¬ËùÒÔÕâÀï²»ÓÃTobject½¨Á¢Ö¸Õë
+	//TObjectPtr åªèƒ½ç”¨äº UObject çš„æ´¾ç”Ÿç±»ï¼Œä¸èƒ½ç”¨äºæ¥å£ï¼Œæ‰€ä»¥è¿™é‡Œä¸ç”¨Tobjectå»ºç«‹æŒ‡é’ˆ
 	IMy_Enemy_Interface* LastActor = nullptr;
 	IMy_Enemy_Interface* ThisActor = nullptr;
 
@@ -80,11 +80,11 @@ private:
 	FVector CachedDestination = FVector::Zero();
 	float FollowTime = 0.f;
 	bool bAutoRunning = false;
-	bool bTargeting = false;					//Êó±êÊÇ·ñµã»÷µĞÈË£¬ÓÃÀ´´¦ÀíÊó±ê×ó¼ü¶àÖÖAbility
-	float ShortPressThreshold = 0.5f;			//¶Ì°´µÄ·§Öµ
+	bool bTargeting = false;					//é¼ æ ‡æ˜¯å¦ç‚¹å‡»æ•Œäººï¼Œç”¨æ¥å¤„ç†é¼ æ ‡å·¦é”®å¤šç§Ability
+	float ShortPressThreshold = 0.5f;			//çŸ­æŒ‰çš„é˜€å€¼
 
 	UPROPERTY(EditDefaultsOnly)
-	float AutoRunningAcceptanceRadius = 50.0f; //×Ô¶¯Ñ°Â·Í£Ö¹¾àÀë
+	float AutoRunningAcceptanceRadius = 50.0f; //è‡ªåŠ¨å¯»è·¯åœæ­¢è·ç¦»
 	UPROPERTY(VisibleAnywhere)
 	TObjectPtr<USplineComponent> Spline;
 

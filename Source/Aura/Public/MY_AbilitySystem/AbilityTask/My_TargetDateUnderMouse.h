@@ -17,20 +17,20 @@ class AURA_API UMy_TargetDateUnderMouse : public UAbilityTask
 
 public:
 	/*
-	 * ·ÂÕÕUAbilityTask_PlayMontageAndWait,ÊµÏÖ×Ô¼ºµÄTask
-	 * TaskÒªÓÃº¯Êı·µ»Ø×Ô¼ºµÄÊµÀıInstance
+	 * ä»¿ç…§UAbilityTask_PlayMontageAndWait,å®ç°è‡ªå·±çš„Task
+	 * Taskè¦ç”¨å‡½æ•°è¿”å›è‡ªå·±çš„å®ä¾‹Instance
 	 */
 	UFUNCTION(BlueprintCallable, Category="My_Ability|Tasks", meta=(DisplayName = "MyTargetDateUnderMouse", HidePin = "OwningAbility", DefaultToSelf = "OwningAbility", BlueprintInternalUseOnly = "true"))
 	static UMy_TargetDateUnderMouse* CreateMyTargetDateUnderMouse(UGameplayAbility* OwningAbility);
 
 	/*
-	 * Î¯ÍĞ×÷ÎªÀ¶Í¼ÖĞÉÏÃæº¯ÊıµÄÊä³öÒı½Å
+	 * å§”æ‰˜ä½œä¸ºè“å›¾ä¸­ä¸Šé¢å‡½æ•°çš„è¾“å‡ºå¼•è„š
 	 */
 	UPROPERTY(BlueprintAssignable)
 	FMy_OnMouseTargetDateSignature ValidData;
 
 private:
-	// Task´´½¨ASC×Ô¶¯µ÷ÓÃÏÂÃæµÄº¯Êı
+	// Taskåˆ›å»ºASCè‡ªåŠ¨è°ƒç”¨ä¸‹é¢çš„å‡½æ•°
 	virtual void Activate() override;
 
 	void SendMouseCursurData();

@@ -22,7 +22,7 @@ public:
 	UPROPERTY(VisibleAnywhere)
 	TObjectPtr<UProjectileMovementComponent> ProjectileMovement;
 
-	// 暴露给蓝图的变量，并在生成时显示
+	// 鏆撮湶缁欒摑鍥剧殑鍙橀噺锛屽苟鍦ㄧ敓鎴愭椂鏄剧ず
 	UPROPERTY(BlueprintReadWrite, meta=(ExposeOnSpawn = true))
 	FGameplayEffectSpecHandle DamageEffectSpecHandle;
 

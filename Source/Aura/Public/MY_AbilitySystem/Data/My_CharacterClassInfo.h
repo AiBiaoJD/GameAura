@@ -12,12 +12,12 @@ class UGameplayEffect;
 UENUM(BlueprintType)
 enum class EMy_CharacterClass : uint8
 {
-	Elementalist, // 巫师
-	Warrior,      // 战士
-	Ranger		  // 远程
+	Elementalist, // 宸笀
+	Warrior,      // 鎴樺＋
+	Ranger		  // 杩滅▼
 };
 
-//每个敌人类，包含自己特别的能力等相关
+//姣忎釜鏁屼汉绫伙紝鍖呭惈鑷繁鐗瑰埆鐨勮兘鍔涚瓑鐩稿叧
 USTRUCT(BlueprintType)
 struct FMy_CharacterClassDefaultInfo
 {

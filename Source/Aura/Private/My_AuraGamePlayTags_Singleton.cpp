@@ -6,7 +6,7 @@
 #include "GameplayTagsManager.h"
 
 
-FMy_AuraGameplayTags FMy_AuraGameplayTags::GameplayTagsInstance; //C++£º¶¨Òå£¬²Å·ÖÅäÄÚ´æ£¬²»ÄÜÊ¡
+FMy_AuraGameplayTags FMy_AuraGameplayTags::GameplayTagsInstance; //C++ï¼šå®šä¹‰ï¼Œæ‰åˆ†é…å†…å­˜ï¼Œä¸èƒ½çœ
 
 
 void FMy_AuraGameplayTags::InitializeNativeGameplayTags()

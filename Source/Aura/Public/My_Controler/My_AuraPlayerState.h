@@ -20,7 +20,7 @@ public:
 
 	virtual  void GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const override;
 
-	//共有成员函数返回Protect/Private成员变量
+	//鍏辨湁鎴愬憳鍑芥暟杩斿洖Protect/Private鎴愬憳鍙橀噺
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 	UAttributeSet* GetAttributeSet()const;
 	FORCEINLINE int32 GetPlayerLevel() const { return Level; }

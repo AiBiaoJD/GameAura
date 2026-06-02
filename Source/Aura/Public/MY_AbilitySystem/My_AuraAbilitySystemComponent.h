@@ -22,20 +22,20 @@ public:
 
 	FMy_EffectAssetTags EffectAssetTags;
 
-	// CharacterÌí¼ÓÄÜÁ¦
+	// Characteræ·»åŠ èƒ½åŠ›
 	void AddCharacterAbilitiesFromASC(const TArray<TSubclassOf<UGameplayAbility>>& StartupAbility);
 
 
-	// PlayerController¼¤»îÄÜÁ¦
+	// PlayerControlleræ¿€æ´»èƒ½åŠ›
 	void AbilityInputTagHeld(const FGameplayTag InputTag);
 	void AbilityInputTagReleased(const FGameplayTag InputTag);
 
 protected:
 
 	/*
-	 * OnGameplayEffectAppliedDelegateToSelf Î¯ÍĞÊÇÖ»ÔÚ·şÎñÆ÷µ÷ÓÃ»Øµ÷º¯Êı
-	 * Òò´Ë¿Í»§¶Ë²»µ÷ÓÃÕâ¸ö»Øµ÷º¯Êı,²ÉÓÃRPC½â¾ö
-	 * RPC:·şÎñÆ÷µ÷ÓÃ¿Í»§¶Ëº¯Êı£¬¿Í»§¶ËÖ´ĞĞº¯Êı
+	 * OnGameplayEffectAppliedDelegateToSelf å§”æ‰˜æ˜¯åªåœ¨æœåŠ¡å™¨è°ƒç”¨å›è°ƒå‡½æ•°
+	 * å› æ­¤å®¢æˆ·ç«¯ä¸è°ƒç”¨è¿™ä¸ªå›è°ƒå‡½æ•°,é‡‡ç”¨RPCè§£å†³
+	 * RPC:æœåŠ¡å™¨è°ƒç”¨å®¢æˆ·ç«¯å‡½æ•°ï¼Œå®¢æˆ·ç«¯æ‰§è¡Œå‡½æ•°
 	 */
 	UFUNCTION(Client, Reliable)
 	void ClientEffectApplied(UAbilitySystemComponent* AbilitySystemComponent, const FGameplayEffectSpec& EffectSpec, FActiveGameplayEffectHandle ActiveGameplayEffectHandle);

@@ -61,7 +61,7 @@ protected:
 	virtual void InitializeDefaultAttribute() const;
 
 
-	//Ö»¹ØĞÄ¼ì²éµĞÈËLevelÔÚ·şÎñÆ÷ÉÏ,²»ĞèÒªReplied
+	//åªå…³å¿ƒæ£€æŸ¥æ•ŒäººLevelåœ¨æœåŠ¡å™¨ä¸Š,ä¸éœ€è¦Replied
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Character Class Default")
 	int32 Level = 1;
 
@@ -70,7 +70,7 @@ protected:
 
 
 	/*
-	 * µĞÈËµÄÑªÁ¿UI ºÍ ÑªÁ¿WidgetControllerÉèÖÃ
+	 * æ•Œäººçš„è¡€é‡UI å’Œ è¡€é‡WidgetControllerè®¾ç½®
 	 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	TObjectPtr<UWidgetComponent> HealthBar;

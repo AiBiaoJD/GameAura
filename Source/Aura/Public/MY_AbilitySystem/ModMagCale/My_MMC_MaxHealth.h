@@ -17,11 +17,11 @@ public:
 
 	UMy_MMC_MaxHealth();
 
-	//ºËĞÄº¯Êı:¼ÆËã¼¼ÄÜĞ§¹ûµÄÊıÖµ
+	//æ ¸å¿ƒå‡½æ•°:è®¡ç®—æŠ€èƒ½æ•ˆæœçš„æ•°å€¼
 	virtual float CalculateBaseMagnitude_Implementation(const FGameplayEffectSpec& Spec) const override;
 
 protected:
-	//¶¨Òå²¶»ñµÄÊôĞÔ
+	//å®šä¹‰æ•è·çš„å±æ€§
 	FGameplayEffectAttributeCaptureDefinition VigorDef;
 
 };

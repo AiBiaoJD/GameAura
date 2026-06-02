@@ -20,7 +20,7 @@ void UMy_AuraAssetManager::StartInitialLoading()
 {
 	Super::StartInitialLoading();
 
-	//Ìí¼ÓTags,ÔÚ¼ÓÔØ×ÊÔ´µÄÊ±ºò
+	//æ·»åŠ Tags,åœ¨åŠ è½½èµ„æºçš„æ—¶å€™
 	FMy_AuraGameplayTags::InitializeNativeGameplayTags();
 
 	// This is Required to Use TargetData

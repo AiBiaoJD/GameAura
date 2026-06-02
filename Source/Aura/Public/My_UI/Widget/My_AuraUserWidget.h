@@ -14,15 +14,15 @@ class AURA_API UMy_AuraUserWidget : public UUserWidget
 {
 	GENERATED_BODY()
 	/*
-	¹ØÁªWidgetController
+	å…³è”WidgetController
 	widget -> widgetController ,
-	¿ØÖÆÆ÷²»ĞèÒªÖªµÀÄÇ¸öwidget¹ØÁªËû£¬Ö»ĞèÒª¹ã²¥»ØÈ¥¼´¿É
-	widgetĞèÒªÖªµÀËıµÄ¿ØÖÆÆ÷ÊÇÊ²Ã´
+	æ§åˆ¶å™¨ä¸éœ€è¦çŸ¥é“é‚£ä¸ªwidgetå…³è”ä»–ï¼Œåªéœ€è¦å¹¿æ’­å›å»å³å¯
+	widgetéœ€è¦çŸ¥é“å¥¹çš„æ§åˆ¶å™¨æ˜¯ä»€ä¹ˆ
 	*/
 public:
 	/*
-	 *Õâ¸öº¯Êı±ØĞëÔÚ C++ ÖĞÊµÏÖ£¬À¶Í¼Ö»ÄÜµ÷ÓÃËü£¬²»ÄÜĞŞ¸ÄËüµÄÊµÏÖ¡£
-	 *µ±ÄãÏ£ÍûÌá¹©Ò»¸ö¹Ì¶¨µÄ¹¦ÄÜ½Ó¿ÚWidgetController¸øÀ¶Í¼Ê¹ÓÃ,
+	 *è¿™ä¸ªå‡½æ•°å¿…é¡»åœ¨ C++ ä¸­å®ç°ï¼Œè“å›¾åªèƒ½è°ƒç”¨å®ƒï¼Œä¸èƒ½ä¿®æ”¹å®ƒçš„å®ç°ã€‚
+	 *å½“ä½ å¸Œæœ›æä¾›ä¸€ä¸ªå›ºå®šçš„åŠŸèƒ½æ¥å£WidgetControllerç»™è“å›¾ä½¿ç”¨,
 	 */
 	UFUNCTION(BlueprintCallable)
 	void SetWidgetController(UObject* InWidgetController);
@@ -31,11 +31,11 @@ public:
 	TObjectPtr<UObject> WidgetController;
 protected:
 	/*
-	 ÕâÊÇÒ»¸öÀ¶Í¼ÊµÏÖµÄÊÂ¼ş£¬Ä¿µÄÊÇµ±ÎÒÃÇÉèÖÃWidgetController±äÁ¿ºó£¬»áÔÚÀ¶Í¼µ÷ÓÃÕâ¸öÊÂ¼ş
-	 ¿ÉÒÔÔÚÀ¶Í¼ÖĞ¸üĞÂ UI¡¢°ó¶¨ÊÂ¼ş»òÖ´ĞĞÆäËû³õÊ¼»¯²Ù×÷
-	 TODO:Àí½âÕâÖÖ½âñî Widget ºÍ WidgetController
-	 Widget ĞèÒªÖªµÀËüµÄ WidgetController£¬µ« WidgetController ²»ĞèÒªÖªµÀ¾ßÌåµÄ Widget
-	 Í¨¹ı SetWidgetController ºÍ WidgetControllerSet£¬Widget ¿ÉÒÔÔÚ WidgetController ±»ÉèÖÃºóÖ´ĞĞ×Ô¶¨ÒåÂß¼­£¬¶ø²»ĞèÒª WidgetController Ö±½Ó²Ù×÷ Widget¡£
+	 è¿™æ˜¯ä¸€ä¸ªè“å›¾å®ç°çš„äº‹ä»¶ï¼Œç›®çš„æ˜¯å½“æˆ‘ä»¬è®¾ç½®WidgetControllerå˜é‡åï¼Œä¼šåœ¨è“å›¾è°ƒç”¨è¿™ä¸ªäº‹ä»¶
+	 å¯ä»¥åœ¨è“å›¾ä¸­æ›´æ–° UIã€ç»‘å®šäº‹ä»¶æˆ–æ‰§è¡Œå…¶ä»–åˆå§‹åŒ–æ“ä½œ
+	 TODO:ç†è§£è¿™ç§è§£è€¦ Widget å’Œ WidgetController
+	 Widget éœ€è¦çŸ¥é“å®ƒçš„ WidgetControllerï¼Œä½† WidgetController ä¸éœ€è¦çŸ¥é“å…·ä½“çš„ Widget
+	 é€šè¿‡ SetWidgetController å’Œ WidgetControllerSetï¼ŒWidget å¯ä»¥åœ¨ WidgetController è¢«è®¾ç½®åæ‰§è¡Œè‡ªå®šä¹‰é€»è¾‘ï¼Œè€Œä¸éœ€è¦ WidgetController ç›´æ¥æ“ä½œ Widgetã€‚
 	 */
 	UFUNCTION(BlueprintImplementableEvent)
 	void WidgetControllerSet();

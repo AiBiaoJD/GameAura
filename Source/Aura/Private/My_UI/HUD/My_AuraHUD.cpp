@@ -12,7 +12,7 @@ UMy_OverlayWidgetController* AMy_AuraHUD::GetOverlayWidgetController(const FMY_W
 		OverlayWidgetController = NewObject<UMy_OverlayWidgetController>(this, OverlayWidgetControllerClass);
 		OverlayWidgetController->SetWidgetControllerParams(WCParams);
 
-		//OverlayWidgetController´´½¨ºÃ£¬¾Í¿ÉÒÔ°ó¶¨»Øµ÷º¯Êý(Î¯ÍÐ)À´¼ì²éATTribute±äÁ¿¸Ä±ä
+		//OverlayWidgetControlleråˆ›å»ºå¥½ï¼Œå°±å¯ä»¥ç»‘å®šå›žè°ƒå‡½æ•°(å§”æ‰˜)æ¥æ£€æŸ¥ATTributeå˜é‡æ”¹å˜
 		OverlayWidgetController->BindCallbacksToDependencies();
 	}
 	return  OverlayWidgetController;
@@ -35,20 +35,20 @@ void AMy_AuraHUD::InitOverlay(APlayerController* PC, APlayerState* PS, UAbilityS
 	checkf(OverlayWidgetClass, TEXT("Overlay Widget Class unInit, fill out MY_BP_AuraHUD"));
 	checkf(OverlayWidgetControllerClass, TEXT("Overlay Widget Controller Class unInit, fill out MY_BP_AuraHUD"));
 
-	// ÉèÖÃOverlayWidget
+	// è®¾ç½®OverlayWidget
 	OverlayWidget = CreateWidget<UMy_AuraUserWidget>(GetWorld(), OverlayWidgetClass);
 
-	// ÉèÖÃOverlayWidgetController
+	// è®¾ç½®OverlayWidgetController
 	const FMY_WidgetControllerParams WidgetControllerParams(PC, PS, ASC, AS);
 	OverlayWidgetController = GetOverlayWidgetController(WidgetControllerParams);
 
-	// ¹ØÁªOverlayWidgetºÍOverlayWidgetController
-	// ÕâÑùWidgetControllerSet()¿ÉÒÔÊ¹ÓÃ,Widget¿ÉÒÔ°ó¶¨º¯Êý¸øwidgetControllerÎ¯ÍÐ
+	// å…³è”OverlayWidgetå’ŒOverlayWidgetController
+	// è¿™æ ·WidgetControllerSet()å¯ä»¥ä½¿ç”¨,Widgetå¯ä»¥ç»‘å®šå‡½æ•°ç»™widgetControllerå§”æ‰˜
 	OverlayWidget->SetWidgetController(OverlayWidgetController);
 
-	// °ó¶¨Íê³Éºó£¬widgetController¾Í¿ÉÒÔ¹ã²¥Êý¾ÝÁË
+	// ç»‘å®šå®ŒæˆåŽï¼ŒwidgetControllerå°±å¯ä»¥å¹¿æ’­æ•°æ®äº†
 	OverlayWidgetController->BroadcastInitiaValues();
 
-	// ½«WidgetÌí¼Óµ½ÊÓ¿Ú
+	// å°†Widgetæ·»åŠ åˆ°è§†å£
 	OverlayWidget->AddToViewport();
 }

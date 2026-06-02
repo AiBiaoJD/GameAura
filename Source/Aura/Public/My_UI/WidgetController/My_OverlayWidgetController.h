@@ -7,7 +7,7 @@
 #include "My_UI/WidgetController/My_AuraWidgetController.h"
 #include "My_OverlayWidgetController.generated.h"
 
-//Õâ¸ö½á¹¹Ö÷ÒªĞÅÏ¢ÏÔÊ¾µ½ÆÁÄ»
+//è¿™ä¸ªç»“æ„ä¸»è¦ä¿¡æ¯æ˜¾ç¤ºåˆ°å±å¹•
 USTRUCT(BlueprintType)
 struct FMy_UIWidgetRow : public FTableRowBase
 {
@@ -27,13 +27,13 @@ struct FMy_UIWidgetRow : public FTableRowBase
 };
 
 
-//Î¯ÍĞÔÊĞíÄã½«º¯Êı°ó¶¨µ½Ò»¸öÊÂ¼şÉÏ£¬µ±ÊÂ¼ş·¢ÉúÊ±£¬ËùÓĞ°ó¶¨µÄº¯Êı¶¼»á±»µ÷ÓÃ
-//Î¯ÍĞµÄºËĞÄË¼ÏëÊÇ½âñî£ºËüÔÊĞíÄã½«ÊÂ¼şµÄ´¥·¢Âß¼­ºÍÊÂ¼şµÄ´¦ÀíÂß¼­·Ö¿ª¡£ÀıÈç£¬µ±Ò»¸ö½ÇÉ«µÄÉúÃüÖµ·¢Éú±ä»¯Ê±£¬Äã¿ÉÒÔÍ¨¹ıÎ¯ÍĞÍ¨ÖªËùÓĞ¹ØĞÄÕâ¸öÊÂ¼şµÄÏµÍ³£¬¶ø²»ĞèÒªÖ±½Óµ÷ÓÃÕâĞ©ÏµÍ³µÄº¯Êı¡£
+//å§”æ‰˜å…è®¸ä½ å°†å‡½æ•°ç»‘å®šåˆ°ä¸€ä¸ªäº‹ä»¶ä¸Šï¼Œå½“äº‹ä»¶å‘ç”Ÿæ—¶ï¼Œæ‰€æœ‰ç»‘å®šçš„å‡½æ•°éƒ½ä¼šè¢«è°ƒç”¨
+//å§”æ‰˜çš„æ ¸å¿ƒæ€æƒ³æ˜¯è§£è€¦ï¼šå®ƒå…è®¸ä½ å°†äº‹ä»¶çš„è§¦å‘é€»è¾‘å’Œäº‹ä»¶çš„å¤„ç†é€»è¾‘åˆ†å¼€ã€‚ä¾‹å¦‚ï¼Œå½“ä¸€ä¸ªè§’è‰²çš„ç”Ÿå‘½å€¼å‘ç”Ÿå˜åŒ–æ—¶ï¼Œä½ å¯ä»¥é€šè¿‡å§”æ‰˜é€šçŸ¥æ‰€æœ‰å…³å¿ƒè¿™ä¸ªäº‹ä»¶çš„ç³»ç»Ÿï¼Œè€Œä¸éœ€è¦ç›´æ¥è°ƒç”¨è¿™äº›ç³»ç»Ÿçš„å‡½æ•°ã€‚
 
-//¸üĞÂAttributeÎ¯ÍĞ
+//æ›´æ–°Attributeå§”æ‰˜
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FMy_OnAttributeChangedSignature, float, NewValue);
 
-//MessageÎ¯ÍĞ
+//Messageå§”æ‰˜
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FMy_MessageWidgetRowSignature, FMy_UIWidgetRow, Row);
 
 /**
@@ -68,7 +68,7 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Widget Data")
 	TObjectPtr<UDataTable> MessageWidgetDataTable;
 
-	//»ñÈ¡Êı¾İ±íµÄÌØ¶¨ĞĞ
+	//è·å–æ•°æ®è¡¨çš„ç‰¹å®šè¡Œ
 	template<typename T>
 	T* GetDataTableRowByTag(UDataTable* DataTable, const FGameplayTag& Tag);
 

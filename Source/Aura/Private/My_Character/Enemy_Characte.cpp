@@ -15,10 +15,10 @@
 void AEnemy_Characte::HighlightActor()
 {
 	/*
-	 * Post Progress: Depth-StencilÒ»¸öµ¥¶ÀµÄÉî¶È»º³åÇø£¬ÓÃÓÚ´æ´¢ÌØ¶¨ÎïÌåµÄÉî¶ÈĞÅÏ¢¡£ÓëÖ÷Éî¶È»º³åÇø²»Í¬£¬Ëü¿ÉÒÔ¶ÀÁ¢ÓÚ³¡¾°µÄÆäËû²¿·Ö½øĞĞ´¦Àí¡£
-	 * µ±ÎÒÃÇĞüÍ£Êó±êµ½µĞÈË,¾ÍÆô¶¯Éî¶È»º³åÇø£»Ã»ĞüÍ£¾Í²»Æô¶¯Éî¶È»º³åÇø
-	 * Æô¶¯ºó¾Í¿ÉÒÔÉèÖÃCustomDepth Stencil ValueÀ´ÏÔÊ¾ÂÖÀª
-	 * µ±È»Õâ¸öÂÖÀªÊÇÔÚPost ProgressÏÂÃæµÄMaterialÖĞÉèÖÃµÄ
+	 * Post Progress: Depth-Stencilä¸€ä¸ªå•ç‹¬çš„æ·±åº¦ç¼“å†²åŒºï¼Œç”¨äºå­˜å‚¨ç‰¹å®šç‰©ä½“çš„æ·±åº¦ä¿¡æ¯ã€‚ä¸ä¸»æ·±åº¦ç¼“å†²åŒºä¸åŒï¼Œå®ƒå¯ä»¥ç‹¬ç«‹äºåœºæ™¯çš„å…¶ä»–éƒ¨åˆ†è¿›è¡Œå¤„ç†ã€‚
+	 * å½“æˆ‘ä»¬æ‚¬åœé¼ æ ‡åˆ°æ•Œäºº,å°±å¯åŠ¨æ·±åº¦ç¼“å†²åŒºï¼›æ²¡æ‚¬åœå°±ä¸å¯åŠ¨æ·±åº¦ç¼“å†²åŒº
+	 * å¯åŠ¨åå°±å¯ä»¥è®¾ç½®CustomDepth Stencil Valueæ¥æ˜¾ç¤ºè½®å»“
+	 * å½“ç„¶è¿™ä¸ªè½®å»“æ˜¯åœ¨Post Progressä¸‹é¢çš„Materialä¸­è®¾ç½®çš„
 	 */
 
 	GetMesh()->SetRenderCustomDepth(true);
@@ -29,7 +29,7 @@ void AEnemy_Characte::HighlightActor()
 
 void AEnemy_Characte::UnHighlightActor()
 {
-	// ²»ÆôÓÃ Custom Depth
+	// ä¸å¯ç”¨ Custom Depth
 	GetMesh()->SetRenderCustomDepth(false);
 	Weapon->SetRenderCustomDepth(false);
 }
@@ -60,9 +60,9 @@ AActor* AEnemy_Characte::GetCombatTarget_Implementation()
 AEnemy_Characte::AEnemy_Characte()
 {
 	/*
-	ECC_Visibility ÊÇ Unreal Engine ÖĞµÄÒ»¸öÄÚÖÃÅö×²Í¨µÀ£¨Collision Channel£©£¬×¨ÃÅÓÃÓÚ´¦ÀíÓë ¿É¼ûĞÔVisibility£© Ïà¹ØµÄÅö×²¼ì²â¡£
-	ËüÍ¨³£ÓÃÓÚ¹âÏß×·×Ù£¨Line Trace£©¡¢Êó±êµã»÷¼ì²âµÈ³¡¾°£¬ÓÃÀ´¼ì²â¶ÔÏóÊÇ·ñ¿É¼û»ò¿É½»»¥¡£
-	Visibility Í¨µÀ ÉèÖÃÎª Block£¬ÉäÏß»áÃüÖĞ¸Ã¶ÔÏó£¬²¢·µ»Ø¶ÔÏóĞÅÏ¢
+	ECC_Visibility æ˜¯ Unreal Engine ä¸­çš„ä¸€ä¸ªå†…ç½®ç¢°æ’é€šé“ï¼ˆCollision Channelï¼‰ï¼Œä¸“é—¨ç”¨äºå¤„ç†ä¸ å¯è§æ€§Visibilityï¼‰ ç›¸å…³çš„ç¢°æ’æ£€æµ‹ã€‚
+	å®ƒé€šå¸¸ç”¨äºå…‰çº¿è¿½è¸ªï¼ˆLine Traceï¼‰ã€é¼ æ ‡ç‚¹å‡»æ£€æµ‹ç­‰åœºæ™¯ï¼Œç”¨æ¥æ£€æµ‹å¯¹è±¡æ˜¯å¦å¯è§æˆ–å¯äº¤äº’ã€‚
+	Visibility é€šé“ è®¾ç½®ä¸º Blockï¼Œå°„çº¿ä¼šå‘½ä¸­è¯¥å¯¹è±¡ï¼Œå¹¶è¿”å›å¯¹è±¡ä¿¡æ¯
 	*
 	*/
 	GetMesh()->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
@@ -73,12 +73,12 @@ AEnemy_Characte::AEnemy_Characte()
 	AbilitySystemComponent->SetIsReplicated(true);
 	AbilitySystemComponent->SetReplicationMode(EGameplayEffectReplicationMode::Minimal);
 
-	//ÉèÖÃ×ªÏò
+	//è®¾ç½®è½¬å‘
 	bUseControllerRotationPitch = false;
 	bUseControllerRotationYaw = false;
 	bUseControllerRotationRoll = false;
-	GetCharacterMovement()->bOrientRotationToMovement = true; //ÒÆ¶¯Ê¹ÓÃ
-	GetCharacterMovement()->bUseControllerDesiredRotation = false; //¹¥»÷Ê¹ÓÃ
+	GetCharacterMovement()->bOrientRotationToMovement = true; //ç§»åŠ¨ä½¿ç”¨
+	GetCharacterMovement()->bUseControllerDesiredRotation = false; //æ”»å‡»ä½¿ç”¨
 	GetCharacterMovement()->RotationRate = FRotator(0.0f, 540.0f, 0.0f);
 
 	AttributeSet = CreateDefaultSubobject<UMy_AuraAttributeSet>("AttributeSet");
@@ -107,16 +107,16 @@ void AEnemy_Characte::BeginPlay()
 	My_InitAbilityActorInfo();
 
 	/*
-	 * ÑªÁ¿UI WidgetController²¿·Ö
+	 * è¡€é‡UI WidgetControlleréƒ¨åˆ†
 	 */
 
-	// SetWidgetController,ÒòÎªÀïÃæÊÇ¶ÔÎ¯ÍĞ°ó¶¨£¨Ò²¿ÉÒÔºó°ó¶¨,µ«°ó¶¨ºóÒª¹ã²¥³õÊ¼Öµ,±£Ö¤UIÕıÈ·£©
+	// SetWidgetController,å› ä¸ºé‡Œé¢æ˜¯å¯¹å§”æ‰˜ç»‘å®šï¼ˆä¹Ÿå¯ä»¥åç»‘å®š,ä½†ç»‘å®šåè¦å¹¿æ’­åˆå§‹å€¼,ä¿è¯UIæ­£ç¡®ï¼‰
 	if (UMy_AuraUserWidget* AuraUserWidget = CastChecked<UMy_AuraUserWidget>(HealthBar->GetUserWidgetObject()))
 	{
 		AuraUserWidget->SetWidgetController(this);
 	}
 
-	// ³õÊ¼»¯widgetController,ÀïÃæÊÇ¶ÔÎ¯ÍĞµÄ¹ã²¥
+	// åˆå§‹åŒ–widgetController,é‡Œé¢æ˜¯å¯¹å§”æ‰˜çš„å¹¿æ’­
 	if (UMy_AuraAttributeSet* AuraAS = CastChecked<UMy_AuraAttributeSet>(AttributeSet))
 	{
 		AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(AuraAS->GetHealthAttribute()).AddLambda([this](const FOnAttributeChangeData& Data)
@@ -129,13 +129,13 @@ void AEnemy_Characte::BeginPlay()
 			OnMaxHealthChanged.Broadcast(Data.NewValue);
 		});
 
-		// ¹ã²¥³õÊ¼Öµ
+		// å¹¿æ’­åˆå§‹å€¼
 		OnHealthChanged.Broadcast(AuraAS->GetHealth());
 		OnMaxHealthChanged.Broadcast(AuraAS->GetMaxHealth());
 	}
 
 	/*
-	 * Hit React ²¿·Ö
+	 * Hit React éƒ¨åˆ†
 	*/
 	AbilitySystemComponent->RegisterGameplayTagEvent(FMy_AuraGameplayTags::GetInstance().My_EffectGranted_HitReact, EGameplayTagEventType::NewOrRemoved).AddUObject(
 		this,
@@ -162,7 +162,7 @@ void AEnemy_Characte::My_InitAbilityActorInfo()
 	InitializeDefaultAttribute();
 }
 
-// ³õÊ¼»¯µĞÈËµÄAttributeºÍAbility ´ÓDataAssetÖĞ
+// åˆå§‹åŒ–æ•Œäººçš„Attributeå’ŒAbility ä»DataAssetä¸­
 void AEnemy_Characte::InitializeDefaultAttribute() const
 {
 	if (HasAuthority())

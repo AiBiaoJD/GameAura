@@ -20,10 +20,10 @@ class AURA_API UMy_AttributeMenuWidgetController : public UMy_AuraWidgetControll
 
 public:
 
-	//¿ØÖÆÆ÷¹ã²¥Êı¾İ¸øwidget
+	//æ§åˆ¶å™¨å¹¿æ’­æ•°æ®ç»™widget
 	virtual void BroadcastInitiaValues();
 
-	//ATTributeÊôĞÔ¸Ä±ä£¬Î¯ÍĞµ÷ÓÃµÄ»Øµ÷º¯Êı
+	//ATTributeå±æ€§æ”¹å˜ï¼Œå§”æ‰˜è°ƒç”¨çš„å›è°ƒå‡½æ•°
 	virtual void BindCallbacksToDependencies();
 
 	UPROPERTY(BlueprintAssignable, Category = "My_GAS|Attibutes")

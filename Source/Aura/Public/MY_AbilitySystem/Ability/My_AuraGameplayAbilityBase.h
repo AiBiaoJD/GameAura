@@ -16,7 +16,7 @@ class AURA_API UMy_AuraGameplayAbilityBase : public UGameplayAbility
 
 public:
 
-	//¸ù¾İInputActionµÄTag ºÍ StartUpInputTag È¥¼¤»îÄÜÁ¦
+	//æ ¹æ®InputActionçš„Tag å’Œ StartUpInputTag å»æ¿€æ´»èƒ½åŠ›
 	UPROPERTY(EditAnywhere, Category = "My_Input")
 	FGameplayTag StartUpInputTag;
 

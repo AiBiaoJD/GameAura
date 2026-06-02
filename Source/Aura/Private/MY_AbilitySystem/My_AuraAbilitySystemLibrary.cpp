@@ -74,14 +74,14 @@ void UMy_AuraAbilitySystemLibrary::GiveStartupAbilities(const UObject* WorldCont
 	UMy_CharacterClassInfo* ClassInfo = GetCharacterClassInfo(WorldContextObject);
 	if (ClassInfo == nullptr) return;
 
-	//¹²ÓĞÄÜÁ¦
+	//å…±æœ‰èƒ½åŠ›
 	for (auto Ability : ClassInfo->CommonAbility)
 	{
 		FGameplayAbilitySpec AbilitySpec = FGameplayAbilitySpec(Ability, 1);
 		ASC->GiveAbility(AbilitySpec);
 	}
 
-	//ÌØ¶¨ÄÜÁ¦
+	//ç‰¹å®šèƒ½åŠ›
 	const FMy_CharacterClassDefaultInfo& DefaultInfo = ClassInfo->GetClassDefaultInfo(CharacterType);
 	for (TSubclassOf<UGameplayAbility> AbilityClass : DefaultInfo.StartupAbilities)
 	{
@@ -148,7 +148,7 @@ void UMy_AuraAbilitySystemLibrary::GetLivePlayersWithRadius(const UObject* World
 				AActor* Avatar = IMy_CombatInterface::Execute_GetAvatar(Overlap.GetActor());
 				UE_LOG(LogTemp, Warning, TEXT("------------1------------"));
 
-				// ¹Ø¼ü£ºÌí¼ÓÈ¥ÖØ¼ì²é
+				// å…³é”®ï¼šæ·»åŠ å»é‡æ£€æŸ¥
 				if (Avatar && !OutOverLappingActors.Contains(Avatar))
 				{
 					OutOverLappingActors.Add(Avatar);

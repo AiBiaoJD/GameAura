@@ -8,12 +8,12 @@
 
 UMy_MMC_MaxMana::UMy_MMC_MaxMana()
 {
-	//³õÊ¼»¯²¶»ñÊôĞÔ
+	//åˆå§‹åŒ–æ•è·å±æ€§
 	IntelligenceDef = FGameplayEffectAttributeCaptureDefinition(UMy_AuraAttributeSet::GetIntelligenceAttribute(), EGameplayEffectAttributeCaptureSource::Source, false
 	);
 
 
-	//½«²¶»ñµÄÊôĞÔÌí¼Óµ½RelevantAttributesToCaptureÖĞ
+	//å°†æ•è·çš„å±æ€§æ·»åŠ åˆ°RelevantAttributesToCaptureä¸­
 	RelevantAttributesToCapture.Add(IntelligenceDef);
 }
 

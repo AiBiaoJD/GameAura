@@ -71,6 +71,9 @@ void AMy_ProjectileActor::OnSphereOverlap(UPrimitiveComponent* OverlappedCompone
 	{
 		TargetASC->ApplyGameplayEffectSpecToSelf(*DamageEffectSpecHandle.Data.Get());
 	}
+
+	// 先关碰撞再销毁，防止同帧多次触发伤害
+	Sphere->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	Destroy();
 }
 

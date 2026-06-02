@@ -16,7 +16,7 @@ class AURA_API UMy_AuraProjectileSpell : public UMy_AuraDamageGameplayAbility
 	GENERATED_BODY()
 
 protected:
-	// Ability 被激活后的入口点
+	// Ability 琚縺娲诲悗鐨勫叆鍙ｇ偣
 	virtual void  ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData) override;
 
 	UFUNCTION(BlueprintCallable, Category="My_Projectile")

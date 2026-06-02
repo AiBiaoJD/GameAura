@@ -3,7 +3,7 @@
 
 #include "CoreMinimal.h"
 
-//ÉèÖÃ×Ô¶¨ÒåÉî¶ÈÄ£°åÖµ,ÎïÌå¸ßÁÁÊ¹ÓÃ
+//è®¾ç½®è‡ªå®šä¹‰æ·±åº¦æ¨¡æ¿å€¼,ç‰©ä½“é«˜äº®ä½¿ç”¨
 #define CUSTOM_DEPTH_RED 250
 #define CUSTOM_DEPTH_BLUE 251
 #define CUSTOM_DEPTH_TAN 252

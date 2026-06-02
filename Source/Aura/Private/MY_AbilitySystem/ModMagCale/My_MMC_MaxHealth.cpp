@@ -8,10 +8,10 @@
 
 UMy_MMC_MaxHealth::UMy_MMC_MaxHealth()
 {
-	//³õÊ¼»¯²¶»ñÊôĞÔ
+	//åˆå§‹åŒ–æ•è·å±æ€§
 	VigorDef = FGameplayEffectAttributeCaptureDefinition(UMy_AuraAttributeSet::GetVIgorAttribute(), EGameplayEffectAttributeCaptureSource::Source, false);
 
-	//½«²¶»ñµÄÊôĞÔÌí¼Óµ½RelevantAttributesToCaptureÖĞ
+	//å°†æ•è·çš„å±æ€§æ·»åŠ åˆ°RelevantAttributesToCaptureä¸­
 	RelevantAttributesToCapture.Add(VigorDef);
 }
 
@@ -21,7 +21,7 @@ float UMy_MMC_MaxHealth::CalculateBaseMagnitude_Implementation(const FGameplayEf
 	const FGameplayTagContainer* SourceTags = Spec.CapturedSourceTags.GetAggregatedTags();
 	const FGameplayTagContainer* TargetTags = Spec.CapturedTargetTags.GetAggregatedTags();
 
-	//ÊôĞÔ¾ÛºÏÆ÷µÄÆÀ¹À¹ı³ÌÌá¹©ÉÏÏÂÎÄĞÅÏ¢
+	//å±æ€§èšåˆå™¨çš„è¯„ä¼°è¿‡ç¨‹æä¾›ä¸Šä¸‹æ–‡ä¿¡æ¯
 	FAggregatorEvaluateParameters EvaluateParameters;
 	EvaluateParameters.SourceTags = SourceTags;
 	EvaluateParameters.TargetTags = TargetTags;
@@ -30,7 +30,7 @@ float UMy_MMC_MaxHealth::CalculateBaseMagnitude_Implementation(const FGameplayEf
 	GetCapturedAttributeMagnitude(VigorDef, Spec, EvaluateParameters, Vigor);
 	Vigor = FMath::Max(Vigor, 0.0f);
 
-	//CombatInterfaceÊÇÔÚCharacter_baseÖĞµÄ,ÕâÑù¸¸ÀàµÄÖ¸Õë¿ÉÒÔµ÷ÓÃ²»Í¬×ÓÀàµÄº¯Êı
+	//CombatInterfaceæ˜¯åœ¨Character_baseä¸­çš„,è¿™æ ·çˆ¶ç±»çš„æŒ‡é’ˆå¯ä»¥è°ƒç”¨ä¸åŒå­ç±»çš„å‡½æ•°
 	IMy_CombatInterface* CombatInterface = Cast<IMy_CombatInterface>(Spec.GetContext().GetSourceObject());
 	const int32 PlayerLevel = CombatInterface->GetPlayerLevel();
 

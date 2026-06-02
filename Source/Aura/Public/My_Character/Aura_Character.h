@@ -24,6 +24,6 @@ public:
 	/** end Combat interface **/
 private:
 
-	//³õÊ¼»¯HUDºÍÏà¹ØASCÎ¯ÍĞµÄ°ó¶¨
+	//åˆå§‹åŒ–HUDå’Œç›¸å…³ASCå§”æ‰˜çš„ç»‘å®š
 	virtual void My_InitAbilityActorInfo() override;
 };

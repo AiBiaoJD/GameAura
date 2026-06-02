@@ -17,13 +17,13 @@ UMy_AuraAttributeSet::UMy_AuraAttributeSet()
 {
 	const FMy_AuraGameplayTags& GameplayTags = FMy_AuraGameplayTags::GetInstance();
 
-	// Ìí¼Ó Primary Attributes
+	// æ·»åŠ  Primary Attributes
 	M_TagsToAttribute.Add(GameplayTags.My_Attribute_Primary_Strength, GetStrengthAttribute);
 	M_TagsToAttribute.Add(GameplayTags.My_Attribute_Primary_Intelligence, GetIntelligenceAttribute);
 	M_TagsToAttribute.Add(GameplayTags.My_Attribute_Primary_Resilience, GetResilienceAttribute);
 	M_TagsToAttribute.Add(GameplayTags.My_Attribute_Primary_VIgor, GetVIgorAttribute);
 
-	// Ìí¼Ó Secondary Attributes
+	// æ·»åŠ  Secondary Attributes
 	M_TagsToAttribute.Add(GameplayTags.My_Attribute_Secondary_Armor, GetArmorAttribute);
 	M_TagsToAttribute.Add(GameplayTags.My_Attribute_Secondary_ArmorPenetration, GetArmorPenetrationAttribute);
 	M_TagsToAttribute.Add(GameplayTags.My_Attribute_Secondary_HealthRegeneration, GetHealthRegenerationAttribute);
@@ -40,12 +40,12 @@ UMy_AuraAttributeSet::UMy_AuraAttributeSet()
 	M_TagsToAttribute.Add(GameplayTags.My_Attribute_Secondary_Resistance_Physical, GetPhysicalResistanceAttribute);
 }
 
-//·şÎñÆ÷Í¨Öª¿Í»§¶Ë¸÷ÖÖATTributeµÄ¸üĞÂÇé¿ö
+//æœåŠ¡å™¨é€šçŸ¥å®¢æˆ·ç«¯å„ç§ATTributeçš„æ›´æ–°æƒ…å†µ
 void UMy_AuraAttributeSet::GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
-	//Replicate ÎŞÌõ¼şµÄ¸´ÖÆ£¬×ÜÊÇÓĞµ÷ÓÃOnRep£¬¼´Ê±ÏàÍ¬
+	//Replicate æ— æ¡ä»¶çš„å¤åˆ¶ï¼Œæ€»æ˜¯æœ‰è°ƒç”¨OnRepï¼Œå³æ—¶ç›¸åŒ
 	//---- Primary ATTribute -----
 	DOREPLIFETIME_CONDITION_NOTIFY(UMy_AuraAttributeSet, Strength, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UMy_AuraAttributeSet, Intelligence, COND_None, REPNOTIFY_Always);
@@ -77,8 +77,8 @@ void UMy_AuraAttributeSet::GetLifetimeReplicatedProps(TArray<class FLifetimeProp
 	DOREPLIFETIME_CONDITION_NOTIFY(UMy_AuraAttributeSet, CriticalHitDamage, COND_None, REPNOTIFY_Always);
 }
 
-//ÔÚATTributeĞŞ¸ÄÖ®Ç°½øĞĞÏà¹Ø´¦Àí£¬Ö÷Òª±ÜÃâAttributeÀïÃæµÄÊı¾İ·Ç·¨£¬ÊôÓÚAttributeºËĞÄÂß¼­
-//GetGameplayAttributeValueChangeDelegateÓëÕâ¸ö²»Í¬£¬Õâ¸öÊÇÔÚ»ñÈ¡Î¯ÍĞ£¬Ö÷Òª´¦ÀíUI¸üĞÂºÍÒôĞ§
+//åœ¨ATTributeä¿®æ”¹ä¹‹å‰è¿›è¡Œç›¸å…³å¤„ç†ï¼Œä¸»è¦é¿å…Attributeé‡Œé¢çš„æ•°æ®éæ³•ï¼Œå±äºAttributeæ ¸å¿ƒé€»è¾‘
+//GetGameplayAttributeValueChangeDelegateä¸è¿™ä¸ªä¸åŒï¼Œè¿™ä¸ªæ˜¯åœ¨è·å–å§”æ‰˜ï¼Œä¸»è¦å¤„ç†UIæ›´æ–°å’ŒéŸ³æ•ˆ
 void UMy_AuraAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribute, float& NewValue)
 {
 	Super::PreAttributeChange(Attribute, NewValue);
@@ -97,10 +97,10 @@ void UMy_AuraAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribut
 void UMy_AuraAttributeSet::PostAttributeChange(const FGameplayAttribute& Attribute, float OldValue, float NewValue)
 {
 	Super::PostAttributeChange(Attribute, OldValue, NewValue);
-	//ºÃÏñ¶ÔÓÚ³ÖĞøµÄEffect,PostAttributeChangeÕâÀïÒ²ÏŞÖÆ²»ÁË
+	//å¥½åƒå¯¹äºæŒç»­çš„Effect,PostAttributeChangeè¿™é‡Œä¹Ÿé™åˆ¶ä¸äº†
 }
 
-//ÔÚ GameplayEffect Ö´ĞĞÍê±Ïºóµ÷ÓÃ
+//åœ¨ GameplayEffect æ‰§è¡Œå®Œæ¯•åè°ƒç”¨
 void UMy_AuraAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffectModCallbackData& Data)
 {
 	Super::PostGameplayEffectExecute(Data);
@@ -119,9 +119,9 @@ void UMy_AuraAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffec
 	}
 
 	/*
-	 * MetaAttribute²¿·Ö
+	 * MetaAttributeéƒ¨åˆ†
 	 */
-	if (Data.EvaluatedData.Attribute == GetIncomingDamageAttribute()) // Õâ¸öÊôĞÔÖ»»áÔÚ·şÎñÆ÷±ä»¯
+	if (Data.EvaluatedData.Attribute == GetIncomingDamageAttribute()) // è¿™ä¸ªå±æ€§åªä¼šåœ¨æœåŠ¡å™¨å˜åŒ–
 	{
 		const float LocalIncomingDamage = GetIncomingDamage();
 		SetIncomingDamage(0.f);
@@ -154,18 +154,18 @@ void UMy_AuraAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffec
 }
 
 /*
- * ·şÎñÆ÷¼ì²éµ½IncomingDamageAttribute±ä»¯ºó,»ñÈ¡¶ÔÓ¦±ä»¯ActorµÄPlayerControllerÈ¥ÊµÏÖÏÔÊ¾Text
+ * æœåŠ¡å™¨æ£€æŸ¥åˆ°IncomingDamageAttributeå˜åŒ–å,è·å–å¯¹åº”å˜åŒ–Actorçš„PlayerControllerå»å®ç°æ˜¾ç¤ºText
  */
 void UMy_AuraAttributeSet::ShowDamageText(const FMy_EffectProperties& Props, float Damage, bool IsBlockedHit, bool IsCriticalHit) const
 {
 	if (Props.SourceCharacter != Props.TargetCharacter)
 	{
-		// SourceÊÇPlayer,TargetÊÇEnemy
+		// Sourceæ˜¯Player,Targetæ˜¯Enemy
 		if (AMy_Aura_Controller* PC = Cast<AMy_Aura_Controller>(Props.SourceCharacter->Controller))
 		{
 			PC->ClientShowDamageNum(Damage, Props.TargetCharacter, IsBlockedHit, IsCriticalHit);
 		}
-		// SourceÊÇEnemy,TargetÊÇPlayer
+		// Sourceæ˜¯Enemy,Targetæ˜¯Player
 		if (AMy_Aura_Controller* PC = Cast<AMy_Aura_Controller>(Props.TargetCharacter->Controller))
 		{
 			PC->ClientShowDamageNum(Damage, Props.TargetCharacter, IsBlockedHit, IsCriticalHit);
@@ -175,11 +175,11 @@ void UMy_AuraAttributeSet::ShowDamageText(const FMy_EffectProperties& Props, flo
 
 void UMy_AuraAttributeSet::SetEffectProperty(const struct FGameplayEffectModCallbackData& Data, FMy_EffectProperties& Props) const
 {
-	//SourceÊÇÔì³ÉEffectµÄÀ´Ô´, TargetÊÇEffectµÄ¶ÔÏó(ÊÇÕâ¸öATTributeSetµÄÓµÓĞÕß)
-	//InstigatorÊÇ·¢ÆğÕßÎªPlayerState(ASCÔÚÉÏÃæ)
-	//EffectcurserÊÇÔ­ÒòÎªAuraCharacter
+	//Sourceæ˜¯é€ æˆEffectçš„æ¥æº, Targetæ˜¯Effectçš„å¯¹è±¡(æ˜¯è¿™ä¸ªATTributeSetçš„æ‹¥æœ‰è€…)
+	//Instigatoræ˜¯å‘èµ·è€…ä¸ºPlayerState(ASCåœ¨ä¸Šé¢)
+	//Effectcurseræ˜¯åŸå› ä¸ºAuraCharacter
 
-	//1.Source²¿·Ö
+	//1.Sourceéƒ¨åˆ†
 	Props.EffectContextHandle = Data.EffectSpec.GetContext();
 	Props.SourceASC = Props.EffectContextHandle.GetOriginalInstigatorAbilitySystemComponent();
 
@@ -188,7 +188,7 @@ void UMy_AuraAttributeSet::SetEffectProperty(const struct FGameplayEffectModCall
 		Props.SourceAvatarActor = Props.SourceASC->AbilityActorInfo->AvatarActor.Get();
 
 		Props.SourceController = Props.SourceASC->AbilityActorInfo->PlayerController.Get();
-		//±ÜÃâPlayerController.Get()ÊÇ¿Õ
+		//é¿å…PlayerController.Get()æ˜¯ç©º
 		if (Props.SourceController == nullptr && Props.SourceAvatarActor != nullptr)
 		{
 			if (const APawn* Pawn = Cast<APawn>(Props.SourceAvatarActor))
@@ -202,7 +202,7 @@ void UMy_AuraAttributeSet::SetEffectProperty(const struct FGameplayEffectModCall
 		}
 	}
 
-	//2.Target²¿·Ö
+	//2.Targetéƒ¨åˆ†
 	if (Data.Target.AbilityActorInfo.IsValid() && Data.Target.AbilityActorInfo->AvatarActor.IsValid())
 	{
 		Props.TargetAvatarActor = Data.Target.AbilityActorInfo->AvatarActor.Get();
@@ -216,7 +216,7 @@ void UMy_AuraAttributeSet::SetEffectProperty(const struct FGameplayEffectModCall
 
 void UMy_AuraAttributeSet::OnRep_Health(const FGameplayAttributeData& OldHealth) const
 {
-	//ºê£¬±È½Ï¾ÉÖµºÍĞÂÖµ£¬²»Í¬µ÷ÓÃOnRep£¬ÉÏÃæGetLifetimeReplicatedProps¸ÄÁËÏàÍ¬Ò²µ÷ÓÃ
+	//å®ï¼Œæ¯”è¾ƒæ—§å€¼å’Œæ–°å€¼ï¼Œä¸åŒè°ƒç”¨OnRepï¼Œä¸Šé¢GetLifetimeReplicatedPropsæ”¹äº†ç›¸åŒä¹Ÿè°ƒç”¨
 	GAMEPLAYATTRIBUTE_REPNOTIFY(UMy_AuraAttributeSet, Health, OldHealth);
 }
 

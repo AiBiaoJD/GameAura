@@ -10,7 +10,7 @@ void UMy_OverlayWidgetController::BroadcastInitiaValues()
 {
 	const UMy_AuraAttributeSet* AuraAttributeSet = CastChecked<UMy_AuraAttributeSet>(AttributeSet);
 
-	//---------¸üĞÂUIÊ¹ÓÃ¹ã²¥Î¯ÍĞ,´«¸øWidget--------------
+	//---------æ›´æ–°UIä½¿ç”¨å¹¿æ’­å§”æ‰˜,ä¼ ç»™Widget--------------
 	OnHealthChanged.Broadcast(AuraAttributeSet->GetHealth());
 	OnMaxHealthChanged.Broadcast(AuraAttributeSet->GetMaxHealth());
 	OnManaChanged.Broadcast(AuraAttributeSet->GetMana());
@@ -18,37 +18,37 @@ void UMy_OverlayWidgetController::BroadcastInitiaValues()
 
 }
 
-//ATTributeSetÀïÃæÊôĞÔ·¢Éú¸Ä±ä£¬µ÷ÓÃµÄ»Øµ÷º¯Êı
+//ATTributeSeté‡Œé¢å±æ€§å‘ç”Ÿæ”¹å˜ï¼Œè°ƒç”¨çš„å›è°ƒå‡½æ•°
 void UMy_OverlayWidgetController::BindCallbacksToDependencies()
 {
-	//---------ÊôĞÔ¸Ä±äÊ¹ÓÃASCµÄ°ó¶¨Î¯ÍĞ,´«¸øASC--------------
+	//---------å±æ€§æ”¹å˜ä½¿ç”¨ASCçš„ç»‘å®šå§”æ‰˜,ä¼ ç»™ASC--------------
 	const UMy_AuraAttributeSet* AuraAttributeSet = CastChecked<UMy_AuraAttributeSet>(AttributeSet);
-	//ÉúÃüÖµ¸Ä±äº¯ÊıÌí¼Óµ½Î¯ÍĞ
+	//ç”Ÿå‘½å€¼æ”¹å˜å‡½æ•°æ·»åŠ åˆ°å§”æ‰˜
 	AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(AuraAttributeSet->GetHealthAttribute()).AddLambda([this](const FOnAttributeChangeData& Date)
 		{
 			OnHealthChanged.Broadcast(Date.NewValue);
 		});
 
-	//×î´óÉúÃüÖµ¸Ä±äº¯ÊıÌí¼Óµ½Î¯ÍĞ
+	//æœ€å¤§ç”Ÿå‘½å€¼æ”¹å˜å‡½æ•°æ·»åŠ åˆ°å§”æ‰˜
 	AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(AuraAttributeSet->GetMaxHealthAttribute()).AddLambda([this](const FOnAttributeChangeData& Date)
 		{
 			OnMaxHealthChanged.Broadcast(Date.NewValue);
 
 		});
 
-	//·¨Á¦Öµ¸Ä±äº¯ÊıÌí¼Óµ½Î¯ÍĞ
+	//æ³•åŠ›å€¼æ”¹å˜å‡½æ•°æ·»åŠ åˆ°å§”æ‰˜
 	AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(AuraAttributeSet->GetManaAttribute()).AddLambda([this](const FOnAttributeChangeData& Data)
 		{
 			OnManaChanged.Broadcast(Data.NewValue);
 		});
 
-	//×î´ó·¨Á¦Öµ¸Ä±äº¯ÊıÌí¼Óµ½Î¯ÍĞ
+	//æœ€å¤§æ³•åŠ›å€¼æ”¹å˜å‡½æ•°æ·»åŠ åˆ°å§”æ‰˜
 	AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(AuraAttributeSet->GetMaxManaAttribute()).AddLambda([this](const FOnAttributeChangeData& Data)
 		{
 			OnMaxManaChanged.Broadcast(Data.NewValue);
 		});
 
-	//---------Effect AppliedÊ¹ÓÃASCµÄ°ó¶¨Î¯ÍĞ,´«¸øMy_ASC--------------
+	//---------Effect Appliedä½¿ç”¨ASCçš„ç»‘å®šå§”æ‰˜,ä¼ ç»™My_ASC--------------
 	Cast<UMy_AuraAbilitySystemComponent>(AbilitySystemComponent)->EffectAssetTags.AddLambda(
 		[this](const FGameplayTagContainer& AssetTags)
 		{
@@ -60,11 +60,11 @@ void UMy_OverlayWidgetController::BindCallbacksToDependencies()
 				FGameplayTag MessageTag = FGameplayTag::RequestGameplayTag(FName("My_Message"));
 				if (Tag.MatchesTag(MessageTag))
 				{
-					//»ñÈ¡Êı¾İ±í±êÇ©ÎªTagµÄRow
+					//è·å–æ•°æ®è¡¨æ ‡ç­¾ä¸ºTagçš„Row
 					const FMy_UIWidgetRow* Row = GetDataTableRowByTag<FMy_UIWidgetRow>(MessageWidgetDataTable, Tag);
 
 
-					//---------¹ã²¥DataTableµÄrowÊ¹ÓÃ¹ã²¥Î¯ÍĞ,´«¸øWidget--------------
+					//---------å¹¿æ’­DataTableçš„rowä½¿ç”¨å¹¿æ’­å§”æ‰˜,ä¼ ç»™Widget--------------
 					OnMessageWidgetRow.Broadcast(*Row);
 				}
 

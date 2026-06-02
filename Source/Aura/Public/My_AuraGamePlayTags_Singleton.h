@@ -14,8 +14,8 @@
 struct FMy_AuraGameplayTags
 {
 public:
-	static const FMy_AuraGameplayTags& GetInstance() { return GameplayTagsInstance; } //È«¾Ö·ÃÎÊÈë¿Ú£¬constÒıÓÃ·À¿½±´
-	static void InitializeNativeGameplayTags(); //¾²Ì¬·½·¨£¬²Ù×÷¾²Ì¬ÊµÀı
+	static const FMy_AuraGameplayTags& GetInstance() { return GameplayTagsInstance; } //å…¨å±€è®¿é—®å…¥å£ï¼Œconstå¼•ç”¨é˜²æ‹·è´
+	static void InitializeNativeGameplayTags(); //é™æ€æ–¹æ³•ï¼Œæ“ä½œé™æ€å®ä¾‹
 
 	// Primary Attributes Tag
 	FGameplayTag My_Attribute_Primary_Strength;
@@ -80,5 +80,5 @@ public:
 	TMap<FGameplayTag,FGameplayTag> DamageToResistance;
 
 private:
-	static FMy_AuraGameplayTags GameplayTagsInstance; // C++£ºÉùÃ÷£¬±ØĞëÔÚÕâÀï
+	static FMy_AuraGameplayTags GameplayTagsInstance; // C++ï¼šå£°æ˜ï¼Œå¿…é¡»åœ¨è¿™é‡Œ
 };

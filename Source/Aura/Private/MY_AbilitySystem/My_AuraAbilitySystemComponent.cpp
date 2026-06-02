@@ -11,11 +11,11 @@ UMy_AuraAbilitySystemComponent::UMy_AuraAbilitySystemComponent()
 	SetIsReplicated(true);
 }
 
-//ÔÚCharacter_BaseµÄSetAbilityActorInfo()º¯ÊıÖĞµ÷ÓÃ
+//åœ¨Character_Baseçš„SetAbilityActorInfo()å‡½æ•°ä¸­è°ƒç”¨
 void UMy_AuraAbilitySystemComponent::AbilityActorInfoSet()
 {
-	//-------Ò»µ©ActorinfoÉèÖÃºÃ,¾Í¿ÉÒÔ¶ÔASCµÄÎ¯ÍĞ½øĞĞ°ó¶¨-----------------
-	// ¸ÃÎ¯ÍĞÖ»ÔÚ·şÎñÆ÷µ÷ÓÃ,¿Í»§¶Ë²»Ê¹ÓÃ,Òò´ËÊ¹ÓÃRPC·½·¨½â¾öÎÊÌâ
+	//-------ä¸€æ—¦Actorinfoè®¾ç½®å¥½,å°±å¯ä»¥å¯¹ASCçš„å§”æ‰˜è¿›è¡Œç»‘å®š-----------------
+	// è¯¥å§”æ‰˜åªåœ¨æœåŠ¡å™¨è°ƒç”¨,å®¢æˆ·ç«¯ä¸ä½¿ç”¨,å› æ­¤ä½¿ç”¨RPCæ–¹æ³•è§£å†³é—®é¢˜
 	OnGameplayEffectAppliedDelegateToSelf.AddUObject(this, &UMy_AuraAbilitySystemComponent::ClientEffectApplied);
 }
 
@@ -25,13 +25,13 @@ void UMy_AuraAbilitySystemComponent::ClientEffectApplied_Implementation(UAbility
 	FGameplayTagContainer TagContainer;
 	EffectSpec.GetAllAssetTags(TagContainer);
 	
-	//Ê¹ÓÃÎ¯ÍĞ½øĞĞTagContainerµÄ¹ã²¥,ÕâÑùWidgetController¾Í¿ÉÒÔ½ÓÊÜµ½
-	//ÕâÑùMy_ASC²»ÖªµÀWidgetController,¶øWidgetControllerÖªµÀASC
+	//ä½¿ç”¨å§”æ‰˜è¿›è¡ŒTagContainerçš„å¹¿æ’­,è¿™æ ·WidgetControllerå°±å¯ä»¥æ¥å—åˆ°
+	//è¿™æ ·My_ASCä¸çŸ¥é“WidgetController,è€ŒWidgetControllerçŸ¥é“ASC
 	EffectAssetTags.Broadcast(TagContainer);
 }
 
 /*
- * ÔÚ½ÇÉ«³õÊ¼»¯Ê±,¸øÄÜÁ¦Ìí¼ÓTag
+ * åœ¨è§’è‰²åˆå§‹åŒ–æ—¶,ç»™èƒ½åŠ›æ·»åŠ Tag
  */
 void UMy_AuraAbilitySystemComponent::AddCharacterAbilitiesFromASC(const TArray<TSubclassOf<UGameplayAbility>>& StartupAbility)
 {
@@ -48,8 +48,8 @@ void UMy_AuraAbilitySystemComponent::AddCharacterAbilitiesFromASC(const TArray<T
 }
 
 /*
- * µ±PlayerController °´ÏÂ/·Å¿ª °´¼ü»á¼¤»îÏÂÃæµÄº¯Êı
- * ¸ù¾İinputTag¼¤»î¶ÔÓ¦µÄÄÜÁ¦
+ * å½“PlayerController æŒ‰ä¸‹/æ”¾å¼€ æŒ‰é”®ä¼šæ¿€æ´»ä¸‹é¢çš„å‡½æ•°
+ * æ ¹æ®inputTagæ¿€æ´»å¯¹åº”çš„èƒ½åŠ›
  */
 void UMy_AuraAbilitySystemComponent::AbilityInputTagHeld(const FGameplayTag InputTag)
 {

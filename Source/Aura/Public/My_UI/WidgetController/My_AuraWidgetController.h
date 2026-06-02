@@ -42,18 +42,18 @@ class AURA_API UMy_AuraWidgetController : public UObject
 {
 	GENERATED_BODY()
 	/*
-	 *widgetController»ñÈ¡Êı¾İ´ÓModeÖĞ£¬ÔÙ¹ã²¥»áWidget
-	 *Êı¾İÖ÷ÒªÊÇ£ºATTribute£¬ASC,PlayerState£¬PlayerController
+	 *widgetControllerè·å–æ•°æ®ä»Modeä¸­ï¼Œå†å¹¿æ’­ä¼šWidget
+	 *æ•°æ®ä¸»è¦æ˜¯ï¼šATTributeï¼ŒASC,PlayerStateï¼ŒPlayerController
 	 */
 public:
 	UFUNCTION(BlueprintCallable)
 	void SetWidgetControllerParams(const FMY_WidgetControllerParams& WCParams);
 
-	//¿ØÖÆÆ÷¹ã²¥Êı¾İ¸øwidget
+	//æ§åˆ¶å™¨å¹¿æ’­æ•°æ®ç»™widget
 	UFUNCTION(BlueprintCallable)
 	virtual void BroadcastInitiaValues();
 
-	//ATTributeÊôĞÔ¸Ä±ä£¬Î¯ÍĞµ÷ÓÃµÄ»Øµ÷º¯Êı
+	//ATTributeå±æ€§æ”¹å˜ï¼Œå§”æ‰˜è°ƒç”¨çš„å›è°ƒå‡½æ•°
 	virtual void BindCallbacksToDependencies();
 protected:
 	UPROPERTY(BlueprintReadOnly, Category="WidgetController")

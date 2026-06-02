@@ -17,13 +17,13 @@ void UMy_AuraProjectileSpell::ActivateAbility(const FGameplayAbilitySpecHandle H
 
 void UMy_AuraProjectileSpell::SpawnProjectile(const FVector& ProjectileTargetLocation)
 {
-	// ProjectileActorĞèÒªÔÚ·şÎñÆ÷Éú³É,replicateµ½¿Í»§¶Ë
-	// ´ËÊ±AbilityÊÇÔ¤²âµÄ£¬²»»áÊÜÕâ¸öÓ°Ïì£¬»áÉú³ÉÔ¤²â»ğÇò
+	// ProjectileActoréœ€è¦åœ¨æœåŠ¡å™¨ç”Ÿæˆ,replicateåˆ°å®¢æˆ·ç«¯
+	// æ­¤æ—¶Abilityæ˜¯é¢„æµ‹çš„ï¼Œä¸ä¼šå—è¿™ä¸ªå½±å“ï¼Œä¼šç”Ÿæˆé¢„æµ‹ç«çƒ
 	if (!GetAvatarActorFromActorInfo()->HasAuthority()) return;
 
 	/*
-	 * ÕâÀï²»Ö±½Ó»ñÈ¡AuraCharter,¶øÊÇÊ¹ÓÃInterface½á¹¹
-	 * ÊÇÎªÁËÈÃAbility²»°ó¶¨Aura½ÇÉ«,¿ÉÒÔ¼ì²éÈÎÒâµÄ½ÇÉ«/µĞÈË
+	 * è¿™é‡Œä¸ç›´æ¥è·å–AuraCharter,è€Œæ˜¯ä½¿ç”¨Interfaceç»“æ„
+	 * æ˜¯ä¸ºäº†è®©Abilityä¸ç»‘å®šAuraè§’è‰²,å¯ä»¥æ£€æŸ¥ä»»æ„çš„è§’è‰²/æ•Œäºº
 	 */
 	IMy_CombatInterface* CombatInterface = Cast<IMy_CombatInterface>(GetAvatarActorFromActorInfo());
 	if (CombatInterface)
@@ -35,7 +35,7 @@ void UMy_AuraProjectileSpell::SpawnProjectile(const FVector& ProjectileTargetLoc
 		SpawnTransform.SetLocation(SockLoc);
 		SpawnTransform.SetRotation(Rotation.Quaternion());
 
-		// ÒòÎªÒªÔÚProjectileActorÖĞÌí¼ÓEffect,ËùÒÔÊ¹ÓÃÕâÖÖ·½Ê½´´½¨,·½±ãÔÚÉú³ÉActorÊ±EffectÒÑ¾­Ìí¼Ó
+		// å› ä¸ºè¦åœ¨ProjectileActorä¸­æ·»åŠ Effect,æ‰€ä»¥ä½¿ç”¨è¿™ç§æ–¹å¼åˆ›å»º,æ–¹ä¾¿åœ¨ç”ŸæˆActoræ—¶Effectå·²ç»æ·»åŠ 
 		AMy_ProjectileActor* Projectile = GetWorld()->SpawnActorDeferred<AMy_ProjectileActor>(
 			ProjectileClass,
 			SpawnTransform,

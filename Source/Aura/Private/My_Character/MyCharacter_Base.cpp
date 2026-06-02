@@ -23,7 +23,7 @@ AMyCharacter_Base::AMyCharacter_Base()
 
 	GetMesh()->SetCollisionResponseToChannel(ECC_MyProjectile, ECR_Overlap);
 	GetMesh()->SetGenerateOverlapEvents(true);
-	GetCapsuleComponent()->SetGenerateOverlapEvents(false); //È·±£mesh ºÍ capsuleÖ»ÓĞÒ»¸öÓÃÀ´´¦ÀíOnOverlap
+	GetCapsuleComponent()->SetGenerateOverlapEvents(false); //ç¡®ä¿mesh å’Œ capsuleåªæœ‰ä¸€ä¸ªç”¨æ¥å¤„ç†OnOverlap
 }
 
 
@@ -171,7 +171,7 @@ void AMyCharacter_Base::InitializeDefaultAttribute() const
 
 void AMyCharacter_Base::AddCharacterAbilities()
 {
-	// AbilityÌí¼Óµ½·şÎñÆ÷,replicateµ½¿Í»§¶Ë
+	// Abilityæ·»åŠ åˆ°æœåŠ¡å™¨,replicateåˆ°å®¢æˆ·ç«¯
 	if (!HasAuthority()) return;
 
 	UMy_AuraAbilitySystemComponent* ASC = CastChecked<UMy_AuraAbilitySystemComponent>(AbilitySystemComponent);

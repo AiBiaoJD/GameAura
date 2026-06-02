@@ -43,7 +43,20 @@
       "Read(//c/Users/79467/AppData/Local/Programs/**)",
       "Bash(powershell *)",
       "Bash(dir \"C:\\\\Users\\\\79467\\\\Desktop\\\\GitKraken.lnk\")",
-      "Bash(C:\\\\Users\\\\79467\\\\AppData\\\\Local\\\\gitkraken\\\\gitkraken.exe *)"
+      "Bash(C:\\\\Users\\\\79467\\\\AppData\\\\Local\\\\gitkraken\\\\gitkraken.exe *)",
+      "Bash(python3 -c \"print\\('hello'\\)\")",
+      "Bash(/c/Users/79467/anaconda3/python *)",
+      "Bash(file *)",
+      "Bash(unix2dos *)",
+      "Bash(dos2unix \"D:\\\\\\\\UE5 Project\\\\\\\\GameplayAbilitySystem_Aura-main\\\\\\\\Source\\\\\\\\Aura\\\\\\\\Public\\\\\\\\MY_AbilitySystem\\\\\\\\Data\\\\\\\\My_Attributeinfo.h\")",
+      "Bash(tr -d '\\\\r')",
+      "Bash(mv temp_attr.h \"D:\\\\\\\\UE5 Project\\\\\\\\GameplayAbilitySystem_Aura-main\\\\\\\\Source\\\\\\\\Aura\\\\\\\\Public\\\\\\\\MY_AbilitySystem\\\\\\\\Data\\\\\\\\My_Attributeinfo.h\")",
+      "Bash(cd \"D:\\\\\\\\UE5 Project\\\\\\\\GameplayAbilitySystem_Aura-main\")",
+      "Bash(ls -la \"D:\\\\\\\\UE5 Project\\\\\\\\GameplayAbilitySystem_Aura-main\\\\\\\\.claude\\\\\\\\skills\")",
+      "Bash(cat \"D:\\\\\\\\UE5 Project\\\\\\\\GameplayAbilitySystem_Aura-main\\\\\\\\.claude\\\\\\\\settings.json\")",
+      "Bash(cat \"D:\\\\\\\\UE5 Project\\\\\\\\GameplayAbilitySystem_Aura-main\\\\\\\\.claude\\\\\\\\settings.local.json\")",
+      "Bash(git add *)",
+      "Bash(git commit *)"
     ]
   }
 }

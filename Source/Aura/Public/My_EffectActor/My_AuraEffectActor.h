@@ -7,7 +7,7 @@
 #include "GameFramework/Actor.h"
 #include "My_AuraEffectActor.generated.h"
 
-//EffectÆôÓÃµÄ¹æÔò
+//Effectå¯ç”¨çš„è§„åˆ™
 UENUM(BlueprintType)
 enum class My_EEffectApplicationPolicy
 {
@@ -16,8 +16,8 @@ enum class My_EEffectApplicationPolicy
 	DoNotApply
 };
 
-//EffectÒÆ³ıµÄ¹æÔò
-//Instant ºÍ Duration ×Ô¶¯ÒÆ³ı£¬Ö»ÓĞInfiniteĞèÒªÊÖ¶¯ÒÆ³ı
+//Effectç§»é™¤çš„è§„åˆ™
+//Instant å’Œ Duration è‡ªåŠ¨ç§»é™¤ï¼Œåªæœ‰Infiniteéœ€è¦æ‰‹åŠ¨ç§»é™¤
 UENUM(BlueprintType)
 enum class My_EEffectRemovePolicy
 {
@@ -48,10 +48,10 @@ protected:
 
 
 
-	//EffectÊÇ·ñÔÚÒÆ³ıºóÏú»ÙActor
+	//Effectæ˜¯å¦åœ¨ç§»é™¤åé”€æ¯Actor
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Applied Effects")
 	bool bDestroyOnEffecctApplication = false;
-	//EffectÊÇ·ñÓ°ÏìµĞÈË
+	//Effectæ˜¯å¦å½±å“æ•Œäºº
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Applied Effects")
 	bool bApplyEffectToEnemies = false;
 	
@@ -78,8 +78,8 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Applied Effects")
 	My_EEffectRemovePolicy InfiniteEffectRemovePolicy = My_EEffectRemovePolicy::RemoveOnEndOverlap;
 
-	//¼üÖµ¶Ô£¬ÎªÁËÒÆ³ıInfinite Effect,±£´æActive Effect HandleºÍActorµÄ¶ÔÓ¦¹ØÏµ
-	//Ò»¸öEffect±»¶à¸öActor¼¤»î£¬»á´´½¨¶à¸öHand£¬±ÈÈçHand1£¬Hand2..
+	//é”®å€¼å¯¹ï¼Œä¸ºäº†ç§»é™¤Infinite Effect,ä¿å­˜Active Effect Handleå’ŒActorçš„å¯¹åº”å…³ç³»
+	//ä¸€ä¸ªEffectè¢«å¤šä¸ªActoræ¿€æ´»ï¼Œä¼šåˆ›å»ºå¤šä¸ªHandï¼Œæ¯”å¦‚Hand1ï¼ŒHand2..
 	TMap<UAbilitySystemComponent*, FActiveGameplayEffectHandle> ActorToActiveEffect_Map;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Applied Effects")

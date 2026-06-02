@@ -13,15 +13,15 @@
 AAura_Character::AAura_Character()
 {
 
-    // ½ÇÉ«ÔÚÒÆ¶¯Ê±×Ô¶¯³¯ÏòÒÆ¶¯·½Ïò
+    // è§’è‰²åœ¨ç§»åŠ¨æ—¶è‡ªåŠ¨æœå‘ç§»åŠ¨æ–¹å‘
     GetCharacterMovement()->bOrientRotationToMovement = true;
-    // Yaw ×óÓÒ×ªÏò
-    GetCharacterMovement()->RotationRate = FRotator(0.0f, 540.0f, 0.0f); // Ã¿ÃëĞı×ª 540 ¶È
-    // ½ûÓÃÆ½ÃæÔ¼Êø£¨²âÊÔÊ±¿ÉÒÔÏÈ½ûÓÃ£©
+    // Yaw å·¦å³è½¬å‘
+    GetCharacterMovement()->RotationRate = FRotator(0.0f, 540.0f, 0.0f); // æ¯ç§’æ—‹è½¬ 540 åº¦
+    // ç¦ç”¨å¹³é¢çº¦æŸï¼ˆæµ‹è¯•æ—¶å¯ä»¥å…ˆç¦ç”¨ï¼‰
     GetCharacterMovement()->bConstrainToPlane = false;
     GetCharacterMovement()->bSnapToPlaneAtStart = false;
 
-    // µÚÈıÈË³ÆÓÎÏ·ÉèÖÃ
+    // ç¬¬ä¸‰äººç§°æ¸¸æˆè®¾ç½®
     bUseControllerRotationPitch = false;
     bUseControllerRotationYaw = false;
     bUseControllerRotationRoll = false;
@@ -31,10 +31,10 @@ void AAura_Character::PossessedBy(AController* NewController)
 {
 	Super::PossessedBy(NewController);
 
-    //·şÎñÆ÷¶Ë³õÊ¼»¯InitAbilityActorInfo
+    //æœåŠ¡å™¨ç«¯åˆå§‹åŒ–InitAbilityActorInfo
     My_InitAbilityActorInfo();
 
-	//³õÊ¼»¯½ÇÉ«Ability
+	//åˆå§‹åŒ–è§’è‰²Ability
 	AddCharacterAbilities();
 
   
@@ -43,7 +43,7 @@ void AAura_Character::PossessedBy(AController* NewController)
 void AAura_Character::OnRep_PlayerState()
 {
 	Super::OnRep_PlayerState();
-    //¿Í»§¶Ë³õÊ¼»¯InitAbilityActorInfo
+    //å®¢æˆ·ç«¯åˆå§‹åŒ–InitAbilityActorInfo
     My_InitAbilityActorInfo();
 
 }
@@ -64,18 +64,18 @@ void AAura_Character::My_InitAbilityActorInfo()
 	check(AuraPlayerState);
 	AuraPlayerState->GetAbilitySystemComponent()->InitAbilityActorInfo(AuraPlayerState, this);
 
-	//2.µ±AbilityActorInfoÉèÖÃºó,¾ÍÊ¹ÓÃAbilityActorinfoSet(),½øĞĞ´úÂëñîºÏ
+	//2.å½“AbilityActorInfoè®¾ç½®å,å°±ä½¿ç”¨AbilityActorinfoSet(),è¿›è¡Œä»£ç è€¦åˆ
 	Cast<UMy_AuraAbilitySystemComponent>(AuraPlayerState->GetAbilitySystemComponent())->AbilityActorInfoSet();
 
-	//°ÑPlayerStateÖĞµÄAbilitySystemComponent×é¼ş¸³Öµ¸øAura_Character,±ÜÃâÒ°Ö¸Õë
+	//æŠŠPlayerStateä¸­çš„AbilitySystemComponentç»„ä»¶èµ‹å€¼ç»™Aura_Character,é¿å…é‡æŒ‡é’ˆ
 	AbilitySystemComponent = AuraPlayerState->GetAbilitySystemComponent();
 	AttributeSet = AuraPlayerState->GetAttributeSet();
 
 
-	//3.µ÷ÓÃInitlayout(),ÔÚAMy_AuraHUDÀàÖĞ
-	//ÒòÎªÕâÊ±ºò·şÎñÆ÷ºÍ¿Í»§¶ËµÄËÄ¸ö²ÎÊı¶¼ÎªÕæ
+	//3.è°ƒç”¨Initlayout(),åœ¨AMy_AuraHUDç±»ä¸­
+	//å› ä¸ºè¿™æ—¶å€™æœåŠ¡å™¨å’Œå®¢æˆ·ç«¯çš„å››ä¸ªå‚æ•°éƒ½ä¸ºçœŸ
 	//APlayerController* PC, APlayerState* PS, UAbilitySystemComponent* ASC, UAttributeSet* AS
-	//Todo:¶àÈËÓÎÏ·¿Í·ş¶ËÖĞ£¬Ö»ÓĞ×Ô¼ºµÄController£¬ÆäËûÈËµÄcontrollerÎª¿Õ£¬ËùÒÔ²»ÓÃÌØÅĞ£¬Ìø¹ı¼´¿É
+	//Todo:å¤šäººæ¸¸æˆå®¢æœç«¯ä¸­ï¼Œåªæœ‰è‡ªå·±çš„Controllerï¼Œå…¶ä»–äººçš„controllerä¸ºç©ºï¼Œæ‰€ä»¥ä¸ç”¨ç‰¹åˆ¤ï¼Œè·³è¿‡å³å¯
 	if (AMy_Aura_Controller* Aura_Controller = Cast<AMy_Aura_Controller>(GetController()))
 	{
 		if (AMy_AuraHUD* AuraHUD =Cast<AMy_AuraHUD>(Aura_Controller->GetHUD()))
@@ -85,7 +85,7 @@ void AAura_Character::My_InitAbilityActorInfo()
 	}
 
 
-	//4.Ê¹ÓÃEffect³õÊ¼»¯AuraµÄPrimaryAttribute
+	//4.ä½¿ç”¨Effectåˆå§‹åŒ–Auraçš„PrimaryAttribute
 	InitializeDefaultAttribute();
 }
 

@@ -22,9 +22,9 @@ public:
 	UMy_OverlayWidgetController* GetOverlayWidgetController(const FMY_WidgetControllerParams& WCParams);
 	UMy_AttributeMenuWidgetController* GetMenuWidgetController(const FMY_WidgetControllerParams& WCParams);
 
-	//ÎªÁË³õÊ¼»¯OverlayWidgetController£¬ÎÒÃÇĞèÒª´«ÈëFWidgetControllerParams½á¹¹Ìå
-	//Ö®ºóÊ¹ÓÃOverlayWidgetControllerÀ´³õÊ¼»¯OverlayWidget£¬¶øBeginplay()²»¿ÉÒÔ´«²ÎÊı
-	//ËùÒÔĞÂ½¨Ò»¸öº¯ÊıÀ´´«²ÎÊı£¬²»Ê¹ÓÃBeginPLay
+	//ä¸ºäº†åˆå§‹åŒ–OverlayWidgetControllerï¼Œæˆ‘ä»¬éœ€è¦ä¼ å…¥FWidgetControllerParamsç»“æ„ä½“
+	//ä¹‹åä½¿ç”¨OverlayWidgetControlleræ¥åˆå§‹åŒ–OverlayWidgetï¼Œè€ŒBeginplay()ä¸å¯ä»¥ä¼ å‚æ•°
+	//æ‰€ä»¥æ–°å»ºä¸€ä¸ªå‡½æ•°æ¥ä¼ å‚æ•°ï¼Œä¸ä½¿ç”¨BeginPLay
 	void InitOverlay(APlayerController* PC, APlayerState* PS, UAbilitySystemComponent* ASC, UAttributeSet* AS);
 
 	

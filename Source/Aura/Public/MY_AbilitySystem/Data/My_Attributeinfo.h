@@ -8,7 +8,7 @@
 #include "My_Attributeinfo.generated.h"
 
 
-//Attribute¸Ä±äÊ±£¬Controller´«¸øWidgetµÄ½á¹¹
+//Attributeæ”¹å˜æ—¶ï¼ŒControllerä¼ ç»™Widgetçš„ç»“æ„
 USTRUCT(BlueprintType)
 struct FMy_AuraAttributeInfo
 {

@@ -29,11 +29,11 @@ void AMy_Aura_Controller::PlayerTick(float DeltaTime)
 void AMy_Aura_Controller::ClientShowDamageNum_Implementation(float DamageAmount, ACharacter* TargetCharacter, bool IsBlockedHit, bool IsCriticalHit)
 {
 	UE_LOG(LogTemp, Warning, TEXT("4. Client RPC actually executing on client"));
-	// ·ÀÓùĞÔ¼ì²é£ºÈ·±£Ä¿±êÓĞĞ§¡¢×é¼şÀàÓĞĞ§£¬ÇÒÊÇ±¾µØ¿Í»§¶Ë
+	// é˜²å¾¡æ€§æ£€æŸ¥ï¼šç¡®ä¿ç›®æ ‡æœ‰æ•ˆã€ç»„ä»¶ç±»æœ‰æ•ˆï¼Œä¸”æ˜¯æœ¬åœ°å®¢æˆ·ç«¯
 	if (IsValid(TargetCharacter) && DamageTextComponentClass && IsLocalController()) 
 	{
 		UMy_DamageTextComponent* DamageText = NewObject<UMy_DamageTextComponent>(TargetCharacter, DamageTextComponentClass);
-		DamageText->RegisterComponent(); //±ØĞë×¢²áÏÔÊ¾Widget
+		DamageText->RegisterComponent(); //å¿…é¡»æ³¨å†Œæ˜¾ç¤ºWidget
 		DamageText->AttachToComponent(TargetCharacter->GetRootComponent(), FAttachmentTransformRules::KeepRelativeTransform);
 		DamageText->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);
 		DamageText->SetDamageText(DamageAmount, IsBlockedHit, IsCriticalHit);
@@ -47,7 +47,7 @@ void AMy_Aura_Controller::AutoRun()
 	if (ControlledPawn && bAutoRunning)
 	{
 		/*
-		 * µ±LMBµÄRelease»Øµ÷º¯Êı,ÕıÈ·ÉèÖÃSplineºÍbAutoRunningÎªÕæ,Æô¶¯×Ô¶¯Ñ°Â·
+		 * å½“LMBçš„Releaseå›è°ƒå‡½æ•°,æ­£ç¡®è®¾ç½®Splineå’ŒbAutoRunningä¸ºçœŸ,å¯åŠ¨è‡ªåŠ¨å¯»è·¯
 		 */
 		const FVector LocationOnSpline = Spline->FindLocationClosestToWorldLocation(ControlledPawn->GetActorLocation(), ESplineCoordinateSpace::World);
 		const FVector Direction = Spline->FindDirectionClosestToWorldLocation(LocationOnSpline, ESplineCoordinateSpace::World);
@@ -61,15 +61,15 @@ void AMy_Aura_Controller::AutoRun()
 	}
 }
 
-//¼ì²éÊó±êµã»÷ÎïÌåµÄÒ»Ğ©º¯Êı
+//æ£€æŸ¥é¼ æ ‡ç‚¹å‡»ç‰©ä½“çš„ä¸€äº›å‡½æ•°
 void AMy_Aura_Controller::CursorTrace()
 {
 	GetHitResultUnderCursor(ECC_Visibility, false, CursorHit);
 	if (!CursorHit.bBlockingHit) return;
 
-	// ±£´æÉÏÒ»Ö¡µÄ½Ó¿Ú¶ÔÏó
+	// ä¿å­˜ä¸Šä¸€å¸§çš„æ¥å£å¯¹è±¡
 	LastActor = ThisActor;
-	// ½«µ±Ç°Ö¡¼ì²âµ½µÄ Actor ×ª»»Îª½Ó¿Ú
+	// å°†å½“å‰å¸§æ£€æµ‹åˆ°çš„ Actor è½¬æ¢ä¸ºæ¥å£
 	ThisActor = Cast<IMy_Enemy_Interface>(CursorHit.GetActor());
 
 	if (LastActor != ThisActor)
@@ -85,21 +85,21 @@ void AMy_Aura_Controller::BeginPlay()
 	Super::BeginPlay();
 	check(AuraContext);
 
-	//×ÓÏµÍ³
+	//å­ç³»ç»Ÿ
 	UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(GetLocalPlayer());
-	//ÆäËû¿Í»§¶ËµÄsubsystemÊÇ¿Õ£¬²»ÄÜÓÃcheck£¬ÒòÎªÊÇºÏÀíµÄ£¬Ö±½ÓÌø¹ı
+	//å…¶ä»–å®¢æˆ·ç«¯çš„subsystemæ˜¯ç©ºï¼Œä¸èƒ½ç”¨checkï¼Œå› ä¸ºæ˜¯åˆç†çš„ï¼Œç›´æ¥è·³è¿‡
 	if (Subsystem)
 	{
-		//×ÓÏµÍ³¹ØÁªÊäÈëÉÏÏÂÎÄ
+		//å­ç³»ç»Ÿå…³è”è¾“å…¥ä¸Šä¸‹æ–‡
 		Subsystem->AddMappingContext(AuraContext, 0);
 	}
 
 
-	//Êó±êÉèÖÃ
+	//é¼ æ ‡è®¾ç½®
 	bShowMouseCursor = true;
 	DefaultMouseCursor = EMouseCursor::Default;
 
-	//ÓÃÓÚÉèÖÃÓÎÏ·ºÍ UI µÄÊäÈëÄ£Ê½
+	//ç”¨äºè®¾ç½®æ¸¸æˆå’Œ UI çš„è¾“å…¥æ¨¡å¼
 	FInputModeGameAndUI InputModeData;
 	InputModeData.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
 	InputModeData.SetHideCursorDuringCapture(false);
@@ -112,7 +112,7 @@ void AMy_Aura_Controller::SetupInputComponent()
 
 	UMy_AuraEnhancedInputComponent* AuraInputComponent = CastChecked<UMy_AuraEnhancedInputComponent>(InputComponent);
 
-	//´¦Àíinput Action,½«Éè±¸ÊäÈë°ó¶¨µ½input Action,ÔÚÉè±¸ÊäÈëµ÷ÓÃº¯ÊıMove
+	//å¤„ç†input Action,å°†è®¾å¤‡è¾“å…¥ç»‘å®šåˆ°input Action,åœ¨è®¾å¤‡è¾“å…¥è°ƒç”¨å‡½æ•°Move
 	AuraInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &AMy_Aura_Controller::Move);
 	AuraInputComponent->BindAction(ShiftAction, ETriggerEvent::Started, this, &AMy_Aura_Controller::ShiftPressed);
 	AuraInputComponent->BindAction(ShiftAction, ETriggerEvent::Completed, this, &AMy_Aura_Controller::ShiftRelease);
@@ -132,8 +132,8 @@ void AMy_Aura_Controller::Move(const FInputActionValue& InputActionValue)
 
 	if (APawn* ControlledPawn = GetPawn())
 	{
-		//ÕâÀïInputAxisVector.YÏòÇ°£¬ÊÇÒòÎªÎÒÃÇ¶¨ÒåactionÖĞyÎªÇ°½ø
-		//¶øÊÀ½çÖĞxÊÇÇ°½ø,ËùÓĞdirÄÇÀïÓÃÁËX
+		//è¿™é‡ŒInputAxisVector.Yå‘å‰ï¼Œæ˜¯å› ä¸ºæˆ‘ä»¬å®šä¹‰actionä¸­yä¸ºå‰è¿›
+		//è€Œä¸–ç•Œä¸­xæ˜¯å‰è¿›,æ‰€æœ‰diré‚£é‡Œç”¨äº†X
 		ControlledPawn->AddMovementInput(ForwardDir, InputAxisVector.Y);
 		ControlledPawn->AddMovementInput(RightdDir, InputAxisVector.X);
 	}
@@ -152,19 +152,19 @@ void AMy_Aura_Controller::AbilityInputTagPressed(FGameplayTag InputTag)
 
 void AMy_Aura_Controller::AbilityInputTagHeld(FGameplayTag InputTag)
 {
-	// ²»ÊÇ×ó¼üµã»÷
+	// ä¸æ˜¯å·¦é”®ç‚¹å‡»
 	if (!InputTag.MatchesTagExact(FMy_AuraGameplayTags::GetInstance().My_InputTag_LMB))
 	{
 		if (GetAuraASC()) GetAuraASC()->AbilityInputTagHeld(InputTag);
 		return;
 	}
 
-	// ×ó¼üµã»÷µĞÈË,¼¤»îÏàÓ¦Ability
+	// å·¦é”®ç‚¹å‡»æ•Œäºº,æ¿€æ´»ç›¸åº”Ability
 	if (bTargeting || bShiftKeyDown)
 	{
 		if (GetAuraASC()) GetAuraASC()->AbilityInputTagHeld(InputTag);
 	}
-	// ×ó¼ü³¤°´µØÃæ,½øĞĞÒÆ¶¯F
+	// å·¦é”®é•¿æŒ‰åœ°é¢,è¿›è¡Œç§»åŠ¨F
 	else
 	{
 		FollowTime += GetWorld()->GetDeltaSeconds();
@@ -179,45 +179,45 @@ void AMy_Aura_Controller::AbilityInputTagHeld(FGameplayTag InputTag)
 
 void AMy_Aura_Controller::AbilityInputTagReleased(FGameplayTag InputTag)
 {
-	// ²»ÊÇ×ó¼üµã»÷
+	// ä¸æ˜¯å·¦é”®ç‚¹å‡»
 	if (!InputTag.MatchesTagExact(FMy_AuraGameplayTags::GetInstance().My_InputTag_LMB))
 	{
 		if (GetAuraASC()) GetAuraASC()->AbilityInputTagReleased(InputTag);
 		return;
 	}
 
-	// ×ó¼üËÉÊÖ²»ÊÇµã»÷µĞÈË,Ò²²»ÊÇ°´Shift
+	// å·¦é”®æ¾æ‰‹ä¸æ˜¯ç‚¹å‡»æ•Œäºº,ä¹Ÿä¸æ˜¯æŒ‰Shift
 	if (!bTargeting && !bShiftKeyDown)
 	{
 		const APawn* ControlledPawn = GetPawn();
 		if (FollowTime <= ShortPressThreshold && ControlledPawn)
 		{
-			// »ñÈ¡µ¼º½ÏµÍ³
+			// è·å–å¯¼èˆªç³»ç»Ÿ
 			UNavigationSystemV1* NavSystem = FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld());
 			if (!NavSystem) return;
 
-			// ²éÕÒÂ·¾¶
+			// æŸ¥æ‰¾è·¯å¾„
 			if (UNavigationPath* NavigationPath = UNavigationSystemV1::FindPathToLocationSynchronously(this, ControlledPawn->GetActorLocation(), CachedDestination))
 			{
-				// Çå³ı¾ÉµÄ Spline µã
+				// æ¸…é™¤æ—§çš„ Spline ç‚¹
 				Spline->ClearSplinePoints();
 
-				// ±éÀúÂ·¾¶µã²¢Ìí¼Óµ½ Spline
+				// éå†è·¯å¾„ç‚¹å¹¶æ·»åŠ åˆ° Spline
 				for (const FVector& PathLoc : NavigationPath->PathPoints)
 				{
 					Spline->AddSplinePoint(PathLoc, ESplineCoordinateSpace::World);
-					//DrawDebugSphere(GetWorld(), PathLoc, 8.f, 8.f, FColor::Blue, false, 1.0f); // »æÖÆÂ·¾¶µã
+					//DrawDebugSphere(GetWorld(), PathLoc, 8.f, 8.f, FColor::Blue, false, 1.0f); // ç»˜åˆ¶è·¯å¾„ç‚¹
 				}
 
-				// »æÖÆÂ·¾¶Ïß
+				// ç»˜åˆ¶è·¯å¾„çº¿
 				//for (int32 i = 0; i < NavigationPath->PathPoints.Num() - 1; i++)
 				//{
 					//FVector StartPoint = NavigationPath->PathPoints[i];
 					//FVector EndPoint = NavigationPath->PathPoints[i + 1];
-					//DrawDebugLine(GetWorld(), StartPoint, EndPoint, FColor::Green, false, 1.0f, 0, 2.0f); // »æÖÆÂ·¾¶Ïß
+					//DrawDebugLine(GetWorld(), StartPoint, EndPoint, FColor::Green, false, 1.0f, 0, 2.0f); // ç»˜åˆ¶è·¯å¾„çº¿
 				//}
 
-				// ¸üĞÂÄ¿±êµãÎªÂ·¾¶µÄ×îºóÒ»¸öµã
+				// æ›´æ–°ç›®æ ‡ç‚¹ä¸ºè·¯å¾„çš„æœ€åä¸€ä¸ªç‚¹
 				if (NavigationPath->PathPoints.Num() > 0)
 				{
 					CachedDestination = NavigationPath->PathPoints[NavigationPath->PathPoints.Num() - 1];
@@ -239,7 +239,7 @@ void AMy_Aura_Controller::AbilityInputTagReleased(FGameplayTag InputTag)
 }
 
 
-// È·±£Ö»castÒ»´Î,±ÜÃâÔÚInputAction»Øµ÷º¯Êı,Ã¿Ö¡µ÷ÓÃ
+// ç¡®ä¿åªcastä¸€æ¬¡,é¿å…åœ¨InputActionå›è°ƒå‡½æ•°,æ¯å¸§è°ƒç”¨
 UMy_AuraAbilitySystemComponent* AMy_Aura_Controller::GetAuraASC()
 {
 	if (AuraAbilitySystemComponent == nullptr)

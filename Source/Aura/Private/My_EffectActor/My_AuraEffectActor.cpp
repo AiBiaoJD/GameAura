@@ -22,27 +22,27 @@ void AMy_AuraEffectActor::ApplyEffectToTarget(AActor* TargetActor, TSubclassOf<U
 {
 	if (TargetActor->ActorHasTag(FName("Enemy")) && !bApplyEffectToEnemies) return;
 	UAbilitySystemComponent* TargetASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(TargetActor);
-	//ApplyEffectToTarget()Ö÷ÒªÊ¹ÓÃÔÚÅö×²¼ì²âÖĞ£¬Èç¹ûtargetÃ»ÓĞASCÖ±½Ó·µ»Ø
+	//ApplyEffectToTarget()ä¸»è¦ä½¿ç”¨åœ¨ç¢°æ’æ£€æµ‹ä¸­ï¼Œå¦‚æœtargetæ²¡æœ‰ASCç›´æ¥è¿”å›
 	if (TargetASC == nullptr) return;
-	//Õâ¸öGameplayEffectClassÔÚÀ¶Í¼ÉèÖÃ£¬Ã»ÉèÖÃ±¨´í
+	//è¿™ä¸ªGameplayEffectClassåœ¨è“å›¾è®¾ç½®ï¼Œæ²¡è®¾ç½®æŠ¥é”™
 	check(GameplayEffectClass);
 
 
-	//´´½¨EffectContextHandle,ÓÃÀ´·â×°EffectContextÏà¹ØĞÅÏ¢
+	//åˆ›å»ºEffectContextHandle,ç”¨æ¥å°è£…EffectContextç›¸å…³ä¿¡æ¯
 	FGameplayEffectContextHandle EffectContext = TargetASC->MakeEffectContext();
 	EffectContext.AddSourceObject(this);
 
-	//´´½¨FGameplayEffectSpec£¬Ò»ÖÖ¶¯Ì¬µÄEffect£¬¿ÉÒÔĞŞ¸ÄÖ®ºóÔÙapply¸øActor
+	//åˆ›å»ºFGameplayEffectSpecï¼Œä¸€ç§åŠ¨æ€çš„Effectï¼Œå¯ä»¥ä¿®æ”¹ä¹‹åå†applyç»™Actor
 	FGameplayEffectSpecHandle EffectSpecHandle = TargetASC->MakeOutgoingSpec(GameplayEffectClass, ActorLevel, EffectContext);
 
 
-	//Ê¹ÓÃFGameplayEffectSpec¸øActor
+	//ä½¿ç”¨FGameplayEffectSpecç»™Actor
 	const FActiveGameplayEffectHandle ActiveEffectHandle = TargetASC->ApplyGameplayEffectSpecToSelf(*EffectSpecHandle.Data.Get());
 
-	//Í¨¹ıEffectSpecHandleÅĞ¶ÏEffectÊÇÊ²Ã´ÀàĞÍ£¬Instant£¬Infinite£¬HasDuration
+	//é€šè¿‡EffectSpecHandleåˆ¤æ–­Effectæ˜¯ä»€ä¹ˆç±»å‹ï¼ŒInstantï¼ŒInfiniteï¼ŒHasDuration
 	bool IsInfinite = EffectSpecHandle.Data.Get()->Def.Get()->DurationPolicy == EGameplayEffectDurationType::Infinite;
 
-	//Èç¹ûÊÇInfinite,°ÑActiveGameplayEffectHandleºÍÕâ¸öTargetASCÁªÏµÆğÀ´·½±ãºóÃæÉ¾³ı
+	//å¦‚æœæ˜¯Infinite,æŠŠActiveGameplayEffectHandleå’Œè¿™ä¸ªTargetASCè”ç³»èµ·æ¥æ–¹ä¾¿åé¢åˆ é™¤
 	if (IsInfinite&& InfiniteEffectRemovePolicy == My_EEffectRemovePolicy::RemoveOnEndOverlap)
 	{
 		ActorToActiveEffect_Map.Add(TargetASC, ActiveEffectHandle);
@@ -54,7 +54,7 @@ void AMy_AuraEffectActor::ApplyEffectToTarget(AActor* TargetActor, TSubclassOf<U
 	}
 }
 
-//¸÷ÖÖEffectÔÚ¸²¸ÇÊ±ÆôÓÃ
+//å„ç§Effectåœ¨è¦†ç›–æ—¶å¯ç”¨
 void AMy_AuraEffectActor::OnOverlap(AActor* TargetActor)
 {
 	if (TargetActor->ActorHasTag(FName("Enemy")) && !bApplyEffectToEnemies) return;
@@ -76,7 +76,7 @@ void AMy_AuraEffectActor::OnOverlap(AActor* TargetActor)
 
 }
 
-//¸÷ÖÖEffectÔÚ¸²¸Ç½áÊøÆôÓÃ
+//å„ç§Effectåœ¨è¦†ç›–ç»“æŸå¯ç”¨
 void AMy_AuraEffectActor::OnEndOverlap(AActor* TargetActor)
 {
 	if (TargetActor->ActorHasTag(FName("Enemy")) && !bApplyEffectToEnemies) return;
@@ -103,13 +103,13 @@ void AMy_AuraEffectActor::OnEndOverlap(AActor* TargetActor)
 		TArray<UAbilitySystemComponent*> HandToRemove;
 		for (auto m : ActorToActiveEffect_Map)
 		{
-			//µ±Ç°TargetASC´¦ÓÚÒÆ³ı¶ÔÖĞ
+			//å½“å‰TargetASCå¤„äºç§»é™¤å¯¹ä¸­
 			if (TargetASC == m.Key)
 			{
-				//ÒÆ³ıInfinite Effect
+				//ç§»é™¤Infinite Effect
 				TargetASC->RemoveActiveGameplayEffect(m.Value, 1);
 
-				//²»ÄÜÔÚfor(auto:)Ñ­»·ÖĞÉ¾³ıÕâ¸ö¼üÖµ¶Ô,±£´æÏÈºóÃæÉ¾³ı
+				//ä¸èƒ½åœ¨for(auto:)å¾ªç¯ä¸­åˆ é™¤è¿™ä¸ªé”®å€¼å¯¹,ä¿å­˜å…ˆåé¢åˆ é™¤
 				HandToRemove.Add(TargetASC);
 			}
 		}
