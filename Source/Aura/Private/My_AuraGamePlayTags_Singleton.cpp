@@ -154,7 +154,10 @@ void FMy_AuraGameplayTags::InitializeNativeGameplayTags()
 		FName("My_CombatSocket.RightHand"),
 		FString("Attack By RightHand")
 	);
-
+	GameplayTagsInstance.My_CombatSocket_Tail = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("My_CombatSocket.Tail"),
+		FString("Attack By Tail")
+	);
 	/*
 	* Montage Tag
 	*/

@@ -98,6 +98,7 @@ void AEnemy_Characte::PossessedBy(AController* NewController)
 	AuraAIController->RunBehaviorTree(BehaviorTree);
 	AuraAIController->GetBlackboardComponent()->SetValueAsBool(FName("HitReacting"), false);
 	AuraAIController->GetBlackboardComponent()->SetValueAsBool(FName("RangeAttack"), CharacterClass != EMy_CharacterClass::Warrior);
+	AuraAIController->GetBlackboardComponent()->SetValueAsFloat(FName("CombatDistance"), CombatDistance);
 }
 
 void AEnemy_Characte::BeginPlay()

@@ -55,6 +55,10 @@ protected:
 
 	UPROPERTY(EditAnywhere, Category = "My_Combat")
 	FName RightHandSockName;
+
+	UPROPERTY(EditAnywhere, Category = "My_Combat")
+	FName TailSockName;
+	
 	bool bDead = false;
 
 	/*
@@ -100,7 +104,7 @@ protected:
 	TObjectPtr<UMaterialInstance> WeaponDissolveMaterialInstance;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "My_Combat")
-	UNiagaraSystem* BloodEffect;
+	UNiagaraSystem* MeleeBloodEffect;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "My_Combat")
 	USoundBase* DeathSound;

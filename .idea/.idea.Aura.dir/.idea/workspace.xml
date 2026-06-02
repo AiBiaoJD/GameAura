@@ -8,64 +8,29 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="e1b54914-3a26-404a-9b44-73a4632e1fe2" name="更改" comment="">
-      <change beforePath="$PROJECT_DIR$/.claude/settings.local.json" beforeDir="false" afterPath="$PROJECT_DIR$/.claude/settings.local.json" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/.idea.Aura.dir/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/.idea.Aura.dir/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/Assets/Effects/Combat/NS_SlingshotImpact.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/Assets/Effects/Combat/NS_SlingshotImpact.uasset" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Config/DefaultEngine.ini" beforeDir="false" afterPath="$PROJECT_DIR$/Config/DefaultEngine.ini" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/Assets/Effects/Combat/NS_BloodImpact.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/Assets/Effects/Combat/NS_BloodImpact.uasset" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/Assets/Enemies/Demon/SK_Demon.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/Assets/Enemies/Demon/SK_Demon.uasset" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Content/Assets/Enemies/Ghoul/Animations/My_AM_Ghoul_Attack_L.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/Assets/Enemies/Ghoul/Animations/My_AM_Ghoul_Attack_L.uasset" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Content/Assets/Enemies/Ghoul/Animations/My_AM_Ghoul_Attack_R.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/Assets/Enemies/Ghoul/Animations/My_AM_Ghoul_Attack_R.uasset" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/Assets/Enemies/Ghoul/Animations/My_AM_HitReact_Ghoul.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/Assets/Enemies/Ghoul/Animations/My_AM_HitReact_Ghoul.uasset" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/Assets/Enemies/Goblin/Animations/Slingshot/My_AM_HitReact_GoblinSlingshot.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/Assets/Enemies/Goblin/Animations/Slingshot/My_AM_HitReact_GoblinSlingshot.uasset" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/Assets/Enemies/Shaman/Animations/My_AM_HitReact_Shaman.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/Assets/Enemies/Shaman/Animations/My_AM_HitReact_Shaman.uasset" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/Assets/Sounds/Enemies/Ghoul/Growl/sfx_GhoulHurt.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/Assets/Sounds/Enemies/Ghoul/Growl/sfx_GhoulHurt.uasset" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/Assets/Sounds/Enemies/Goblin/RockHit/sfx_RockHit.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/Assets/Sounds/Enemies/Goblin/RockHit/sfx_RockHit.uasset" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/Assets/Enemies/Ghoul/SK_Ghoul.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/Assets/Enemies/Ghoul/SK_Ghoul.uasset" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/AI/BehaviorTree/My_BB_EnemyBlackBoard.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/AI/BehaviorTree/My_BB_EnemyBlackBoard.uasset" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/AI/BehaviorTree/My_BT_EnemyBehaviorTree.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/AI/BehaviorTree/My_BT_EnemyBehaviorTree.uasset" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/Aura/Ability/My_BP_FireBoltActor.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/Aura/Ability/My_BP_FireBoltActor.uasset" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/Enemy/Ability/My_BP_RockProjectile.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/Enemy/Ability/My_BP_RockProjectile.uasset" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/Enemy/Ability/My_GA_MeleeAttack.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/AbilitySystem/Enemy/Ability/My_GA_MeleeAttack.uasset" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/Character/Ghoul/My_BP_Ghoul.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/Character/Ghoul/My_BP_Ghoul.uasset" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/Character/Goblin/BP_Goblin.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/Character/Goblin/BP_Goblin.uasset" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/Character/Goblin_Shaman/My_BP_Shaman.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/Character/Goblin_Shaman/My_BP_Shaman.uasset" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/Character/Goblin_SlingShot/MY_ABP_Goblin2.uasset" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/Character/Goblin_SlingShot/My_BP_Goblin2.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/Character/Goblin_SlingShot/My_BP_Goblin2.uasset" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Content/MyBlueprints/Character/MY_BP_EnemyBase.uasset" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyBlueprints/Character/MY_BP_EnemyBase.uasset" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Content/MyMap/MyMap.umap" beforeDir="false" afterPath="$PROJECT_DIR$/Content/MyMap/MyMap.umap" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/Aura/Aura.h" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Aura.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/Aura/Private/MY_AbilitySystem/Ability/My_AuraProjectileSpell.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Private/MY_AbilitySystem/Ability/My_AuraProjectileSpell.cpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/Aura/Private/MY_AbilitySystem/AbilityTask/My_TargetDateUnderMouse.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Private/MY_AbilitySystem/AbilityTask/My_TargetDateUnderMouse.cpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/Aura/Private/MY_AbilitySystem/ExeCalc/My_ExeCalc_Damage.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Private/MY_AbilitySystem/ExeCalc/My_ExeCalc_Damage.cpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/Aura/Private/MY_AbilitySystem/ModMagCale/My_MMC_MaxHealth.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Private/MY_AbilitySystem/ModMagCale/My_MMC_MaxHealth.cpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/Aura/Private/MY_AbilitySystem/ModMagCale/My_MMC_MaxMana.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Private/MY_AbilitySystem/ModMagCale/My_MMC_MaxMana.cpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/Aura/Private/MY_AbilitySystem/My_AuraAbilitySystemComponent.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Private/MY_AbilitySystem/My_AuraAbilitySystemComponent.cpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/Aura/Private/MY_AbilitySystem/My_AuraAbilitySystemLibrary.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Private/MY_AbilitySystem/My_AuraAbilitySystemLibrary.cpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/Aura/Private/MY_AbilitySystem/My_AuraAttributeSet.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Private/MY_AbilitySystem/My_AuraAttributeSet.cpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/Aura/Private/My_AbilityActor/My_ProjectileActor.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Private/My_AbilityActor/My_ProjectileActor.cpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/Aura/Private/My_AuraAssetManager.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Private/My_AuraAssetManager.cpp" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Source/Aura/Private/My_AuraGamePlayTags_Singleton.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Private/My_AuraGamePlayTags_Singleton.cpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/Aura/Private/My_Character/Aura_Character.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Private/My_Character/Aura_Character.cpp" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Source/Aura/Private/My_Character/Enemy_Characte.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Private/My_Character/Enemy_Characte.cpp" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Source/Aura/Private/My_Character/MyCharacter_Base.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Private/My_Character/MyCharacter_Base.cpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/Aura/Private/My_Controler/My_Aura_Controller.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Private/My_Controler/My_Aura_Controller.cpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/Aura/Private/My_EffectActor/My_AuraEffectActor.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Private/My_EffectActor/My_AuraEffectActor.cpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/Aura/Private/My_UI/HUD/My_AuraHUD.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Private/My_UI/HUD/My_AuraHUD.cpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/Aura/Private/My_UI/WidgetController/My_OverlayWidgetController.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Private/My_UI/WidgetController/My_OverlayWidgetController.cpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/Aura/Public/MY_AbilitySystem/Ability/My_AuraGameplayAbilityBase.h" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Public/MY_AbilitySystem/Ability/My_AuraGameplayAbilityBase.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/Aura/Public/MY_AbilitySystem/Ability/My_AuraProjectileSpell.h" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Public/MY_AbilitySystem/Ability/My_AuraProjectileSpell.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/Aura/Public/MY_AbilitySystem/AbilityTask/My_TargetDateUnderMouse.h" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Public/MY_AbilitySystem/AbilityTask/My_TargetDateUnderMouse.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/Aura/Public/MY_AbilitySystem/Data/My_Attributeinfo.h" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Public/MY_AbilitySystem/Data/My_Attributeinfo.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/Aura/Public/MY_AbilitySystem/Data/My_CharacterClassInfo.h" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Public/MY_AbilitySystem/Data/My_CharacterClassInfo.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/Aura/Public/MY_AbilitySystem/ModMagCale/My_MMC_MaxHealth.h" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Public/MY_AbilitySystem/ModMagCale/My_MMC_MaxHealth.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/Aura/Public/MY_AbilitySystem/ModMagCale/My_MMC_MaxMana.h" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Public/MY_AbilitySystem/ModMagCale/My_MMC_MaxMana.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/Aura/Public/MY_AbilitySystem/My_AuraAbilitySystemComponent.h" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Public/MY_AbilitySystem/My_AuraAbilitySystemComponent.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/Aura/Public/MY_AbilitySystem/My_AuraAttributeSet.h" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Public/MY_AbilitySystem/My_AuraAttributeSet.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/Aura/Public/My_AbilityActor/My_ProjectileActor.h" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Public/My_AbilityActor/My_ProjectileActor.h" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Source/Aura/Public/My_AuraGamePlayTags_Singleton.h" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Public/My_AuraGamePlayTags_Singleton.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/Aura/Public/My_Character/Aura_Character.h" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Public/My_Character/Aura_Character.h" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Source/Aura/Public/My_Character/Enemy_Characte.h" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Public/My_Character/Enemy_Characte.h" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Source/Aura/Public/My_Character/MyCharacter_Base.h" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Public/My_Character/MyCharacter_Base.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/Aura/Public/My_Controler/My_AuraPlayerState.h" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Public/My_Controler/My_AuraPlayerState.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/Aura/Public/My_Controler/My_Aura_Controller.h" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Public/My_Controler/My_Aura_Controller.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/Aura/Public/My_EffectActor/My_AuraEffectActor.h" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Public/My_EffectActor/My_AuraEffectActor.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/Aura/Public/My_UI/HUD/My_AuraHUD.h" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Public/My_UI/HUD/My_AuraHUD.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/Aura/Public/My_UI/Widget/My_AuraUserWidget.h" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Public/My_UI/Widget/My_AuraUserWidget.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/Aura/Public/My_UI/WidgetController/My_AttributeMenuWidgetController.h" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Public/My_UI/WidgetController/My_AttributeMenuWidgetController.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/Aura/Public/My_UI/WidgetController/My_AuraWidgetController.h" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Public/My_UI/WidgetController/My_AuraWidgetController.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Source/Aura/Public/My_UI/WidgetController/My_OverlayWidgetController.h" beforeDir="false" afterPath="$PROJECT_DIR$/Source/Aura/Public/My_UI/WidgetController/My_OverlayWidgetController.h" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -93,6 +58,8 @@
   <component name="HighlightingSettingsPerFile">
     <setting file="file://$PROJECT_DIR$/../../UE Engine/UE_5.2/Engine/Plugins/Runtime/GameplayAbilities/Source/GameplayAbilities/Private/Abilities/Tasks/AbilityTask_ApplyRootMotionRadialForce.cpp" root0="SKIP_HIGHLIGHTING" />
     <setting file="file://$PROJECT_DIR$/../../UE Engine/UE_5.2/Engine/Source/Editor/UnrealEd/Private/Kismet2/KismetReinstanceUtilities.cpp" root0="FORCE_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/../../UE Engine/UE_5.2/Engine/Source/Runtime/AIModule/Classes/BehaviorTree/Decorators/BTDecorator_BlackboardBase.h" root0="FORCE_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/../../UE Engine/UE_5.2/Engine/Source/Runtime/AIModule/Classes/BehaviorTree/Tasks/BTTask_MoveTo.h" root0="FORCE_HIGHLIGHTING" />
     <setting file="file://$PROJECT_DIR$/../../UE Engine/UE_5.2/Engine/Source/Runtime/AIModule/Classes/Blueprint/AIAsyncTaskBlueprintProxy.h" root0="FORCE_HIGHLIGHTING" />
     <setting file="file://$PROJECT_DIR$/../../UE Engine/UE_5.2/Engine/Source/Runtime/AIModule/Classes/EnvironmentQuery/Contexts/EnvQueryContext_BlueprintBase.h" root0="FORCE_HIGHLIGHTING" />
     <setting file="file://$PROJECT_DIR$/../../UE Engine/UE_5.2/Engine/Source/Runtime/AIModule/Private/AIController.cpp" root0="FORCE_HIGHLIGHTING" />
@@ -293,7 +260,7 @@
       <workItem from="1780305451175" duration="5766000" />
       <workItem from="1780325453834" duration="4245000" />
       <workItem from="1780337972603" duration="5079000" />
-      <workItem from="1780370681467" duration="3231000" />
+      <workItem from="1780370681467" duration="19953000" />
     </task>
     <servers />
   </component>

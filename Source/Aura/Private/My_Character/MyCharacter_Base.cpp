@@ -59,7 +59,7 @@ TArray<FMy_TaggedMontage> AMyCharacter_Base::GetAttackMontage_Implementation()
 
 UNiagaraSystem* AMyCharacter_Base::GetBloodEffect_Implementation()
 {
-	return BloodEffect;
+	return MeleeBloodEffect;
 }
 
 FMy_TaggedMontage AMyCharacter_Base::GetTaggedMontageByTag_Implementation(const FGameplayTag& MontageTag)
@@ -134,11 +134,14 @@ FVector AMyCharacter_Base::GetWeaponSockLocation_Implementation(const FGameplayT
 	if (MontageTag.MatchesTagExact(GameplayTags.My_CombatSocket_LeftHand))
 	{
 		return GetMesh()->GetSocketLocation(LeftHandSockName);
-		
 	}
 	if (MontageTag.MatchesTagExact(GameplayTags.My_CombatSocket_RightHand))
 	{
 		return GetMesh()->GetSocketLocation(RightHandSockName);
+	}
+	if (MontageTag.MatchesTagExact(GameplayTags.My_CombatSocket_Tail))
+	{
+		return GetMesh()->GetSocketLocation(TailSockName);
 	}
 	return  FVector();
 }

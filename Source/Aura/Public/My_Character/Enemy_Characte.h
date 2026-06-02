@@ -55,6 +55,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "My_Combat")
 	float LifeSpan = 5.f;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "My_Combat")
+	float CombatDistance = 100.f;
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void My_InitAbilityActorInfo() override;
