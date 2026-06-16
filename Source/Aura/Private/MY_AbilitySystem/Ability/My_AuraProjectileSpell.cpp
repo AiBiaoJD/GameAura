@@ -15,7 +15,7 @@ void UMy_AuraProjectileSpell::ActivateAbility(const FGameplayAbilitySpecHandle H
 	Super::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
 }
 
-void UMy_AuraProjectileSpell::SpawnProjectile(const FVector& ProjectileTargetLocation)
+void UMy_AuraProjectileSpell::SpawnProjectile(const FVector& ProjectileTargetLocation, const FGameplayTag& SocketTag)
 {
 	// ProjectileActor需要在服务器生成,replicate到客户端
 	// 此时Ability是预测的，不会受这个影响，会生成预测火球
@@ -28,7 +28,7 @@ void UMy_AuraProjectileSpell::SpawnProjectile(const FVector& ProjectileTargetLoc
 	IMy_CombatInterface* CombatInterface = Cast<IMy_CombatInterface>(GetAvatarActorFromActorInfo());
 	if (CombatInterface)
 	{
-		const FVector SockLoc = IMy_CombatInterface::Execute_GetWeaponSockLocation(GetAvatarActorFromActorInfo(),FMy_AuraGameplayTags::GetInstance().My_CombatSocket_Weapon);
+		const FVector SockLoc = IMy_CombatInterface::Execute_GetWeaponSockLocation(GetAvatarActorFromActorInfo(),SocketTag);
 		FRotator Rotation = (ProjectileTargetLocation - SockLoc).Rotation();
 
 		FTransform SpawnTransform;
