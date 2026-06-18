@@ -144,7 +144,7 @@ void AMy_Aura_Controller::AbilityInputTagPressed(FGameplayTag InputTag)
 {
 	if (InputTag.MatchesTagExact(FMy_AuraGameplayTags::GetInstance().My_InputTag_LMB))
 	{
-		bTargeting = ThisActor ? true : false;
+		// bTargeting = ThisActor ? true : false;  // 废弃：改为LMB统一攻击
 		bAutoRunning = false;
 	}
 }
@@ -159,22 +159,24 @@ void AMy_Aura_Controller::AbilityInputTagHeld(FGameplayTag InputTag)
 		return;
 	}
 
-	// 左键点击敌人,激活相应Ability
-	if (bTargeting || bShiftKeyDown)
-	{
-		if (GetAuraASC()) GetAuraASC()->AbilityInputTagHeld(InputTag);
-	}
-	// 左键长按地面,进行移动F
-	else
-	{
-		FollowTime += GetWorld()->GetDeltaSeconds();
-		if (CursorHit.bBlockingHit) CachedDestination = CursorHit.Location;
-		if (APawn* ControlledPawn = GetPawn())
-		{
-			FVector Direction = (CachedDestination - ControlledPawn->GetActorLocation()).GetSafeNormal();
-			ControlledPawn->AddMovementInput(Direction);
-		}
-	}
+	if (GetAuraASC()) GetAuraASC()->AbilityInputTagHeld(InputTag);
+
+	//// 左键点击敌人,激活相应Ability 【废弃：改为LMB统一攻击，不再区分敌人/地面】
+	//if (bTargeting || bShiftKeyDown)
+	//{
+	//	if (GetAuraASC()) GetAuraASC()->AbilityInputTagHeld(InputTag);
+	//}
+	//// 左键长按地面,进行移动
+	//else
+	//{
+	//	FollowTime += GetWorld()->GetDeltaSeconds();
+	//	if (CursorHit.bBlockingHit) CachedDestination = CursorHit.Location;
+	//	if (APawn* ControlledPawn = GetPawn())
+	//	{
+	//		FVector Direction = (CachedDestination - ControlledPawn->GetActorLocation()).GetSafeNormal();
+	//		ControlledPawn->AddMovementInput(Direction);
+	//	}
+	//}
 }
 
 void AMy_Aura_Controller::AbilityInputTagReleased(FGameplayTag InputTag)
@@ -186,56 +188,50 @@ void AMy_Aura_Controller::AbilityInputTagReleased(FGameplayTag InputTag)
 		return;
 	}
 
-	// 左键松手不是点击敌人,也不是按Shift
-	if (!bTargeting && !bShiftKeyDown)
-	{
-		const APawn* ControlledPawn = GetPawn();
-		if (FollowTime <= ShortPressThreshold && ControlledPawn)
-		{
-			// 获取导航系统
-			UNavigationSystemV1* NavSystem = FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld());
-			if (!NavSystem) return;
+	if (GetAuraASC()) GetAuraASC()->AbilityInputTagReleased(InputTag);
 
-			// 查找路径
-			if (UNavigationPath* NavigationPath = UNavigationSystemV1::FindPathToLocationSynchronously(this, ControlledPawn->GetActorLocation(), CachedDestination))
-			{
-				// 清除旧的 Spline 点
-				Spline->ClearSplinePoints();
-
-				// 遍历路径点并添加到 Spline
-				for (const FVector& PathLoc : NavigationPath->PathPoints)
-				{
-					Spline->AddSplinePoint(PathLoc, ESplineCoordinateSpace::World);
-					//DrawDebugSphere(GetWorld(), PathLoc, 8.f, 8.f, FColor::Blue, false, 1.0f); // 绘制路径点
-				}
-
-				// 绘制路径线
-				//for (int32 i = 0; i < NavigationPath->PathPoints.Num() - 1; i++)
-				//{
-					//FVector StartPoint = NavigationPath->PathPoints[i];
-					//FVector EndPoint = NavigationPath->PathPoints[i + 1];
-					//DrawDebugLine(GetWorld(), StartPoint, EndPoint, FColor::Green, false, 1.0f, 0, 2.0f); // 绘制路径线
-				//}
-
-				// 更新目标点为路径的最后一个点
-				if (NavigationPath->PathPoints.Num() > 0)
-				{
-					CachedDestination = NavigationPath->PathPoints[NavigationPath->PathPoints.Num() - 1];
-				}
-				bAutoRunning = true;
-			}
-			else
-			{
-				UE_LOG(LogTemp, Warning, TEXT("No valid path found!"));
-			}
-		}
-		FollowTime = 0.0f;
-		bTargeting = false;
-	}
-	else
-	{
-		if (GetAuraASC()) GetAuraASC()->AbilityInputTagReleased(InputTag);
-	}
+	//// 左键松手不是点击敌人,也不是按Shift — 点击移动寻路 【废弃：改为LMB统一攻击】
+	//if (!bTargeting && !bShiftKeyDown)
+	//{
+	//	const APawn* ControlledPawn = GetPawn();
+	//	if (FollowTime <= ShortPressThreshold && ControlledPawn)
+	//	{
+	//		// 获取导航系统
+	//		UNavigationSystemV1* NavSystem = FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld());
+	//		if (!NavSystem) return;
+	//
+	//		// 查找路径
+	//		if (UNavigationPath* NavigationPath = UNavigationSystemV1::FindPathToLocationSynchronously(this, ControlledPawn->GetActorLocation(), CachedDestination))
+	//		{
+	//			// 清除旧的 Spline 点
+	//			Spline->ClearSplinePoints();
+	//
+	//			// 遍历路径点并添加到 Spline
+	//			for (const FVector& PathLoc : NavigationPath->PathPoints)
+	//			{
+	//				Spline->AddSplinePoint(PathLoc, ESplineCoordinateSpace::World);
+	//				//DrawDebugSphere(GetWorld(), PathLoc, 8.f, 8.f, FColor::Blue, false, 1.0f); // 绘制路径点
+	//			}
+	//
+	//			// 更新目标点为路径的最后一个点
+	//			if (NavigationPath->PathPoints.Num() > 0)
+	//			{
+	//				CachedDestination = NavigationPath->PathPoints[NavigationPath->PathPoints.Num() - 1];
+	//			}
+	//			bAutoRunning = true;
+	//		}
+	//		else
+	//		{
+	//			UE_LOG(LogTemp, Warning, TEXT("No valid path found!"));
+	//		}
+	//	}
+	//	FollowTime = 0.0f;
+	//	bTargeting = false;
+	//}
+	//else
+	//{
+	//	if (GetAuraASC()) GetAuraASC()->AbilityInputTagReleased(InputTag);
+	//}
 }
 
 
