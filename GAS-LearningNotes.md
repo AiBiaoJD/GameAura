@@ -527,3 +527,167 @@ UE 内置的  已经提供 。只要所有会受伤的东西都挂 ASC， 通过
 ### 实际开发节奏
 
 前期不急着设计接口 → 类型多了 Cast 写到痛 → 自然知道该抽什么。但以下接口建议早期就写：**伤害/受伤**、**交互系统**、**存档/读档**。UE 引擎本身的 、 就是这个思路。
+
+---
+
+## 十六、GA 实例化策略（Instancing Policy）
+
+### 三种策略
+
+| 策略 | 实例 | 生命周期 | 变量持久化 | 能用 EndAbility？ |
+|------|------|---------|-----------|:--:|
+| `NoInstancing` | 无，跑在 CDO 上 | 永久(CDO) | N/A | ❌ |
+| `InstancedPerExecution` | 每次激活新建 UObject | 新实例，旧实例挂起 | ❌ 天然归零 | ✅ 调不调都能再激活 |
+| `InstancedPerActor` | 每个 Actor 一个 | 跟 Actor 同寿 | ✅ 保留上次值 | **必须调**，否则不允许多次激活 |
+
+### ASC 内部视角
+
+```
+InstancedPerExecution:
+  ASC
+  └── AbilitySpec(SummonTag)
+        ├── 实例 A（第一次激活，已 End）
+        ├── 实例 B（第二次激活，已 End）
+        └── 实例 C（第三次激活，活跃中）
+
+InstancedPerActor:
+  ASC
+  └── AbilitySpec(SummonTag)
+        └── 唯一实例（每次激活复用，变量不重置）
+```
+
+### 为什么 EndAbility 不会让 delegate 失效
+
+**核心事实**：蓝图的 `AddDynamic`（Assign Delegate 节点）是 **UObject 强引用**。目标对象只要被引用就不会被 GC。
+
+```
+小兵 Actor → OnDestroyed delegate → AddDynamic(GA 实例)
+                                        ↑
+                                 强引用，GA 实例引用计数+1
+```
+
+`EndAbility` 做的事：通知 ASC "这次激活周期结束了"，改了一个状态标记。**不删除 UObject，不释放内存。**
+
+GA 实例的生命周期由 GC 决定，不由 `EndAbility` 决定。只要还有 UObject 持有它的强引用，它就活着。
+
+### Summon GA 实例生命周期（InstancedPerExecution）
+
+以 Summon GA 为例，实战验证：
+
+```
+第一次激活:
+  ASC 建实例 A → Spawn 5 只小兵 → 每只 OnDestroyed 强引用 A
+  → EndAbility（或不调）→ ASC 标记 A 不活跃
+  → 5 只小兵活着 → 5 个强引用指向 A → GC 不收 A
+  → 某只小兵死 → delegate 触发 → IncreaseMinionCount(-1) → 正常执行
+  → 5 只全死 → 所有引用释放 → A 被 GC
+
+第二次激活（MinionCount < 5，BT 再调 TryActivateAbilitiesByTag）:
+  ASC 建新实例 B → SpawnLocationIndex 天然为 0 → 和第一次完全一致
+```
+
+A 和 B 各自独立，互不干扰。**教程用 `InstancedPerExecution` + False 分支不加 EndAbility 是对的**。
+
+### InstancedPerActor 的额外代价
+
+切到 `InstancedPerActor` 后需要手动处理两件事：
+
+1. **变量持久化**：`SpawnLocationIndex` 第一次激活后 = 5，第二次还是 5。必须在 `K2_ActivateAbility` 开头手动归零
+2. **必须 EndAbility**：唯一实例还处于 Active 状态时，`TryActivateAbilitiesByTag` 判定已激活，跳过不执行
+
+**选择建议**：如果 GA 需要绑 delegate 等异步回调，两种策略都可以——`InstancedPerExecution` 更省事（变量自动归零、不需要 EndAbility），`InstancedPerActor` 适合需要跨激活持久保存状态的场景。
+
+
+---
+
+## 十七、Lyra 武器射击流程与 GAS 预测机制
+
+> 2026-06-24，对比 Lyra Hitscan 方案与项目 My_ 投射物方案
+
+### 17.1 四种 GAS Ability 网络配置
+
+C++ 构造函数中设置的四个属性（Lyra 的  基类）：
+
+# 0 "<stdin>"
+# 0 "<built-in>"
+# 0 "<command-line>"
+# 1 "<stdin>"
+
+| 配置 | 含义 | Lyra 选择 |
+|------|------|-----------|
+| ReplicationPolicy | Ability Spec 要不要复制到客户端 | ReplicateNo（GiveAbility 提前授权） |
+| InstancingPolicy | 每次激活 new 还是复用 | InstancedPerActor（需要存成员变量） |
+| NetExecutionPolicy | Ability 代码在哪端执行 | **LocalPredicted**（两端都跑） |
+| NetSecurityPolicy | 谁有权发起激活 | ClientOrServer（玩家按鼠标发起） |
+
+### 17.2 GAS 预测覆盖范围
+
+GAS 预测只覆盖  内通过 ASC API 做的操作：
+
+
+
+**本质**：GAS 预测 = 客户端提前改 Attribute 值，等服务器 Attribute 复制回来比对，不一致就自动回滚。
+Actor 生成不在预测范围内，UActorChannel 只做"服务器生成 → 自动复制到客户端"。
+
+### 17.3 Lyra 完整开枪流程（自动步枪）
+
+
+
+### 17.4 为什么 Lyra 用 Hitscan 而不是投射物
+
+**Hitscan** = 瞬时射线检测（LineTrace），弹道飞行时间 = 0ms。
+
+GAS 预测模型天然适配瞬时操作：开枪 → 0ms 命中 → Apply GE → GAS 预测接管。
+投射物有"飞行中"状态（300ms），这段时间 GAS 帮不了你——弹道预测、碰撞预测都得自己写。
+
+Lyra 不做投射物不是偷懒，是刻意回避了投射物预测的复杂性。
+如果 Lyra 要做火箭筒，需要上"Client-Fakey, Server Auth"方案。
+
+### 17.5 客户端预测 vs 服务器权威
+
+| | Lyra Hitscan | My_版（投射物） | Client-Fakey（工业PvP） |
+|---|---|---|---|
+| 弹道 Actor | 无 | 有 | 有（3类：Client/Server/Sim） |
+| bReplicates | — | true | **false**（都不复制） |
+| 客户端感知延迟 | 0ms | ≈RTT/2 | 0ms（本地假弹） |
+| 特效播放 | 本地直接播 | Multicast RPC | 各端独立播 |
+| 伤害 | 服务器 Apply GE | 服务器 Apply GE | 服务器 Apply GE |
+| 适用 | PvP 射击 | PvE ARPG | PvP 弹道武器 |
+
+### 17.6 My_版 HasAuthority() 是否多余
+
+**不多余，必须保留**。原因：
+
+- Actor 生成必须服务器权威，即使设了 LocalPredicted，客户端 SpawnActor 也不会自动复制到服务器
+- 投射物碰撞必须在服务器算伤害，客户端只依赖 Actor 复制看位置
+- PvE ARPG 不需要客户端预测弹道——100ms 延迟感知不到
+
+### 17.7 输入排队机制（ProcessAbilityInput）
+
+**不是 GAS 内置，是 Lyra 自己写的**。GAS 内置只有 PressInputID/ReleaseInputID（数字 ID）。
+
+Lyra 新增：GameplayTag 匹配 + 三个数组（Pressed/Held/Released）+ 激活策略枚举 + ProcessAbilityInput。
+
+排队原因：
+1. 防止同帧按下+松开导致 WaitInputRelease 丢失
+2. 保证 InputPressed 标记在 TryActivateAbility 之前设置
+3. 统一"激活新实例 vs 传事件给已激活实例"的判断入口
+
+### 17.8 TargetData 流程与 RPC 数量
+
+一次开枪涉及 2 条 GAS 内置 RPC：
+
+
+
+Attribute 复制是 UActorChannel 的一部分，不是独立 RPC。
+
+### 17.9 Lyra 的 UnconfirmedHitMarkers
+
+Lyra 自定义的命中标记预测系统——客户端 Trace 命中后立刻显示"命中标记"UI，
+等服务器 ClientConfirmTargetData 回来后清理或撤回。和 GAS 伤害预测是两套独立系统。
+
+### 17.10 选择建议
+
+- PvE ARPG → My_版方案（服务器生成投射物 + Actor 复制 + Multicast RPC）— 简单够用
+- PvP 射击 → 优先考虑 Hitscan（Lyra 方案），实在需要弹道才上 Client-Fakey
+- Client-Fakey：三种投射物分开（Client/Server/Sim），bReplicates=false，对象池，服务器只跑碰撞不跑 VFX
