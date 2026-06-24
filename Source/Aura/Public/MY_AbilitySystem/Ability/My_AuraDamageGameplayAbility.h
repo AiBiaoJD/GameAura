@@ -17,9 +17,9 @@ class AURA_API UMy_AuraDamageGameplayAbility : public UMy_AuraGameplayAbilityBas
 public:
 	UFUNCTION(BlueprintCallable)
 	void CauseDamage(AActor* TargetActor);
-protected:
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+protected:
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Damage")
 	TSubclassOf<UGameplayEffect> DamageEffectClass;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Damage")

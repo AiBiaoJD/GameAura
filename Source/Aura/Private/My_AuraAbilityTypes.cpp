@@ -5,7 +5,7 @@ bool FMY_AuraGamePlayEffectContext::NetSerialize(FArchive& Ar, class UPackageMap
 	uint32 RepBits = 0;
 	if (Ar.IsSaving())
 	{
-		if (bReplicateInstigator && Instigator.IsValid())
+		if (bReplicateInstigator && Instigator.IsValid())	
 		{
 			RepBits |= 1 << 0;
 		}

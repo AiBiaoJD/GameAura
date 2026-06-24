@@ -80,7 +80,6 @@ void FMy_AuraGameplayTags::InitializeNativeGameplayTags()
 	/*
 	* Effect Granted Tag
 	*/
-
 	GameplayTagsInstance.My_EffectGranted_HitReact = UGameplayTagsManager::Get().AddNativeGameplayTag(FName("My_EffectGranted.HitReact"), FString("Tag Granted When Hit Reaction"));
 
 
@@ -134,9 +133,14 @@ void FMy_AuraGameplayTags::InitializeNativeGameplayTags()
 	/*
 	* Abilities Tags
 	*/
-	GameplayTagsInstance.My_Attribute_Secondary_Resistance_Physical = UGameplayTagsManager::Get().AddNativeGameplayTag(
-		FName("My_Abilities.Attack;"),
+	GameplayTagsInstance.My_Abilities_Attack = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("My_Abilities.Attack"),
 		FString("Attack Melee Tag")
+	);
+
+	GameplayTagsInstance.My_Abilities_Summon = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("My_Abilities.Summon"),
+		FString("Summon Ability Tag")
 	);
 
 	/*

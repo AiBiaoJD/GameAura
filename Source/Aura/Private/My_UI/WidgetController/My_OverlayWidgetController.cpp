@@ -67,8 +67,7 @@ void UMy_OverlayWidgetController::BindCallbacksToDependencies()
 					//---------广播DataTable的row使用广播委托,传给Widget--------------
 					OnMessageWidgetRow.Broadcast(*Row);
 				}
-
-
+				
 			}
 		}
 	);

@@ -74,6 +74,16 @@ FMy_TaggedMontage AMyCharacter_Base::GetTaggedMontageByTag_Implementation(const 
 	return FMy_TaggedMontage();
 }
 
+int32 AMyCharacter_Base::GetMinionCount_Implementation()
+{
+	return MinionCount;
+}
+
+void AMyCharacter_Base::IncreaseMinionCount_Implementation(int32 num)
+{
+	MinionCount += num;
+}
+
 void AMyCharacter_Base::Die()
 {
 	Weapon->DetachFromComponent(FDetachmentTransformRules(EDetachmentRule::KeepWorld, true));

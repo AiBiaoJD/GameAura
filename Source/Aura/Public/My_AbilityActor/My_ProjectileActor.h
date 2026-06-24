@@ -41,11 +41,11 @@ private:
 	UPROPERTY(EditDefaultsOnly)
 	float LifeSpan = 8.f;
 
-	UPROPERTY(VisibleAnywhere)
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<USphereComponent> Sphere;
 
 	UPROPERTY(EditAnywhere, Category = "My_Impact")
-	TObjectPtr<UNiagaraSystem> ImpactEffect;
+	TObjectPtr<UNiagaraSystem> ImpactEffect; 
 
 	UPROPERTY(EditAnywhere, Category = "My_Impact")
 	TObjectPtr<USoundBase> ImpactSound;

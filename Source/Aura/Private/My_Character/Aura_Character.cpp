@@ -1,3 +1,5 @@
+
+
 // Copyright ABiao
 
 
@@ -65,6 +67,7 @@ void AAura_Character::My_InitAbilityActorInfo()
 	AuraPlayerState->GetAbilitySystemComponent()->InitAbilityActorInfo(AuraPlayerState, this);
 
 	//2.当AbilityActorInfo设置后,就使用AbilityActorinfoSet(),进行代码耦合
+	//处理捡东西的GE
 	Cast<UMy_AuraAbilitySystemComponent>(AuraPlayerState->GetAbilitySystemComponent())->AbilityActorInfoSet();
 
 	//把PlayerState中的AbilitySystemComponent组件赋值给Aura_Character,避免野指针
