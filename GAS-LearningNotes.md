@@ -849,3 +849,133 @@ for (...) { ... }
 ```
 
 **必须给变量名**——无名临时对象会在本行结束就析构，等于没锁。
+
+---
+
+## 十九、InputTag → Ability 激活完整链路
+
+### 19.1 链路总览
+
+```
+物理按键（RMB）
+  → Enhanced Input Action
+    → InputConfig DataAsset（FAuraInputAction: InputAction → InputTag）
+      → UAuraInputComponent::BindAbilityActions()
+        → PlayerController::AbilityInputTagHeld(InputTag)
+          → ASC::AbilityInputTagHeld(InputTag)
+            → 遍历 GetActivatableAbilities()
+            → Spec.DynamicAbilityTags.HasTagExact(InputTag) 匹配
+              → TryActivateAbility() → 能力激活
+```
+
+### 19.2 三层映射关系
+
+| 层 | 做什么 | 代码位置 |
+|---|---|---|
+| **InputConfig** | 物理按键 → InputTag | `AuraInputConfig.h:11-20`，`FAuraInputAction` 结构体 |
+| **ASC 匹配** | InputTag → AbilitySpec | `AuraAbilitySystemComponent.cpp:95-110`，`AbilityInputTagHeld()` |
+| **UI 槽位** | AbilitySpec → InputTag（反过来读） | `My_OverlayWidgetController.cpp:91-107`，`GetInputTagFromAbilitySpec()` |
+
+### 19.3 StartupInputTag 写入时机
+
+能力授予时，从 CDO 读取 `StartupInputTag` 写入 `DynamicAbilityTags`（**不是激活时才写**）：
+
+```cpp
+// AuraAbilitySystemComponent.cpp:52-66
+void UAuraAbilitySystemComponent::AddCharacterAbilities(const TArray<TSubclassOf<UGameplayAbility>>& StartupAbilities)
+{
+    for (const TSubclassOf<UGameplayAbility> AbilityClass : StartupAbilities)
+    {
+        FGameplayAbilitySpec AbilitySpec = FGameplayAbilitySpec(AbilityClass, 1);
+        if (const UAuraGameplayAbility* AuraAbility = Cast<UAuraGameplayAbility>(AbilitySpec.Ability))
+        {
+            AbilitySpec.DynamicAbilityTags.AddTag(AuraAbility->StartupInputTag);  // ← 这里
+            GiveAbility(AbilitySpec);
+        }
+    }
+}
+```
+
+改蓝图的 `StartupInputTag` 从 `InputTag.LMB` 到 `InputTag.RMB`，就是改了匹配键。ASC 遍历时不再匹配 LMB，转为匹配 RMB。
+
+### 19.4 运行时切换槽位
+
+`ServerEquipAbility()` 可以通过 `AssignSlotToAbility()` 运行时换 InputTag：
+
+```cpp
+// AuraAbilitySystemComponent.cpp:240-244
+void UAuraAbilitySystemComponent::AssignSlotToAbility(FGameplayAbilitySpec& Spec, const FGameplayTag& Slot)
+{
+    ClearSlot(&Spec);                        // 移除旧 InputTag
+    Spec.DynamicAbilityTags.AddTag(Slot);    // 写入新 InputTag
+}
+```
+
+本质都是操作 `DynamicAbilityTags`——ASC 匹配逻辑不关心标签是静态写的还是运行时换的，只认标签本身。
+
+### 19.5 UI 读取能力信息
+
+```cpp
+// My_OverlayWidgetController.cpp:91-107
+void UMy_OverlayWidgetController::OnInitializeStartupAbilities(UMy_AuraAbilitySystemComponent* AuraASC)
+{
+    Fmy_ForEachAbility OnEachAbility;
+    OnEachAbility.BindLambda([this, AuraASC](const FGameplayAbilitySpec& AbilitySpec)
+    {
+        FMy_AuraAbilityInfo info = AbilityDA->FindAbilityInfoFromTag(
+            AuraASC->GetAbilityTagFromAbilitySpec(AbilitySpec)   // 从 Ability.AbilityTags 找 "My_Abilities" 前缀
+        );
+        info.InputTag = AuraASC->GetInputTagFromAbilitySpec(AbilitySpec);  // 从 DynamicAbilityTags 找 "My_InputTag" 前缀
+        OnAbilityInfo.Broadcast(info);  // UI Widget 收到并显示
+    });
+    AuraASC->ForEachAbility(OnEachAbility);
+}
+```
+
+两个方向用同一个 InputTag 做键：
+- **正方向**：按键 → InputTag → 激活能力
+- **反方向**：AbilitySpec → DynamicAbilityTags → 读 InputTag → UI 槽位显示
+
+### 19.6 GiveAbility 必须在服务器调用
+
+`UAbilitySystemComponent::GiveAbility()` 内部检查 `IsOwnerActorAuthoritative()`，**非权威端调用无效**，不会把 AbilitySpec 加到 `ActivatableAbilities`。外层去掉 `HasAuthority()` 绕不过引擎内部检查。客户端能力列表只能通过：**服务器 GiveAbility → 网络复制 → `OnRep_ActivateAbilities()`** 获得。
+
+### 19.7 OnRep_ActivateAbilities 的作用
+
+```cpp
+// AuraAbilitySystemComponent.cpp:448-457
+void UAuraAbilitySystemComponent::OnRep_ActivateAbilities()
+{
+    Super::OnRep_ActivateAbilities();  // 引擎：替换客户端 ActivatableAbilities 为服务器数据
+    if (!bStartupAbilitiesGiven)
+    {
+        bStartupAbilitiesGiven = true;
+        AbilitiesGivenDelegate.Broadcast();  // 通知 UI：能力复制到了，可以刷新了
+    }
+}
+```
+
+如果自定义 ASC 没有重写这个函数，客户端在能力复制到达后不会收到任何通知，UI 永远不会刷新。
+
+### 19.8 LMB 的特殊处理
+
+LMB 在 PlayerController 中有双重语义——**寻路 + 攻击**，通过 `TargetingStatus` 区分：
+
+```cpp
+// AuraPlayerController.cpp:210-237
+void AAuraPlayerController::AbilityInputTagHeld(FGameplayTag InputTag)
+{
+    if (!InputTag.MatchesTagExact(InputTag_LMB))
+    {
+        GetASC()->AbilityInputTagHeld(InputTag);  // RMB/1/2/3/4 直接转发 ASC
+        return;
+    }
+    // LMB：检查是否 TargetingEnemy 或 Shift按下 → 攻击；否则 → 寻路
+    if (TargetingStatus == ETargetingStatus::TargetingEnemy || bShiftKeyDown)
+        GetASC()->AbilityInputTagHeld(InputTag);
+    else
+        // 寻路逻辑...
+}
+```
+
+这就是为什么改 RMB 后右键直接攻击——RMB 跳过 LMB 的寻路分支，直接走 ASC 激活。
