@@ -3,10 +3,13 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "MY_AbilitySystem/Data/My_AbilityInfo.h"
 #include "My_UI/Widget/My_AuraUserWidget.h"
 #include "My_UI/WidgetController/My_AuraWidgetController.h"
 #include "My_OverlayWidgetController.generated.h"
 
+class UMy_AbilityInfo;
+class UMy_AuraAbilitySystemComponent;
 //这个结构主要信息显示到屏幕
 USTRUCT(BlueprintType)
 struct FMy_UIWidgetRow : public FTableRowBase
@@ -36,6 +39,9 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FMy_OnAttributeChangedSignature, flo
 //Message委托
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FMy_MessageWidgetRowSignature, FMy_UIWidgetRow, Row);
 
+//AbilityInfo委托
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FMy_AbilityInfoSignature, const FMy_AuraAbilityInfo&, AbilityInfo);
+
 /**
  *
  */
@@ -63,15 +69,21 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "My_GAS|Message")
 	FMy_MessageWidgetRowSignature OnMessageWidgetRow;
 
+	UPROPERTY(BlueprintAssignable, Category = "My_GAS|Message")
+	FMy_AbilityInfoSignature OnAbilityInfo;
+
 protected:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Widget Data")
 	TObjectPtr<UDataTable> MessageWidgetDataTable;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Widget Data")
+	TObjectPtr<UMy_AbilityInfo> AbilityDA;
 
 	//获取数据表的特定行
 	template<typename T>
 	T* GetDataTableRowByTag(UDataTable* DataTable, const FGameplayTag& Tag);
 
+	void OnInitializeStartupAbilities(UMy_AuraAbilitySystemComponent* AuraASC);
 
 
 };

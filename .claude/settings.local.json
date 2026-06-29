@@ -56,7 +56,24 @@
       "Bash(cat \"D:\\\\\\\\UE5 Project\\\\\\\\GameplayAbilitySystem_Aura-main\\\\\\\\.claude\\\\\\\\settings.json\")",
       "Bash(cat \"D:\\\\\\\\UE5 Project\\\\\\\\GameplayAbilitySystem_Aura-main\\\\\\\\.claude\\\\\\\\settings.local.json\")",
       "Bash(git add *)",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "Bash(git clone *)",
+      "Bash(cp *)",
+      "Bash(wc -l CLAUDE.md)",
+      "Bash(wc -l README.md)",
+      "Bash(wc -l ~/.claude/projects/*/memory/MEMORY.md)",
+      "Bash(cp \"D:/UE5 Project/GameplayAbilitySystem_Aura-main/LearningNotes/GAS学习笔记-20260620.md\" \"D:/UE5 Project/GAS学习笔记.md\")",
+      "Bash(rm -rf \"D:/UE5 Project/GameplayAbilitySystem_Aura-main/LearningNotes\")",
+      "Bash(rm \"学习笔记-GAS-Attribute到UI流程.md\" update_notes.py)",
+      "Bash(git rm *)",
+      "Bash(git push *)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:forums.unrealengine.com)",
+      "WebFetch(domain:zhuanlan.zhihu.com)",
+      "WebFetch(domain:www.unrealengine.com)",
+      "WebFetch(domain:3dcghub.com)",
+      "WebFetch(domain:www.fab.com)",
+      "WebFetch(domain:deepwiki.com)"
     ]
   }
 }

@@ -65,7 +65,8 @@ public:
 	// Attack
 	FGameplayTag My_Abilities_Attack;
 	FGameplayTag My_Abilities_Summon;
-
+	FGameplayTag My_Abilities_Fire_FireBolt;
+	
 	// Montage
 	FGameplayTag My_CombatSocket_Weapon;
 	FGameplayTag My_CombatSocket_LeftHand;
