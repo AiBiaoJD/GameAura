@@ -449,6 +449,37 @@ Model-View-ViewModel，UE5.5 成熟。把手动委托翻译自动化：
 Widget 绑定时不会收到回调。所以必须手动 `BroadcastInitiaValues()` 推一次当前值。
 `BindCallbacksToDependencies` = 管线（管将来），`BroadcastInitiaValues` = 快照（推当前）。
 
+### 两种调用时机模式
+
+`BindCallbacksToDependencies` 和 `BroadcastInitiaValues` 都在 **HUD** 里调用，但推送初始值的时机不同：
+
+**Overlay（常驻 HUD）— C++ 侧全包**（My_AuraHUD.cpp:33-54）：
+
+```
+InitOverlay()
+  ├─ GetOverlayWidgetController()  → BindCallbacksToDependencies()  // 绑管线
+  ├─ Widget->SetWidgetController(OWC)                               // Widget 关联 Controller
+  └─ OWC->BroadcastInitiaValues()                                   // 推快照（HUD 初始化时立即推）
+```
+
+Overlay 常驻显示，HUD 初始化时 Widget 已创建好，所以在 C++ 里直接推初始值。
+
+**AttributeMenu（按需打开的面板）— BP 侧推快照**（My_AuraHUD.cpp:21-29）：
+
+```
+GetMenuWidgetController()
+  └─ BindCallbacksToDependencies()   // 只绑管线，不推快照
+
+// 蓝图 Widget 的 Construct 事件：
+Construct
+  ├─ SetWidgetController(MenuWidgetController)   // 关联 Controller
+  └─ BroadcastInitiaValues()                     // 推快照（Widget 构造时才调）
+```
+
+Menu 是按需打开的面板，HUD 只负责创建 Controller + 绑回调。`BroadcastInitiaValues` 推迟到蓝图层 Widget 的 `Construct` 里调用——Menu 打开时才推当前值，避免提前推送没人听的广播。
+
+**总结**：两种方式本质一样，只是**快照推送的时机不同**——常驻 UI 在 HUD 创建时推，按需 UI 在 Widget 构造时推。
+
 ---
 
 ## 十三、virtual vs BlueprintNativeEvent vs BlueprintImplementableEvent vs BlueprintCallable
@@ -691,3 +722,130 @@ Lyra 自定义的命中标记预测系统——客户端 Trace 命中后立刻�
 - PvE ARPG → My_版方案（服务器生成投射物 + Actor 复制 + Multicast RPC）— 简单够用
 - PvP 射击 → 优先考虑 Hitscan（Lyra 方案），实在需要弹道才上 Client-Fakey
 - Client-Fakey：三种投射物分开（Client/Server/Sim），bReplicates=false，对象池，服务器只跑碰撞不跑 VFX
+
+---
+
+## 十八、Model→Controller→Widget 委托架构深度解析
+
+### 18.1 两条数据流的本质差异
+
+项目中存在两条 UI 数据流，复杂度不同：
+
+| | 属性变化（健康/法力） | 能力信息（图标/输入绑定） |
+|---|---|---|
+| 委托数量 | 2 个 | 3 个 |
+| 数据性质 | **持续流**（GE 随时修改属性） | **一次性事件**（GiveAbility 只调一次） |
+| 监听方式 | 系统内置，永久监听 | 自己写，需处理时序竞态 |
+| 复杂度来源 | 翻译层（Tag→Widget 数据格式） | 时序竞态 + 翻译层 |
+
+### 18.2 属性变化：2 委托 = 工业标准
+
+```
+ASC (Model)
+  │ OnGameplayEffectAppliedDelegateToSelf（系统委托，永久监听）
+  ▼
+OverlayWidgetController (中间层)
+  │ 翻译：FGameplayEffectSpec → float NewValue
+  │ 广播自定义委托
+  ▼
+UserWidget
+  │ OnHealthChanged (蓝图委托) → 更新 UI
+```
+
+- 系统委托是**流式的**——绑定一次，后续所有 GE 修改都自动触发
+- `BroadcastInitiaValues()` 手动推当前值兜底
+- **这套就是 Lyra 的做法，工业标准**
+
+### 18.3 能力信息：为什么多了第 3 个委托
+
+能力授予（`GiveAbility`）只在初始化时调一次，**错过就没有第二次通知**。存在时序竞态：
+
+```
+情况 A：GiveAbility 先执行，Controller 后创建
+  → OnAbilityGiven 已广播 → Controller 错过了
+  → 需要标志位兜底
+
+情况 B：Controller 先创建，GiveAbility 后执行
+  → 绑定委托 → 等通知 → 收到后处理
+  → 正常路径
+```
+
+所以多了 `OnAbilityGiven`——它不是一个"翻译层"，而是一个**时钟同步信号**：
+
+```
+AddCharacterAbilitiesFromASC
+    │ Broadcast OnAbilityGiven（时钟信号——"能力给好了"）
+    ▼
+OnInitializeStartupAbilities（Controller 回调）
+    │ 绑定 Fmy_ForEachAbility::BindLambda(...)
+    │ 调用 ASC->ForEachAbility(OnEachAbility)
+    ▼
+ForEachAbility 内部（安全遍历 + FScopedAbilityListLock）
+    │ Execute(每个 AbilitySpec)
+    ▼
+Lambda：查 AbilityDA → 组装 FMy_AuraAbilityInfo → Broadcast OnAbilityInfo
+    ▼
+Widget 接收 OnAbilityInfo → 更新 UI
+```
+
+### 18.4 三个委托的职责
+
+| 委托 | 方向 | 类型 | 职责 |
+|---|---|---|---|
+| `OnAbilityGiven` | M→C | 多播 | 时钟信号——解决"谁先谁后"的时序问题 |
+| `Fmy_ForEachAbility` | M→C | 单播 | 回调参数——安全遍历（FScopedAbilityListLock） |
+| `OnAbilityInfo` | C→W | 多播 | 翻译层——组装好的 AbilityInfo 传给 Widget |
+
+单播委托用 `Execute` 不用 `Broadcast` 的原因：单播只有一个接收者，`Bind` + `Execute` 语义更准确。
+
+### 18.5 Fmy_ForEachAbility 为什么是局部变量
+
+```cpp
+Fmy_ForEachAbility OnEachAbility;  // 栈上创建
+OnEachAbility.BindLambda([...]{...});
+AuraASC->ForEachAbility(OnEachAbility);  // 同步执行，用完即弃
+// 函数返回，OnEachAbility 销毁——安全
+```
+
+`ForEachAbility` 是**同步**的——当场遍历、当场 Execute。局部变量在整个调用期间存活，函数返回后才销毁，不存在悬垂引用。
+
+### 18.6 工业上的替代方案
+
+**方案一：分阶段初始化（最常用）**
+
+从流程上保证 UI 一定在 Ability 之后创建：
+
+```
+BeginPlay → Init ASC → GiveAbility → Set bReady = true
+                                      → Create UI / WidgetController
+                                      → 检查 bReady（永远 true，不需要委托）
+```
+
+很多项目就这么干——靠游戏流程消除时序，代码里根本不需要 `OnAbilityGiven`。
+
+**方案二：标志位 + 委托兜底（本项目）**
+
+保证不了创建顺序时（多人、动态加载、网络复制）就用这套。UE 源码里自己也是这么写的，`UAbilitySystemComponent::OnRegister` 里一堆类似模式。
+
+**方案三：MVVM / ViewModel**
+
+UE5.1 有 `UMVVMViewModelBase`，但 GAS 项目几乎没人用——GAS 委托体系太成熟了，硬套 ViewModel 反而多一层胶水。WidgetController 就是 UE 社区约定俗成的 "ViewModel"，只是没叫这名字。
+
+### 18.7 委托速查
+
+| | 单播 | 多播 |
+|---|---|---|
+| 声明 | `DECLARE_DELEGATE` | `DECLARE_MULTICAST_DELEGATE` |
+| 绑定 | `BindStatic / BindUObject / BindLambda` | `Add / AddUObject / AddDynamic` |
+| 调用 | `Execute()` / `ExecuteIfBound()` | `Broadcast()` |
+| 接收者 | 1 个 | N 个 |
+
+### 18.8 RAII 锁
+
+```cpp
+FScopedAbilityListLock ActiveScopeLock(*this);  // 构造 = 锁定
+for (...) { ... }
+// 析构 = 自动解锁（return / 异常都安全）
+```
+
+**必须给变量名**——无名临时对象会在本行结束就析构，等于没锁。
