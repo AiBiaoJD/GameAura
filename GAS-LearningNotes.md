@@ -1189,3 +1189,220 @@ ReplicationPolicy: ReplicateYes
 NetExecutionPolicy: LocalPredicted
 结果：客户端预测激活，不需要 Delay，但 SpawnActor 要加 HasAuthority 判断
 ```
+
+---
+
+## 二十一、AbilityTask 体系与 AsyncTask 深入
+
+> 2026-06-30，任务系统架构、WaitCooldownChange 完整实现、委托绑定策略
+
+### 21.1 AbilityTask 静态工厂方法模式
+
+所有 AbilityTask 都遵循固定模板：
+
+```cpp
+UCLASS()
+class UMyTask : public UAbilityTask
+{
+public:
+    // ① static 工厂函数 — 不依赖实例就能调用
+    UFUNCTION(BlueprintCallable, meta = (BlueprintInternalUseOnly = "true"))
+    static UMyTask* CreateTask(UGameplayAbility* OwningAbility, float ExtraParam);
+    
+    // ② 委托 = 蓝图输出执行引脚
+    UPROPERTY(BlueprintAssignable)
+    FDelegate OnSuccess;
+    
+private:
+    float MyExtraParam;  // ③ 参数存成员变量
+    virtual void Activate() override;  // ④ ASC 创建 Task 后自动调用
+};
+```
+
+**为什么必须是 static**：蓝图节点执行时 Task 实例还不存在。`static` 让 UE 蓝图 VM 用类名直接调函数，不依赖实例。函数内部 `NewAbilityTask<T>()` 才创建实例。
+
+```
+编译时 → 蓝图图表存 "调哪个 static 函数" 的签名
+运行时 → 蓝图 VM 用类名::static函数() → NewObject → 返回实例 → Activate()
+```
+
+### 21.2 UFUNCTION meta 四个标记
+
+```cpp
+UFUNCTION(BlueprintCallable, meta = (
+    DisplayName = "MyTargetDateUnderMouse",    // 蓝图节点显示的名字
+    HidePin = "OwningAbility",                 // 隐藏 OwningAbility 引脚
+    DefaultToSelf = "OwningAbility",           // 隐藏的引脚自动填 "当前 Ability"
+    BlueprintInternalUseOnly = "true"           // 不在蓝图右键菜单出现
+))
+static UMyTask* CreateTask(UGameplayAbility* OwningAbility);
+```
+
+`BlueprintInternalUseOnly` **不是**"运行时使用"的意思——它只是阻止用户在蓝图右键菜单里搜到并手动拖出这个工厂函数。蓝图节点本身是 UE 的 `UK2Node_LatentGameplayTaskCall` 解析 Task 类后用反射找到 factory 函数来间接调用的。
+
+### 21.3 UE 如何识别工厂函数
+
+**不靠函数名，靠返回值类型**：
+
+```
+扫描 UAbilityTask 子类 → 找 UFUNCTION 满足：
+  ① 是 static
+  ② 返回值类型 = 这个类自己的指针
+  ③ 标记了 BlueprintCallable + BlueprintInternalUseOnly
+→ 找到了 = 工厂函数
+→ 其他参数自动暴露为蓝图节点输入引脚
+```
+
+函数名叫 `CreateTask`、`MakeInstance`、`Factory` 都行，UE 不读名字。
+
+### 21.4 TargetDataUnderMouse 完整流程
+
+```cpp
+// Activate — Task 创建后自动调用，分流客户端/服务器
+void UMy_TargetDateUnderMouse::Activate()
+{
+    if (IsLocallyControlled())  // 本地 PC
+    {
+        SendMouseCursurData();  // 拿鼠标位置 → 发给服务器 → 本地预览
+    }
+    else  // 服务器
+    {
+        // 注册回调 → 等客户端 RPC 发 TargetData 过来
+        ASC->AbilityTargetDataSetDelegate(Handle, Key).AddUObject(this, &OnTargetDataReplicatedCallback);
+        // 处理竞态：TargetData 可能在注册回调前已经到了
+        bool bCalled = ASC->CallReplicatedTargetDataDelegatesIfSet(Handle, Key);
+        if (!bCalled) SetWaitingOnRemotePlayerData();
+    }
+}
+```
+
+```
+完整数据流：
+  客户端：GetHitResultUnderCursor → ServerSetReplicatedTargetData(RPC) → 服务器
+           同时本地也 Broadcast ValidData → 蓝图预览特效
+  服务器：OnTargetDataReplicatedCallback → ConsumeClientReplicatedTargetData
+            → Broadcast ValidData → 蓝图做权威逻辑（Spawn 火球/算伤害）
+```
+
+**双向 RPC**：不是只有 S→C。客户端有输入数据（鼠标），服务器有权威数据（属性/Actor），两者各走各的 RPC。
+
+### 21.5 AbilityTask vs BlueprintAsyncActionBase
+
+| | AbilityTask | AsyncTask (BlueprintAsyncActionBase) |
+|--|-------------|--------------------------------------|
+| 父类 | `UAbilityTask` | `UBlueprintAsyncActionBase` |
+| 工厂宏 | `NewAbilityTask<T>(OwningAbility)` | `NewObject<T>()` 手动创建 |
+| 生命周期 | 跟 Ability 实例绑定 | 独立，手动 `EndTask` |
+| Ability 结束后 | 自动取消 | 继续活着 |
+| 适用 | Ability 内部流程（PlayMontage、WaitEvent） | **跨 Ability 的全局监听**（冷却 UI） |
+
+冷却 UI 必须用 AsyncTask——Ability 结束后冷却还在走，AbilityTask 会跟着 Ability 一起销毁，没法继续监听 Tag 变化。
+
+### 21.6 WaitCooldownChange 完整实现
+
+```cpp
+UMy_WaitCoolDownChange* CreateWaitCoolDownChange(ASC, CooldownTag)
+{
+    // ① 监听 Tag 增/删（冷却结束用）
+    ASC->RegisterGameplayTagEvent(CooldownTag, NewOrRemoved)
+        .AddUObject(this, &CooldownTagChanged);
+    
+    // ② 监听 Duration GE 挂上（冷却开始用，需要拿剩余时间）
+    ASC->OnActiveGameplayEffectAddedDelegateToSelf
+        .AddUObject(this, &OnActiveEffectAdded);
+}
+
+// Tag 消失 → 冷却结束
+void CooldownTagChanged(Tag, NewCount)
+{
+    if (NewCount == 0) CooldownEnd.Broadcast(0.f);
+}
+
+// Duration GE 上身后 → 获取剩余时间 → 冷却开始
+void OnActiveEffectAdded(TargetASC, Spec, Handle)
+{
+    if (AssetTags 或 GrantedTags 匹配 CooldownTag)
+    {
+        float Time = ASC->GetActiveEffectsTimeRemaining(Query);
+        CooldownStart.Broadcast(Time);
+    }
+}
+```
+
+**为什么冷却开始用 OnActiveEffectAdded 而不是 CooldownTagChanged**：
+`CooldownTagChanged` 参数只有 `(GameplayTag, NewCount)`，能告诉你"Tag 出现了"，但说不出冷却还剩几秒。冷却秒数存在 GE 的 Duration 里，只有 `OnActiveEffectAdded` 能拿到 GE Handle → 查出剩余时间。
+
+### 21.7 ASC 五个 GE 生命周期委托
+
+| 委托 | 触发时机 | 哪端 | GE 类型 |
+|------|---------|:--:|--------|
+| `AppliedDelegateToSelf` | GE 施加到自身 | 仅 S | Instant + Duration |
+| `AppliedDelegateToTarget` | GE 施加到他人 | 仅 S | Instant + Duration |
+| **`ActiveEffectAddedToSelf`** | Duration GE 挂上 | **S + C** | 仅 Duration |
+| `PeriodicExecuteOnSelf` | 周期性 GE 定时执行 | 仅 S | 仅 Periodic |
+| `PeriodicExecuteOnTarget` | 周期性 GE 定时执行 | 仅 S | 仅 Periodic |
+
+五个里面只有 `ActiveEffectAddedToSelf` **客户端也触发**，所以冷却 UI 系统用它。
+
+### 21.8 AddUObject vs AddLambda
+
+| | AddUObject | AddLambda |
+|--|-----------|-----------|
+| 安全机制 | 弱引用，对象销毁后**自动解绑** | 无保护，Lambda 裸捕获 |
+| 对象销毁后广播 | 不回调，安全 ✅ | 野指针 → 💥 崩溃 |
+| 适用 | 被监听者活得比监听者久 | 两者同寿或监听者更长命 |
+| 例子 | `ASC->RegisterTagEvent.AddUObject(this, &Callback)` | `ASC->GetAttrChangeDelegate(HP).AddLambda([this]{...})` |
+
+**结论**：跨对象的监听用 `AddUObject`（安全网），自己的组件内部监听用 `AddLambda`（省事）。
+
+### 21.9 EndTask — 为什么必须手动解绑
+
+委托是 **ASC → Task 的单向指针**。ASC 活到游戏结束，Task 可能早被销毁。不主动斩断连线 → 野指针 → Tag 变化时崩溃。
+
+```cpp
+void EndTask()
+{
+    ASC->RegisterGameplayTagEvent(Tag).RemoveAll(this);           // 解绑 ①
+    ASC->OnActiveGameplayEffectAddedDelegateToSelf.RemoveAll(this); // 解绑 ②
+    SetReadyToDestroy();
+    MarkAsGarbage();
+}
+```
+
+蓝图 Widget 的 Destruct 事件里调 `EndTask` → 解绑 → 安全销毁。**两个委托都要解绑**，漏一个就是野指针。
+
+---
+
+## 二十二、编辑器与工具技巧
+
+> 2026-06-30
+
+### 22.1 Rider 不索引 UE 引擎文件
+
+**问题**：Rider 能打开引擎 `.cpp` 文件但无语法高亮、无 F12 跳转。
+
+**原因**：Rider 默认只索引项目源文件，引擎文件是"项目外文件"当纯文本打开。
+
+**解决**：删 `.idea` 和 `.vs` 目录 → 用 Rider 重新打开 `.uproject` → 等索引进度条跑完。如果引擎源码物理不存在（Epic Launcher 没勾选"编辑器符号用于调试"），则要先下载。
+
+### 22.2 Live Coding 的边界
+
+| 能 Hot Reload | 不能（必须重启编辑器） |
+|--------------|---------------------|
+| 改 .cpp 函数体 | 改 .h（增删 UPROPERTY/UFUNCTION） |
+| 新增未被引用的属性 | 修改类继承层级 |
+| 加注释/日志 | 改模块初始化相关代码 |
+
+**典型崩溃**：改 .h 后用 Live Coding → `DEFINE_LOG_CATEGORY` 被注册两次 → Fatal error。解决：关编辑器 → `rm -rf Intermediate Binaries` → Rider Build → 重开。
+
+### 22.3 蓝图窗口拖出主界面
+
+蓝图被拖成独立浮动窗口后：UE 顶部 → **Window** → **Load Layout** → **Default Editor Layout** 一键恢复。
+
+### 22.4 GBK 文件被 Edit 破坏后的恢复
+
+Edit/Write 改含中文的 `.h/.cpp` 会把 GBK → UTF-8 → 中文乱码。恢复方法：
+
+1. 用 Write 工具创建 Python 脚本文件（UTF-8 脚本可含中文）
+2. 脚本里 `open(target, 'w', encoding='gbk')` 完整重建
+3. 验证：`open(target, 'r', encoding='gbk')` 无异常

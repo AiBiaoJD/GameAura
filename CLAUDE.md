@@ -27,10 +27,14 @@ Source/Aura/
 C++ 源文件是 **GBK 编码**（Windows 中文 codepage 936）。UE5 在中文 Windows 上默认以 GBK 保存 C++ 文件。
 
 **禁止操作**：
-- 不要用 `Edit` 工具直接修改含中文注释的 `.h`/`.cpp`——会转 UTF-8 导致全部中文乱码
+- 不要用 `Edit` 工具直接修改含中文注释的 `.h`/`.cpp`——会转 UTF-8 导致全部中文乱码（**即使只改 ASCII 部分的文本，整个文件都会被重新编码为 UTF-8**）
+- 不要用 `Write` 工具覆盖含中文的 `.h`/`.cpp`——同样会转 UTF-8
 - 不要用 `sed` 插入中文文本
 
 **安全做法**：用 Python + 显式 GBK 编码：
+
+### 方案一：简单替换（仅 ASCII 字符改动）
+
 ```bash
 /c/Users/79467/anaconda3/python -c "
 with open('file.cpp', 'r', encoding='gbk') as f:
@@ -40,6 +44,25 @@ with open('file.cpp', 'w', encoding='gbk') as f:
     f.write(content)
 "
 ```
+
+### 方案二：完全重建文件（需要写中文注释时）
+
+当 Python 命令行传中文参数可能被终端编码破坏时，先用 `Write` 工具写一个 `.py` 脚本文件（UTF-8 编码的脚本直接写中文没问题），再用 Bash 执行它：
+
+```bash
+# 1. 用 Write 工具创建 _fix_temp.py，脚本里硬编码中文文本和完整文件内容
+# 2. 执行脚本
+/c/Users/79467/anaconda3/python _fix_temp.py
+# 3. 删除临时脚本
+rm _fix_temp.py
+```
+
+### 已损坏文件的恢复
+
+如果 Edit/Write 已经破坏了 GBK 文件：
+1. 用 Python `open(f, 'rb').read().decode('gbk')` 会报错（非法多字节序列）
+2. 必须用方案二完全重建文件——用 Python 脚本按 `encoding='gbk'` 重新写一遍
+3. 验证：`open(f, 'r', encoding='gbk')` 无异常 + 代码逻辑正确
 
 Read 工具显示的中文是乱码属于正常现象——以 Python round-trip 验证为准。
 
