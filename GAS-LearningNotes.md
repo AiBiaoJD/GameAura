@@ -979,3 +979,213 @@ void AAuraPlayerController::AbilityInputTagHeld(FGameplayTag InputTag)
 ```
 
 这就是为什么改 RMB 后右键直接攻击——RMB 跳过 LMB 的寻路分支，直接走 ASC 激活。
+
+---
+
+## 二十、Ability Commit、Cost/Cooldown 与 GE Tag 容器详解
+
+> 2026-06-30，深入 CommitAbility 流程、GE 五大 Tag 容器、能力网络配置实践
+
+### 20.1 CommitAbility 完整流程
+
+`UGameplayAbility::CommitAbility()` 是能力的"最终审核关卡"：
+
+```cpp
+bool UGameplayAbility::CommitAbility(...)
+{
+    // ① 最后一道检查（验资源 + 验冷却 + 验 Tag）
+    //    注释: "Last chance to fail" — 激活与 Commit 之间可能有时间差
+    if (!CommitCheck(Handle, ActorInfo, ActivationInfo, OptionalRelevantTags))
+        return false;  // 不通过 → 能力激活中止
+
+    // ② 执行消耗（扣资源 + 上冷却）
+    CommitExecute(Handle, ActorInfo, ActivationInfo);
+
+    // ③ 蓝图 Hook（OnCommitAbility 事件入口）
+    K2_CommitExecute();
+
+    // ④ 广播通知（UI 监听冷却/资源变化用）
+    ActorInfo->AbilitySystemComponent->NotifyAbilityCommit(this);
+
+    return true;
+}
+```
+
+**CommitCheck 内部三道关卡**：
+
+| 检查项 | 源码函数 | 说明 |
+|--------|---------|------|
+| 冷却检查 | `CheckCooldown()` | `ASC->HasAnyMatchingGameplayTags(CooldownTags)` → 有 Tag = 冷却中 = 失败 |
+| 资源检查 | `CheckCost()` | 当前属性值是否 ≥ Cost 所需（如 Mana ≥ 30） |
+| Tag 条件 | `DoesAbilitySatisfyTagRequirements()` | Ability Tag 是否被 Block 禁用 |
+
+**CommitExecute 内部**：
+
+```cpp
+void CommitExecute(...)
+{
+    ApplyCost(Handle, ActorInfo);        // 应用 CostGE → 扣除资源
+    ApplyCooldown(Handle, ActorInfo);    // 应用 CooldownGE → 授予冷却 Tag
+}
+```
+
+**关键**：蓝图勾选 "Commit Ability" 或 C++ 手动调 `CommitAbility()`，这套逻辑才生效。不调 → 跳过所有检查 → 无条件激活 — 这就是项目当前状态。
+
+### 20.2 CheckCooldown 为什么只查 Tag 不删 Tag
+
+```cpp
+bool CheckCooldown(...)
+{
+    if (ASC->HasAnyMatchingGameplayTags(*CooldownTags))
+    {
+        OptionalRelevantTags->AddTag(ActivateFailCooldownTag);  // 记下失败原因
+        return false;  // 有冷却 Tag → 不放行
+    }
+    return true;  // 没有 → 放行
+}
+```
+
+`CheckCooldown` 是**看门大爷**（只查证），不是**清洁工**（不删 Tag）。
+
+Tag 的移除由 **Duration GE 的生命周期**自动完成：
+
+```
+ApplyCooldown() → ASC->ApplyGameplayEffectToSelf(CooldownGE, Duration=5.0)
+  → GE 挂到 ActiveGameplayEffects 列表
+  → GE 授予 Cooldown Tag（GrantedTagsAdded）
+
+5 秒后 → GE Duration 到期
+  → ASC 自动 RemoveActiveGameplayEffect()
+  → GE 移除时，其 GrantedTags 自动从 ASC 撤销
+  → Cooldown Tag 消失 → CheckCooldown() 通过 → 可以再放
+```
+
+### 20.3 为什么冷却用 Duration GE 而不是 Instant
+
+| GE 策略 | 施加 | 移除 | 冷却结果 |
+|---------|------|------|----------|
+| Instant | 瞬间加 Tag | 瞬间移除 | ❌ 冷却 0 秒，等于没冷却 |
+| Duration | 加 Tag | N 秒后**自动移除** | ✅ 冷却时间内 Tag 持续存在 |
+| Infinite | 加 Tag | **永久不自动移除** | ❌ 冷却永不结束，需手动 Remove |
+
+Duration 完美匹配"挂 Tag N 秒 → 自动消失"的需求。GE 的 Duration 值 = 冷却秒数。
+
+### 20.4 冷却时长来源
+
+在蓝图/C++ 里设的 `CooldownDuration` 不是直接写死到 GE 里，而是通过 `GetCooldownTime()` 运行时覆盖：
+
+```cpp
+float UGameplayAbility::GetCooldownTime(float InLevel) const
+{
+    return CooldownDuration.GetValueAtLevel(InLevel);  // 蓝图设的冷却时长
+}
+
+// ApplyCooldown 内部：
+float Duration = GetCooldownTime(Level);
+GEHandle = ApplyGameplayEffectToOwner(CooldownGE, Level);
+SetGameplayEffectDuration(GEHandle, Duration);  // 用这个值覆盖 GE 的 Duration
+```
+
+### 20.5 GE 五大 Tag 容器各司其职
+
+| 容器 | 作用对象 | 施加时 | 移除时 | 典型用途 |
+|------|---------|--------|--------|---------|
+| **GrantedTagsAdded** | 目标 ASC | 授予 Tag 到目标 OwnedTags | — | ✅ **冷却**、Buff 标记、状态标签 |
+| **GrantedTagsRemoved** | 目标 ASC | — | 撤销 OwnedTags 中对应 Tag | 显式声明"该带走什么" |
+| **AssetTags** | GE 自身 | 给 GE 贴身份标签 | — | 让其他 GE 的 RemoveEffectsWithTags 能匹配到它 |
+| **ApplicationTagReq** | 目标 ASC Tag | **前置条件**：必须有/必须没有指定 Tag | — | "必须先中毒才能点燃" |
+| **OngoingTagReq** | 目标 ASC Tag | **维持条件**：不满足就暂停效果 | 条件恢复后自动恢复 | "必须离地才有飞行加速" |
+| **RemoveEffectsWithTags** | 目标身上匹配的 GE | **先清场**：移除 AssetTags 匹配的所有活跃 GE | — | 解药移除所有毒系 Debuff、同类 Buff 替换 |
+
+**冷却 Tag 必须放 GrantedTagsAdded**——因为 `CheckCooldown()` 查的是 ASC 的 OwnedTags，只有 GrantTags 才能把 Tag 挂到 ASC 身上。
+
+### 20.6 各容器的实际用法示例
+
+**AssetTags — 解药移除毒 Debuff**：
+```
+毒 Debuff GE: AssetTags = Debuff.Poison
+解药 GE: RemoveGameplayEffectsWithTags = Debuff.Poison
+  → 施加解药 → 身上所有 AssetTags 匹配 Debuff.Poison 的 GE 全部移除
+```
+
+**ApplicationTagRequirements — 条件施法**：
+```
+点燃 GE: ApplicationTagRequirements.Required = Debuff.Poison
+  → 目标没中毒 → 点燃施不上
+```
+
+**OngoingTagRequirements — 条件维持**：
+```
+飞行 Buff GE: OngoingTagRequirements.Required = Status.Airborne
+  → 落地 → 效果暂停 → 跳起来 → 恢复（Duration 照走）
+```
+
+**RemoveGameplayEffectsWithTags — 同类 Buff 替换**：
+```
+加速 30% GE: RemoveGameplayEffectsWithTags = Buff.Speed
+  → 阻止叠加，30% 替换 20%
+```
+
+### 20.7 SpawnActor + EndAbility 时序问题
+
+**问题场景**（火球投射物能力）：
+
+```
+服务器：
+  ActivateAbility → SpawnActor(火球) → EndAbility（同一帧）
+  → 火球 Actor 网络初始化还没完成，EndAbility 就结束了
+客户端：
+  → 火球初始状态还没复制过来 → 看不到或瞬移
+```
+
+**根本原因**：`SpawnActor` 创建的火球需要至少一帧才能完成首次 Actor Channel 复制。同一帧内 `EndAbility`，火球还在网络队列里。
+
+**解决方案**：
+
+| 方案 | 做法 | 适用 |
+|------|------|------|
+| Delay | SpawnActor 后 Delay 0.1s → EndAbility | 简单，硬编码时间 |
+| WaitNetSync | SpawnActor 后 → WaitNetSync → EndAbility | 更可靠，等网络同步确认 |
+| LocalPredicted | ReplicationPolicy=ReplicateYes + NetExecutionPolicy=LocalPredicted | Ability 生命周期接管，不需 Delay |
+
+### 20.8 ReplicationPolicy 与 NetExecutionPolicy 的互斥
+
+| ReplicationPolicy | NetExecutionPolicy | 实际行为 |
+|-------------------|-------------------|---------|
+| **ReplicateYes** | LocalPredicted | ✅ 客户端有 AbilitySpec → 本地预测激活 |
+| **DoNotReplicate** | LocalPredicted | ⚠️ 客户端没有 AbilitySpec → `LocalPredicted` 前提不成立 → 实际 = **ServerOnly** |
+| **ReplicateYes** | ServerOnly | 客户端有 Spec 但不激活 → 只有服务器执行 |
+| **DoNotReplicate** | ServerOnly | ✅ 一致：客户端无 Spec，纯服务器执行 |
+
+**关键**：`ReplicationPolicy` 决定客户端有没有 AbilitySpec；`NetExecutionPolicy` 决定有 Spec 后谁执行。
+`DoNotReplicate` + `LocalPredicted` 同时开 → DoNotReplicate 胜出，LocalPredicted 是摆设。
+
+### 20.9 纯服务器生成 + 复制的投射物
+
+伤害不是客户端火球算的——客户端火球只是"视觉替身"：
+
+```
+服务器火球（真）          客户端火球（复制品/视觉替身）
+  ├─ 飞行                   ├─ 飞行（同步来的位置）
+  ├─ 碰撞 → 触发伤害        ├─ 碰撞（本地检测，仅播放特效）
+  ├─ Apply GE → 算伤害       ├─ 不 Apply GE（被服务器拒绝）
+  └─ 修改 AttributeSet       └─ AttributeSet 靠网络同步更新
+```
+
+伤害流程：服务器算 → AttributeSet 自动复制 → 客户端血条更新。客户端火球只管看，不管算。
+
+### 20.10 完整配置速查
+
+**纯服务器投射物（当前方案）**：
+```
+ReplicationPolicy: DoNotReplicate
+NetExecutionPolicy: ServerOnly
+结果：客户端不激活，火球靠 Actor Replication，需要 Delay
+```
+
+**LocalPredicted 攻击（后续可选）**：
+```
+ReplicationPolicy: ReplicateYes
+NetExecutionPolicy: LocalPredicted
+结果：客户端预测激活，不需要 Delay，但 SpawnActor 要加 HasAuthority 判断
+```
