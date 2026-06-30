@@ -142,11 +142,20 @@ void FMy_AuraGameplayTags::InitializeNativeGameplayTags()
 		FName("My_Abilities.Summon"),
 		FString("Summon Ability Tag")
 	);
-	
+
 	GameplayTagsInstance.My_Abilities_Fire_FireBolt = UGameplayTagsManager::Get().AddNativeGameplayTag(
-	FName("My_Abilities.Fire.FireBolt"),
-	FString("FireBolt Ability Tag")
-);
+		FName("My_Abilities.Fire.FireBolt"),
+		FString("FireBolt Ability Tag")
+	);
+
+	/*
+	* CoolDown
+	*/
+	GameplayTagsInstance.My_CoolDown_Fire_FireBolt = UGameplayTagsManager::Get().AddNativeGameplayTag(
+			FName("My_CoolDown.Fire.FireBolt"),
+			FString("FireBolt CoolDown Tag")
+		);
+
 
 	/*
 	* Combat Socket
