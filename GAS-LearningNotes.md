@@ -1406,3 +1406,57 @@ Edit/Write 改含中文的 `.h/.cpp` 会把 GBK → UTF-8 → 中文乱码。恢
 1. 用 Write 工具创建 Python 脚本文件（UTF-8 脚本可含中文）
 2. 脚本里 `open(target, 'w', encoding='gbk')` 完整重建
 3. 验证：`open(target, 'r', encoding='gbk')` 无异常
+
+
+## 二十三、Attribute 越界防护与异步任务 UI 集成
+
+> 2026-07-01，冷却显示实现、Mana 越界修复、AsyncTask 元数据
+
+### 23.1 Mana 可能超过 MaxMana 的三个原因
+
+1. **初始化时序**：`InitVitalAttributeEffectClass`（Instant）设 Mana = MaxMana 时，`SecondaryAttributes`（Infinite GE）计算的 MaxMana 可能还未生效，导致 Mana 被设成错误值
+2. **MaxMana 变化时 Mana 不联动**：`PreAttributeChange` 只在 Mana 自己变化时 clamp——MaxMana 降低了，Mana 没人管
+3. **网络复制乱序**：`OnRep_Mana` 和 `OnRep_MaxMana` 可能不同帧到达—Mana 先到，MaxMana 后到，中间 Mana > MaxMana
+
+### 23.2 三层防护（My_AuraAttributeSet.cpp）
+
+```cpp
+// 层① PreAttributeChange — MaxMana/MaxHealth 下降时主动压 Mana/Health
+if (Attribute == GetMaxManaAttribute())
+    SetMana(FMath::Min(GetMana(), NewValue));       // 只降不升
+if (Attribute == GetMaxHealthAttribute())
+    SetHealth(FMath::Min(GetHealth(), NewValue));
+
+// 层② PostGameplayEffectExecute — GE 执行后兜底 clamp（本来就有的）
+if (Attribute == GetManaAttribute())
+    SetMana(FMath::Clamp(GetMana(), 0, GetMaxMana()));
+
+// 层③ OnRep — 网络复制到达时兜底
+void OnRep_Mana(...) {
+    GAMEPLAYATTRIBUTE_REPNOTIFY(...);
+    const_cast<...>(this)->SetMana(FMath::Min(GetMana(), GetMaxMana()));
+}
+```
+
+`FMath::Min` 只降不升——如果 MaxMana 变大（升级），不会错误地把 Mana 拉高。
+
+注意 `OnRep` 是 const 函数，需要 `const_cast` 去掉 const 才能调 `SetMana`。
+
+### 23.3 蓝条 + 数字显示
+
+蓝条百分比变化在消耗少时不明显（20/430 ≈ 4.6%）。标准做法是蓝条旁加文字 `{Mana} / {MaxMana}`，蓝图里绑 `OnManaChanged` + `OnMaxManaChanged` 更新 TextBlock。
+
+### 23.4 UCLASS meta 回顾
+
+```cpp
+UCLASS(BlueprintType, meta = (ExposedAsyncProxy = "AsyncTask"))
+class UMy_WaitCoolDownChange : public UBlueprintAsyncActionBase
+```
+
+- `BlueprintType` — 这个类能当蓝图变量类型
+- `ExposedAsyncProxy` — 告诉蓝图 VM：工厂函数画成**延迟节点**，`BlueprintAssignable` 委托自动变成输出执行引脚
+- `= "AsyncTask"` — 输出引脚的名字，返回 AsyncTask 实例引用（可 Promote to Variable 然后调 `EndTask()`）
+
+### 23.5 CooldownTag 加入 AbilityInfo
+
+`FMy_AuraAbilityInfo` 新增 `CoolDownTag`，每个技能配自己的冷却 Tag。蓝图 `SpellGlobal` 根据 AbilityInfo 拿到 CooldownTag，传给 `WaitCoolDownChange` 工厂函数，实现技能冷却图标的动态显示。

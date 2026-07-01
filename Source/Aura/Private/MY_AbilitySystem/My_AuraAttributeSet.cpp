@@ -92,6 +92,14 @@ void UMy_AuraAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribut
 	{
 		NewValue = FMath::Clamp(NewValue, 0.0f, GetMaxMana());
 	}
+	if (Attribute == GetMaxManaAttribute())
+	{
+		SetMana(FMath::Min(GetMana(), NewValue));
+	}
+	if (Attribute == GetMaxHealthAttribute())
+	{
+		SetHealth(FMath::Min(GetHealth(), NewValue));
+	}
 }
 
 void UMy_AuraAttributeSet::PostAttributeChange(const FGameplayAttribute& Attribute, float OldValue, float NewValue)
@@ -216,8 +224,8 @@ void UMy_AuraAttributeSet::SetEffectProperty(const struct FGameplayEffectModCall
 
 void UMy_AuraAttributeSet::OnRep_Health(const FGameplayAttributeData& OldHealth) const
 {
-	//宏，比较旧值和新值，不同调用OnRep，上面GetLifetimeReplicatedProps改了相同也调用
 	GAMEPLAYATTRIBUTE_REPNOTIFY(UMy_AuraAttributeSet, Health, OldHealth);
+	const_cast<UMy_AuraAttributeSet*>(this)->SetHealth(FMath::Min(GetHealth(), GetMaxHealth()));
 }
 
 void UMy_AuraAttributeSet::OnRep_MaxHealth(const FGameplayAttributeData& OldMaxHealth) const
@@ -228,6 +236,7 @@ void UMy_AuraAttributeSet::OnRep_MaxHealth(const FGameplayAttributeData& OldMaxH
 void UMy_AuraAttributeSet::OnRep_Mana(const FGameplayAttributeData& OldMana) const
 {
 	GAMEPLAYATTRIBUTE_REPNOTIFY(UMy_AuraAttributeSet, Mana, OldMana);
+	const_cast<UMy_AuraAttributeSet*>(this)->SetMana(FMath::Min(GetMana(), GetMaxMana()));
 }
 
 void UMy_AuraAttributeSet::OnRep_MaxMana(const FGameplayAttributeData& OldMaxMana) const
