@@ -31,7 +31,9 @@ C++ 源文件是 **GBK 编码**（Windows 中文 codepage 936）。UE5 在中文
 - 不要用 `Write` 工具覆盖含中文的 `.h`/`.cpp`——同样会转 UTF-8
 - 不要用 `sed` 插入中文文本
 
-**安全做法**：用 Python + 显式 GBK 编码：
+**安全做法**：用 Python + 显式 GBK 编码 + `newline=''`：
+
+⚠️ **写入 GBK 文件必须加 `newline=''`**——不加会导致 Python 在 Windows 上自动把 `\r\n` 转换成 `\r\r\n`，编译时报 C4335 "检测到 Mac 文件格式"。
 
 ### 方案一：简单替换（仅 ASCII 字符改动）
 
@@ -40,7 +42,7 @@ C++ 源文件是 **GBK 编码**（Windows 中文 codepage 936）。UE5 在中文
 with open('file.cpp', 'r', encoding='gbk') as f:
     content = f.read()
 content = content.replace('old_ascii_pattern', 'replacement')
-with open('file.cpp', 'w', encoding='gbk') as f:
+with open('file.cpp', 'w', encoding='gbk', newline='') as f:
     f.write(content)
 "
 ```
@@ -51,6 +53,8 @@ with open('file.cpp', 'w', encoding='gbk') as f:
 
 ```bash
 # 1. 用 Write 工具创建 _fix_temp.py，脚本里硬编码中文文本和完整文件内容
+#    - 脚本中 open() 写文件时使用 encoding='gbk', newline=''
+#    - Python 字符串内显式使用 \r\n 换行
 # 2. 执行脚本
 /c/Users/79467/anaconda3/python _fix_temp.py
 # 3. 删除临时脚本

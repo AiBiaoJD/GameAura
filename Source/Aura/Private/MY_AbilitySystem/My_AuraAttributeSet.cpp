@@ -87,7 +87,6 @@ void UMy_AuraAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribut
 	{
 		NewValue = FMath::Clamp(NewValue, 0.0f, GetMaxHealth());
 	}
-
 	if (Attribute == GetManaAttribute())
 	{
 		NewValue = FMath::Clamp(NewValue, 0.0f, GetMaxMana());

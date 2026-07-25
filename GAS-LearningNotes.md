@@ -1460,3 +1460,161 @@ class UMy_WaitCoolDownChange : public UBlueprintAsyncActionBase
 ### 23.5 CooldownTag 加入 AbilityInfo
 
 `FMy_AuraAbilityInfo` 新增 `CoolDownTag`，每个技能配自己的冷却 Tag。蓝图 `SpellGlobal` 根据 AbilityInfo 拿到 CooldownTag，传给 `WaitCoolDownChange` 工厂函数，实现技能冷却图标的动态显示。
+
+---
+
+## 二十四、属性复制完整链路：OnRep → REPNOTIFY → Delegate → UI
+
+> 2026-07-03，属性如何从服务端变化到客户端 UI 刷新的每一步
+
+### 24.1 完整流程（以服务端 GE 扣血 30 为例）
+
+```
+服务端：
+① GE 执行，Modifier 作用于 Health → CurrentValue 100→70
+② PreAttributeChange(Health, NewValue=70) → Clamp(0, MaxHealth)
+③ 值写入成员变量 Health.BaseValue=70, Health.CurrentValue=70
+④ PostAttributeChange(Health, OldValue=100, NewValue=70)  ← 仅服务端，适合日志
+⑤ PostGameplayEffectExecute(Data)  ← 仅服务端，伤害/死亡逻辑
+⑥ UE 网络层检测 Health 变化 → 序列化 → 发给所有客户端
+
+客户端收到网络包：
+⑦ UE 反序列化，先拷贝旧值：OldHealth = 当前客户端 Health(如 100)
+⑧ UE 把新值直接写入成员变量：Health.BaseValue=70, Health.CurrentValue=70
+⑨ UE 检测到 ReplicatedUsing=OnRep_Health → 调用 OnRep_Health(OldHealth=100)
+⑩ OnRep_Health 内部：
+    a. GAMEPLAYATTRIBUTE_REPNOTIFY(Health, OldHealth)
+       → SetBaseAttributeValueFromReplication(Health属性, 当前值70, 旧参数100)
+       → 聚合器：旧 BaseValue=100，新 BaseValue=70 → 不同 → 广播 Delegate
+    b. const_cast + SetHealth + FMath::Min  ← 兜底夹
+⑪ WidgetController 回调触发 → OnHealthChanged.Broadcast(70)
+⑫ UI Widget 收到 → 血条刷新
+```
+
+### 24.2 没有 OnRep 会怎样
+
+UE 网络复制**仍然会把新值写进成员变量**（步骤⑦⑧照常执行），`GetHealth()` 确实返回新值。但：
+
+| | 没有 OnRep | 有 OnRep |
+|---|---|---|
+| `Health` 成员变量 | ✓ 更新了 | ✓ 更新了 |
+| `GetHealth()` 返回值 | ✓ 新值 | ✓ 新值 |
+| ASC 聚合器重算 | ✗ 没参与 | ✓ 重算 |
+| `GetGameplayAttributeValueChangeDelegate` | ✗ 不触发 | ✓ 触发 |
+
+**委托的触发不是由"成员变量被写了"驱动的，而是由"聚合器重算后发现值变了"驱动的。** 没有 OnRep，聚合器根本没参与，委托链是断的。
+
+### 24.3 SetBaseAttributeValueFromReplication 内部
+
+`GAMEPLAYATTRIBUTE_REPNOTIFY` 不是委托，它是个宏，展开后调 ASC 的 `SetBaseAttributeValueFromReplication()`：
+
+```cpp
+#define GAMEPLAYATTRIBUTE_REPNOTIFY(ClassName, PropertyName, OldValue) \
+{ \
+    static FProperty* ThisProperty = FindFieldChecked<FProperty>(...); \
+    GetOwningAbilitySystemComponentChecked()->SetBaseAttributeValueFromReplication( \
+        FGameplayAttribute(ThisProperty), PropertyName, OldValue); \
+}
+```
+
+`SetBaseAttributeValueFromReplication()` 内部做了三件事：
+
+```
+① 找到 Health 属性的聚合器（Aggregator）
+② 更新聚合器 BaseValue = 新值
+③ 重新计算 CurrentValue = BaseValue + Σ(所有挂着的 GE modifier)
+④ 如果 CurrentValue 真的变了 → 广播 GetGameplayAttributeValueChangeDelegate
+```
+
+**这才是真正的委托**——`GetGameplayAttributeValueChangeDelegate`。WidgetController 通过 `AddLambda` 注册回调到它上面。
+
+### 24.4 OldHealth 参数哪来的
+
+OnRep 执行时，成员变量已被覆盖为新值。那对比用的是谁的旧值？
+
+**UE 在写新值之前，先拷贝了一份旧值**：
+
+```
+客户端收到网络包:
+  1. 拷贝当前 Health → 存为 OldHealth 副本
+  2. 把网络数据写入 Health 成员变量（覆盖）
+  3. 调用 OnRep_Health(OldHealth)  ← 传入步骤1的拷贝
+```
+
+所以 `OldHealth` 和当前 `GetHealth()` 是不同的——一个是覆盖前的值，一个是覆盖后的值。聚合器内部对比的是 `OldHealth(旧)` vs `新值`，不是从成员变量再读一次。
+
+### 24.5 REPNOTIFY_Always 为什么安全
+
+```cpp
+DOREPLIFETIME_CONDITION_NOTIFY(UMy_AuraAttributeSet, Health, COND_None, REPNOTIFY_Always);
+```
+
+`REPNOTIFY_Always` 强制每次复制都调 OnRep（即使值没变），好处是切换角色/加载存档/重新同步 ASC 时强制走一遍通知链。
+
+**但 OnRep 调了不代表委托一定广播**——聚合器内部用 OldHealth 对比新值：
+
+```
+服务端再次同步 Health=30，客户端已经是 30:
+  → 拷贝旧值: OldHealth = 30
+  → 写入新值: Health = 30
+  → OnRep(OldHealth=30)
+  → SetBaseAttributeValueFromReplication(新=30, 旧=30)
+  → 聚合器: 30 vs 30 → 相同 → 不广播 ✓
+```
+
+三层防护：
+
+| 层级 | 机制 | 作用 |
+|------|------|------|
+| UE 网络层 | `REPNOTIFY_Always` | 强制每次调 OnRep（防切换角色时 UI 残留旧值） |
+| ASC 聚合器 | 新旧值对比 | 值没变就不更新、不广播（防无意义 UI 刷新） |
+| 业务层 | `const_cast` + `SetHealth` + `FMath::Min` | 兜底保证血量不越界 |
+
+### 24.6 OnRep 是 const 函数
+
+`OnRep_Health` 被声明为 `const`，因为 UE 的复制回调不期望你修改对象状态。但如果需要兜底 clamp（如 `SetHealth(FMath::Min(...))`），必须 `const_cast` 去掉 const：
+
+```cpp
+void UMy_AuraAttributeSet::OnRep_Health(const FGameplayAttributeData& OldHealth) const
+{
+    GAMEPLAYATTRIBUTE_REPNOTIFY(UMy_AuraAttributeSet, Health, OldHealth);
+    const_cast<UMy_AuraAttributeSet*>(this)->SetHealth(FMath::Min(GetHealth(), GetMaxHealth()));
+}
+```
+
+### 24.7 项目中绑定委托的位置
+
+**玩家 Overlay**（`My_OverlayWidgetController.cpp:27`）：
+```cpp
+AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(GetHealthAttribute())
+    .AddLambda([this](const FOnAttributeChangeData& Data) {
+        OnHealthChanged.Broadcast(Data.NewValue);
+    });
+```
+
+**敌人**（`Enemy_Characte.cpp:123`）：
+```cpp
+AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(AuraAS->GetHealthAttribute())
+    .AddLambda([this](const FOnAttributeChangeData& Data) {
+        OnHealthChanged.Broadcast(Data.NewValue);
+    });
+```
+
+**属性菜单**（`My_AttributeMenuWidgetController.cpp:28`）：
+```cpp
+AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(Pair.Value())
+    .AddLambda([this, Pair](const FOnAttributeChangeData& Data) {
+        BroadAttributeInfo(Pair.Key, Pair.Value());
+    });
+```
+
+三者模式一致：`GetGameplayAttributeValueChangeDelegate` → `AddLambda` → 翻译为自定义蓝图委托 → UI 刷新。
+
+### 24.8 属性变化的四种触发源
+
+| 触发源 | 走 PreAttributeChange | 走 PostGameplayEffectExecute | 触发 Delegate |
+|--------|:---:|:---:|:---:|
+| GE 修改（服务端） | ✅ | ✅ | ✅ |
+| `SetHealth()` 直接调用（服务端） | ✅ | ❌ (不走 GE) | ✅ |
+| 网络复制到达（客户端） | ❌ (不走) | ❌ (不走 GE) | ✅ (OnRep→REPNOTIFY) |
+| 纯单机本地修改 | ✅ | ❌ | ✅ |
