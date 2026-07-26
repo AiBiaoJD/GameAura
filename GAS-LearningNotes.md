@@ -1618,3 +1618,155 @@ AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(Pair.Value())
 | `SetHealth()` 直接调用（服务端） | ✅ | ❌ (不走 GE) | ✅ |
 | 网络复制到达（客户端） | ❌ (不走) | ❌ (不走 GE) | ✅ (OnRep→REPNOTIFY) |
 | 纯单机本地修改 | ✅ | ❌ | ✅ |
+
+---
+
+## 二十五、PlayerState XP/Level 委托 → WidgetController → Widget 完整链路
+
+> 2026-07-27，XP 不走 AttributeSet——走 PlayerState 的 C++ 多播委托 + LevelUpInfo DataAsset 翻译
+
+### 25.1 XP 和 Health/Mana 的数据流差异
+
+Health/Mana 走 AttributeSet + ASC 聚合器 + `GetGameplayAttributeValueChangeDelegate`。XP 走的是**完全不同的路**：
+
+| | Health/Mana | XP/Level |
+|---|---|---|
+| 数据存在 | `UMy_AuraAttributeSet`（FGameplayAttributeData） | `AMy_AuraPlayerState`（int32 成员变量） |
+| 触发源 | GE 修改 / ASC 聚合器 | `SetXP()` / `AddXP()` / `OnRep_XP()` |
+| 委托类型 | `GetGameplayAttributeValueChangeDelegate`（系统） | `FMy_OnPlayerStateChanged`（自定义 C++ 多播） |
+| 翻译层 | `AddLambda` 取 `Data.NewValue` 直接转发 | `OnXPChangedFunc` 中 `LevelUpInfo->FindLevelForXP()` 把原始 XP 转为进度条百分比 |
+
+XP 不在 AttributeSet 里——它是 PlayerState 上的 plain `int32`，网络复制靠 `DOREPLIFETIME` + `OnRep`，和 GAS 的 Attribute 复制是两套独立机制。
+
+### 25.2 PlayerState 端：委托触发点
+
+```cpp
+// 三个触发点都会广播 OnXPChanged：
+void SetXP(int32 number)   { XP = number; OnXPChanged.Broadcast(XP); }     // 服务端直接设
+void AddXP(int32 number)   { XP += number; OnXPChanged.Broadcast(XP); }    // 服务端累加
+void OnRep_XP(int32)       { OnXPChanged.Broadcast(XP); }                   // 客户端收到复制
+```
+
+`OnLevelChanged` 同理，`SetLevel` / `AddToLevel` / `OnRep_Level` 三个入口。
+
+### 25.3 WidgetController 端：BindCallbacksToDependencies 中的绑定
+
+```cpp
+AMy_AuraPlayerState* MyPS = Cast<AMy_AuraPlayerState>(PlayerState);
+// OnXPChanged — 逻辑较长（算百分比），写成成员函数 + AddUObject
+MyPS->OnXPChanged.AddUObject(this, &UMy_OverlayWidgetController::OnXPChangedFunc);
+// OnLevelChanged — 只需转发，用 AddLambda
+MyPS->OnLevelChanged.AddLambda([this](int32 NewLevel) {
+    OnPlayerLevelChanged.Broadcast(NewLevel);
+});
+```
+
+### 25.4 OnXPChangedFunc — 为什么需要翻译
+
+PlayerState 广播的是**原始累积 XP**（如 500），但 UI 只认 0~1 的百分比。必须通过 `LevelUpInfo` DataAsset 翻译：
+
+```cpp
+void UMy_OverlayWidgetController::OnXPChangedFunc(int32 NewXP)
+{
+    const int32 Level = MyPS->LevelUpInfo->FindLevelForXP(NewXP);  // 当前处于哪个等级段
+    if (Level <= MaxLevel && Level > 0)
+    {
+        const int32 LevelUpReq = LevelUpInformation[Level].LevelUpRequirement;       // 下一级门槛
+        const int32 PrevLevelUpReq = LevelUpInformation[Level - 1].LevelUpRequirement; // 当前级门槛
+        const float XPBarPercent = static_cast<float>(NewXP - PrevLevelUpReq)
+                                 / static_cast<float>(LevelUpReq - PrevLevelUpReq);
+        OnXPPercentChanged.Broadcast(XPBarPercent);  // 进度条百分比 (0~1)
+    }
+}
+```
+
+**为什么 Level 不用翻译**：等级本身就是 UI 要显示的值，3 就是 3，不需要转换。
+
+### 25.5 FindLevelForXP 算法
+
+```cpp
+int32 UMy_LevelUpInfo::FindLevelForXP(int32 XP) const
+{
+    for (int i = 1; i < LevelUpInformation.Num(); i++)
+    {
+        if (XP < LevelUpInformation[i].LevelUpRequirement)  // 没到下一级门槛
+            return i;  // 返回当前级别
+    }
+    return LevelUpInformation.Num();  // 超过最高级，返回 MaxLevel
+}
+```
+
+```
+LevelUpInformation 数组:
+  [0] Level 1 起点 (0 XP)
+  [1] Level 2 起点 (300 XP)
+  [2] Level 3 起点 (700 XP)
+
+FindLevelForXP(500) → i=1: 500<300? 否 → i=2: 500<700? 是 → return 2
+  → 意思是"正在朝 Level 2 前进"
+  → LevelUpInformation[2] = 700 (下一级), LevelUpInformation[1] = 300 (当前级)
+  → 进度 = (500-300) / (700-300) = 0.5
+```
+
+### 25.6 完整数据流
+
+```
+捡药水
+  → GE 写入 IncomingXP（Meta Attribute）
+    → ExecCalc 读取 IncomingXP
+      → PlayerState->AddXP(NewXP)
+        ├─ XP += NewXP
+        └─ OnXPChanged.Broadcast(XP)          ← C++ 多播委托
+            │
+            ▼  (客户端：OnRep_XP → OnXPChanged.Broadcast)
+            │
+    ┌───────────────────────────────────────┐
+    │  WidgetController 翻译层               │
+    │  OnXPChangedFunc(NewXP)               │
+    │    → LevelUpInfo->FindLevelForXP()    │
+    │    → 算出百分比 0.0~1.0               │
+    │    → OnXPPercentChanged.Broadcast(%)  │ ← 自定义蓝图委托
+    └───────────────────────────────────────┘
+            │
+            ▼
+    UI Widget 绑定 OnXPPercentChanged → 进度条 SetPercent()
+    UI Widget 绑定 OnPlayerLevelChanged → 等级文本 SetText()
+```
+
+### 25.7 LevelUpInfo 放在 PlayerState 上的原因
+
+```cpp
+// AMy_AuraPlayerState.h
+UPROPERTY(EditDefaultsOnly)
+TObjectPtr<UMy_LevelUpInfo> LevelUpInfo;
+```
+
+放在 PlayerState 而不是 WidgetController 上——**多个 WidgetController（Overlay、AttributeMenu、SpellMenu 等）都能通过 `Cast<AMy_AuraPlayerState>(PlayerState)->LevelUpInfo` 共享同一份等级表**，不用各自存一份。
+
+### 25.8 AddUObject vs AddLambda 选择原则
+
+| 委托绑定 | 用哪个 | 原因 |
+|----------|--------|------|
+| `OnXPChanged` | `AddUObject` | 逻辑 > 3 行，写成独立成员函数 `OnXPChangedFunc` |
+| `OnLevelChanged` | `AddLambda` | 只有一行转发，不值得单独声明函数 |
+
+`AddUObject` 有生命周期保护（UObject 销毁 → 自动解绑），`AddLambda` 没有。但这里 WidgetController 绑在 PlayerState 的委托上，PlayerState 一定比 WidgetController 活得久，所以 `AddLambda` 也安全。
+
+### 25.9 BroadcastInitiaValues 中 XP 初始值
+
+当前 `BroadcastInitiaValues` 不广播 XP——XP 只在 `OnXPChanged` 触发时更新。如果需要开局就显示 XP 进度条，在 `BroadcastInitiaValues` 中加：
+
+```cpp
+AMy_AuraPlayerState* MyPS = Cast<AMy_AuraPlayerState>(PlayerState);
+OnXPChangedFunc(MyPS->GetXP());
+OnPlayerLevelChanged.Broadcast(MyPS->GetPlayerLevel());
+```
+
+### 25.10 两个 OnLevelChanged 不要搞混
+
+| 委托 | 所属 | 方向 |
+|------|------|------|
+| `AMy_AuraPlayerState::OnLevelChanged` | PlayerState | M → C（PlayerState 通知 WidgetController） |
+| `UMy_OverlayWidgetController::OnPlayerLevelChanged` | WidgetController | C → W（WidgetController 通知 Widget） |
+
+WidgetController 不直接暴露 PlayerState 的委托给 Widget——它用自己的委托做翻译中转，保持上层 UI 和底层数据解耦。
