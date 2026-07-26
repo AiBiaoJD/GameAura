@@ -6,6 +6,8 @@
 #include "MY_AbilitySystem/My_AuraAbilitySystemComponent.h"
 #include "MY_AbilitySystem/My_AuraAttributeSet.h"
 #include "MY_AbilitySystem/Data/My_AbilityInfo.h"
+#include "MY_AbilitySystem/Data/My_LevelUpInfo.h"
+#include "My_Controler/My_AuraPlayerState.h"
 
 void UMy_OverlayWidgetController::BroadcastInitiaValues()
 {
@@ -47,6 +49,17 @@ void UMy_OverlayWidgetController::BindCallbacksToDependencies()
 		OnMaxManaChanged.Broadcast(Data.NewValue);
 	});
 
+	//XP和Level改变时添加委托绑定函数
+	AMy_AuraPlayerState* MyPS = Cast<AMy_AuraPlayerState>(PlayerState);
+	if (MyPS)
+	{
+		MyPS->OnXPChanged.AddUObject(this, &UMy_OverlayWidgetController::OnXPChangedFunc);
+		MyPS->OnLevelChanged.AddLambda([this](int32 NewLevel)
+		{
+			OnPlayerLevelChanged.Broadcast(NewLevel);
+		});
+	}
+	
 	if (UMy_AuraAbilitySystemComponent* AuraASC = Cast<UMy_AuraAbilitySystemComponent>(AbilitySystemComponent))
 	{
 		//---------Effect Applied使用ASC的绑定委托,传给My_ASC--------------
@@ -63,17 +76,15 @@ void UMy_OverlayWidgetController::BindCallbacksToDependencies()
 					{
 						//获取数据表标签为Tag的Row
 						const FMy_UIWidgetRow* Row = GetDataTableRowByTag<FMy_UIWidgetRow>(MessageWidgetDataTable, Tag);
-
-
+						
 						//---------广播DataTable的row使用广播委托,传给Widget--------------
 						OnMessageWidgetRow.Broadcast(*Row);
 					}
 				}
 			}
 		);
-
+		
 		//---------玩家获得StartupAbility时，进行的委托绑定--------------
-
 		//处理OnAbilityGiven这个委托先广播brocast再绑定回调函数的问题
 		//因为GiveAbility()和HUD创建WidgetController的时间是不确定的
 		if (AuraASC->bStartupAbilityGiven)
@@ -85,6 +96,24 @@ void UMy_OverlayWidgetController::BindCallbacksToDependencies()
 			/*还没进行广播绑定回调函数*/
 			AuraASC->OnAbilityGiven.AddUObject(this, &UMy_OverlayWidgetController::OnInitializeStartupAbilities);
 		}
+	}
+}
+
+void UMy_OverlayWidgetController::OnXPChangedFunc(int32 NewXP)
+{
+	AMy_AuraPlayerState* MyPS = Cast<AMy_AuraPlayerState>(PlayerState);
+	checkf(MyPS && MyPS->LevelUpInfo, TEXT("LevelUpInfo not set"));
+
+	const int32 Level = MyPS->LevelUpInfo->FindLevelForXP(NewXP);
+	const int32 MaxLevel = MyPS->LevelUpInfo->LevelUpInformation.Num();
+
+	if (Level <= MaxLevel && Level > 0)
+	{
+		const int32 LevelUpReq = MyPS->LevelUpInfo->LevelUpInformation[Level].LevelUpRequirement;
+		const int32 PrevLevelUpReq = MyPS->LevelUpInfo->LevelUpInformation[Level-1].LevelUpRequirement;
+		
+		const float XPBarPercent = static_cast<float>(NewXP-PrevLevelUpReq) / static_cast<float>(LevelUpReq - PrevLevelUpReq);
+		OnXPPercentChanged.Broadcast(XPBarPercent);
 	}
 }
 

@@ -10,6 +10,7 @@
 
 DECLARE_MULTICAST_DELEGATE_OneParam(FMy_OnPlayerStateChanged, int32 /*StateValue*/)
 
+class UMy_LevelUpInfo;
 /**
  *
  */
@@ -37,7 +38,9 @@ public:
 	void SetLevel(int32 number);
 	void AddXP(int32 number);
 	void AddToLevel(int32 number);
-	
+
+	UPROPERTY(EditDefaultsOnly)
+	TObjectPtr<UMy_LevelUpInfo> LevelUpInfo;
 
 protected:
 	UPROPERTY(VisibleAnywhere)

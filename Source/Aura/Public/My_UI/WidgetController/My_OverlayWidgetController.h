@@ -42,6 +42,8 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FMy_MessageWidgetRowSignature, FMy_U
 //AbilityInfo委托
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FMy_AbilityInfoSignature, const FMy_AuraAbilityInfo&, AbilityInfo);
 
+//XP
+
 /**
  *
  */
@@ -66,6 +68,12 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "My_GAS|Attibutes")
 	FMy_OnAttributeChangedSignature OnMaxManaChanged;
 
+	UPROPERTY(BlueprintAssignable, Category = "My_GAS|XP")
+	FMy_OnAttributeChangedSignature OnXPPercentChanged;   // float: 0~1 进度
+	
+	UPROPERTY(BlueprintAssignable, Category = "My_GAS|Level")
+	FMy_OnAttributeChangedSignature OnPlayerLevelChanged;  // int32: 新等级
+
 	UPROPERTY(BlueprintAssignable, Category = "My_GAS|Message")
 	FMy_MessageWidgetRowSignature OnMessageWidgetRow;
 
@@ -85,8 +93,9 @@ protected:
 
 	void OnInitializeStartupAbilities(UMy_AuraAbilitySystemComponent* AuraASC);
 
-
+	void OnXPChangedFunc(int32 NewXP);
 };
+
 
 template<typename T>
 inline T* UMy_OverlayWidgetController::GetDataTableRowByTag(UDataTable* DataTable, const FGameplayTag& Tag)
