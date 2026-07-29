@@ -91,6 +91,15 @@ void UMy_AuraAbilitySystemLibrary::GiveStartupAbilities(const UObject* WorldCont
 	}
 }
 
+int32 UMy_AuraAbilitySystemLibrary::GetXPRewardForClassAndLevel(const UObject* WorldContextObject, EMy_CharacterClass CharacterType, int32 level)
+{
+	UMy_CharacterClassInfo* ClassInfo = GetCharacterClassInfo(WorldContextObject);
+	if (ClassInfo == nullptr) return 0;
+	FMy_CharacterClassDefaultInfo ClassDefaultInfo = ClassInfo->GetClassDefaultInfo(CharacterType);
+	float Xp = ClassDefaultInfo.XPReward.GetValueAtLevel(level);
+	return static_cast<int32>(Xp);
+}
+
 UMy_CharacterClassInfo* UMy_AuraAbilitySystemLibrary::GetCharacterClassInfo(const UObject* WorldContextObject)
 {
 	AMyGameModeBase* AuraGameMode = Cast<AMyGameModeBase>(UGameplayStatics::GetGameMode(WorldContextObject));
@@ -173,5 +182,7 @@ bool UMy_AuraAbilitySystemLibrary::IsNotFriend(AActor* FirstActor, AActor* Secon
 	const bool Friends = BothArePlayer || BothAreEnemy;
 	return !Friends;
 }
+
+
 
 

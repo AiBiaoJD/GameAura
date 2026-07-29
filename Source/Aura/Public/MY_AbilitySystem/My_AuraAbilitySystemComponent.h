@@ -28,6 +28,7 @@ public:
 
 	// Character添加能力
 	void AddCharacterAbilitiesFromASC(const TArray<TSubclassOf<UGameplayAbility>>& StartupAbility);
+	void AddCharacterPassiveAbilitiesFromASC(const TArray<TSubclassOf<UGameplayAbility>>& StartupPassiveAbility);
 	bool bStartupAbilityGiven = false;
 
 	// PlayerController激活能力

@@ -4,6 +4,7 @@
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemInterface.h"
 #include "GameFramework/Character.h"
+#include "MY_AbilitySystem/Data/My_CharacterClassInfo.h"
 #include "My_Interraction/My_CombatInterface.h"
 #include "MyCharacter_Base.generated.h"
 
@@ -38,6 +39,7 @@ public:
 	virtual FMy_TaggedMontage GetTaggedMontageByTag_Implementation(const FGameplayTag& MontageTag) override;
 	virtual int32 GetMinionCount_Implementation() override;
 	virtual void IncreaseMinionCount_Implementation(int32 num) override;
+	virtual EMy_CharacterClass GetCharacterClass_Implementation() override;
 	/** end Combat interface **/
 
 	UPROPERTY(EditAnywhere, Category = "My_Combat")
@@ -113,9 +115,20 @@ protected:
 
 	/* Minions */
 	int32 MinionCount = 0;
+
+	/* Character Class*/
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Character Class Default")
+	EMy_CharacterClass CharacterClass = EMy_CharacterClass::Warrior;
+	
 private:
+	/* 这些变量刚好没被Enemy使用,只是给Aura的
+	 * Enemy的设置在UMy_CharacterClassInfo这里DataAsset 
+	 */
 	UPROPERTY(EditAnywhere, Category = "My_Abilities")
 	TArray<TSubclassOf<UGameplayAbility>> StartupAbility;
+
+	UPROPERTY(EditAnywhere, Category = "My_Abilities")
+	TArray<TSubclassOf<UGameplayAbility>> StartupPassiveAbility;
 
 	UPROPERTY(EditAnywhere, Category = "My_Combat")
 	TObjectPtr<UAnimMontage> HitReactMontage;

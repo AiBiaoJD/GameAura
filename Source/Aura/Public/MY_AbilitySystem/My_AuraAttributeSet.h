@@ -228,6 +228,10 @@ public:
 	FGameplayAttributeData IncomingDamage;
 	ATTRIBUTE_ACCESSORS(UMy_AuraAttributeSet, IncomingDamage);
 
+	UPROPERTY(BlueprintReadOnly, Category="Meta Attribute")
+	FGameplayAttributeData IncomingXP;
+	ATTRIBUTE_ACCESSORS(UMy_AuraAttributeSet, IncomingXP);
+
 	UFUNCTION()
 	void OnRep_Health(const FGameplayAttributeData& OldHealth) const;
 

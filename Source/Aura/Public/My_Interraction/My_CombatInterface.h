@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameplayTagContainer.h"
+#include "MY_AbilitySystem/Data/My_CharacterClassInfo.h"
 #include "UObject/Interface.h"
 #include "My_CombatInterface.generated.h"
 
@@ -77,4 +78,7 @@ public:
 
 	UFUNCTION(BlueprintNativeEvent,BlueprintCallable)
 	void IncreaseMinionCount(int32 num);
+
+	UFUNCTION(BlueprintNativeEvent,BlueprintCallable)
+	EMy_CharacterClass GetCharacterClass();
 };

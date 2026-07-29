@@ -61,9 +61,13 @@ void FMy_AuraGameplayTags::InitializeNativeGameplayTags()
 	GameplayTagsInstance.My_Attribute_Secondary_CriticalHitDamage = UGameplayTagsManager::Get().AddNativeGameplayTag(FName("My_Attribute.Secondary.CriticalHitDamage"), FString("Increases damage dealt by critical hits."));
 
 	/*
+	 * Meta Attribute Tag
+	*/
+	GameplayTagsInstance.My_Attribute_Meta_IncomingXP = UGameplayTagsManager::Get().AddNativeGameplayTag(FName("My_Attribute.Meta.IncomingXP"), FString("Meta Attribute XP Just as a Bridge"));
+
+	/*
 	* Input Tag
 	*/
-
 	GameplayTagsInstance.My_InputTag_LMB = UGameplayTagsManager::Get().AddNativeGameplayTag(FName("My_InputTag.LMB"), FString("Left Mouse Button Input."));
 	GameplayTagsInstance.My_InputTag_RMB = UGameplayTagsManager::Get().AddNativeGameplayTag(FName("My_InputTag.RMB"), FString("Right Mouse Button Input."));
 	GameplayTagsInstance.My_InputTag_1 = UGameplayTagsManager::Get().AddNativeGameplayTag(FName("My_InputTag.1"), FString("Input for Key 1."));

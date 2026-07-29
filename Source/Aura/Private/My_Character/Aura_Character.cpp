@@ -27,6 +27,8 @@ AAura_Character::AAura_Character()
     bUseControllerRotationPitch = false;
     bUseControllerRotationYaw = false;
     bUseControllerRotationRoll = false;
+
+	CharacterClass = EMy_CharacterClass::Elementalist;
 }
 
 void AAura_Character::PossessedBy(AController* NewController)

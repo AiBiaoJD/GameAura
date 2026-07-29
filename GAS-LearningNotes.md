@@ -1770,3 +1770,187 @@ OnPlayerLevelChanged.Broadcast(MyPS->GetPlayerLevel());
 | `UMy_OverlayWidgetController::OnPlayerLevelChanged` | WidgetController | C → W（WidgetController 通知 Widget） |
 
 WidgetController 不直接暴露 PlayerState 的委托给 Widget——它用自己的委托做翻译中转，保持上层 UI 和底层数据解耦。
+
+---
+
+## 二十六、敌人 XP 奖励 & Meta Attribute & Passive Ability 事件监听
+
+### 26.1 敌人 XP 奖励表 — FScalableFloat + CurveTable
+
+每个敌人类型（Elementalist / Warrior / Ranger）击杀后奖励的 XP 不同，且随敌人等级缩放：
+
+```cpp
+// My_CharacterClassInfo.h
+USTRUCT(BlueprintType)
+struct FMy_CharacterClassDefaultInfo
+{
+    // ...
+    UPROPERTY(EditDefaultsOnly, Category = "Class Defaults")
+    FScalableFloat XPReward = FScalableFloat();  // 常数 or 曲线
+};
+```
+
+`FScalableFloat` 可以在编辑器中填入固定值（如 100），或绑定 CurveTable 曲线。运行时通过 `GetValueAtLevel(EnemyLevel)` 取值——等级越高 XP 越多。
+
+```cpp
+// My_AuraAbilitySystemLibrary::GetXPRewardForClassAndLevel()
+int32 UMy_AuraAbilitySystemLibrary::GetXPRewardForClassAndLevel(
+    const UObject* WorldContextObject, EMy_CharacterClass CharacterType, int32 level)
+{
+    UMy_CharacterClassInfo* ClassInfo = GetCharacterClassInfo(WorldContextObject);
+    FMy_CharacterClassDefaultInfo ClassDefaultInfo = ClassInfo->GetClassDefaultInfo(CharacterType);
+    float Xp = ClassDefaultInfo.XPReward.GetValueAtLevel(level);
+    return static_cast<int32>(Xp);
+}
+```
+
+### 26.2 CharacterClass 上移重构
+
+`CharacterClass` 原来只在 `Enemy_Characte` 中定义，但玩家也需要（PassiveAbility 查询 XP 奖励时需要知道击杀的是哪种敌人）。重构到基类 `MyCharacter_Base`：
+
+```
+MyCharacter_Base (新位置)
+  ├─ Aura_Character   → 构造中设为 Elementalist
+  └─ Enemy_Characte   → 蓝图编辑器中配置
+```
+
+`CombatInterface` 新增 `GetCharacterClass()`，解耦 AttributeSet 对具体子类的依赖。
+
+### 26.3 IncomingXP — Meta Attribute 桥梁模式
+
+```
+敌人死亡 → SendGameplayEvent("Attributes.Meta.IncomingXP", XP值)
+  → Aura 的 PassiveAbility 监听到 Event
+    → 创建 GE (SetByCaller 方式填入 XP 值)
+      → GE 写入 Aura 的 IncomingXP (Meta Attribute)
+        → PostGameplayEffectExecute 检测 IncomingXP 变化
+          → 消费 IncomingXP → 转发到 PlayerState.AddXP()
+```
+
+`IncomingXP` 不是 Health/Mana 那样的真实属性——它是**一次性数据管道**：
+- GE 只能修改 Attribute，无法直接传参给函数
+- IncomingXP 作为临时跳板：GE 写入 → AS 回调拦截 → 读走清零 → 转发真实目标
+
+```cpp
+// My_AuraAttributeSet.h
+FGameplayAttributeData IncomingXP;                       // Meta Attribute
+ATTRIBUTE_ACCESSORS(UMy_AuraAttributeSet, IncomingXP);
+
+// My_AuraAttributeSet.cpp — PostGameplayEffectExecute
+if (Data.EvaluatedData.Attribute == GetIncomingXPAttribute())
+{
+    const float LocalIncomingXP = GetIncomingXP();
+    SetIncomingXP(0.f);  // 读走清零，防止预测双重触发
+    // → 转发给 PlayerState（当前为 TODO / WIP）
+}
+```
+
+### 26.4 Passive Ability — 事件驱动的被动技能
+
+Passive Ability 不需要玩家按键触发，而是在游戏启动时自动激活，持续监听事件：
+
+```cpp
+// MyCharacter_Base.h — 玩家专用
+TArray<TSubclassOf<UGameplayAbility>> StartupPassiveAbility;
+
+// My_AuraAbilitySystemComponent::AddCharacterPassiveAbilitiesFromASC()
+void UMy_AuraAbilitySystemComponent::AddCharacterPassiveAbilitiesFromASC(
+    const TArray<TSubclassOf<UGameplayAbility>>& StartupPassiveAbility)
+{
+    for (auto& Ability : StartupPassiveAbility)
+    {
+        FGameplayAbilitySpec AbilitySpec = FGameplayAbilitySpec(Ability, 1);
+        GiveAbilityAndActivateOnce(AbilitySpec);  // 给予 + 立即激活一次
+    }
+}
+```
+
+`GiveAbilityAndActivateOnce` — 给 ASC 注册该 Ability 并立即激活。因为 Passive 不绑定输入，Activate 后会持续运行（如 `WaitGameplayEvent` 无限等待）。
+
+### 26.5 GA_ListenForEvents 内部机制 — SetByCaller + WaitGameplayEvent
+
+Passive GA 的核心蓝图逻辑：
+
+```
+GA_ListenForEvents (Passive, 持续运行)
+  │
+  ├─ WaitGameplayEvent(EventTag = "Attributes.Meta.IncomingXP")
+  │     ↓ 收到 Event
+  ├─ 获取 Payload.EventMagnitude (XP 值)
+  ├─ 创建 GE_Spec (使用 GE_EventBasedEffect 类)
+  ├─ AssignTagSetByCallerMagnitude(Spec, DataTag, Magnitude)
+  │     ↓ DataTag = "My_Attribute.Meta.IncomingXP"
+  │     ↓ Magnitude = Payload.EventMagnitude
+  └─ ApplyGameplayEffectSpecToSelf(Spec)
+        ↓
+        GE 写入 IncomingXP (Meta Attribute)
+```
+
+关键点：
+- **WaitGameplayEvent** — GAS 内置节点，Ability 挂起等待指定 Tag 的 GameplayEvent
+- **EventTag 本身承担双重角色**：既是监听 Key（WaitGameplayEvent 筛选），又是 SetByCaller 的 DataTag（GE 知道修改哪个属性）
+- **SetByCaller Magnitude** — GE 不预先写死数值，运行时通过 `AssignTagSetByCallerMagnitude(Spec, Tag, Value)` 动态注入
+- **Payload.EventMagnitude** — `SendGameplayEventToActor` 传入的 XP 值，由击杀逻辑计算后携带
+
+### 26.6 EventTag 的三重身份
+
+同一个 Tag `My_Attribute.Meta.IncomingXP` 在流程中扮演三个角色：
+
+| 阶段 | 角色 | 说明 |
+|------|------|------|
+| 敌人死亡 | GameplayEvent 的 EventTag | `SendGameplayEventToActor` 发送 |
+| Passive GA | WaitGameplayEvent 的监听 Key | Ability 筛选要响应的事件 |
+| GE Spec | SetByCaller 的 DataTag | GE 知道"我该修改哪个 Attribute" |
+
+这得益于 GAS 的 SetByCaller 机制——GE 的 Modifier 设置 `ModifierMagnitude = SetByCaller`，运行时通过 DataTag 匹配：`AssignTagSetByCallerMagnitude(Spec, Tag, Value)` → GE 执行时用 Tag 查 Value → 写入同名 Attribute。
+
+### 26.7 完整数据流总结
+
+```
+击杀敌人
+  ├─ Enemy_Characte::CharacterClass → GetCharacterClass()
+  ├─ My_AuraAbilitySystemLibrary::GetXPRewardForClassAndLevel(Class, Level)
+  │     → ClassDefaultInfo.XPReward.GetValueAtLevel(Level)   ← CurveTable 查表
+  └─ SendGameplayEventToActor(Aura, "My_Attribute.Meta.IncomingXP", Payload)
+        │
+        ▼
+Aura 的 GA_ListenForEvents (已激活的 Passive Ability)
+  ├─ WaitGameplayEvent("My_Attribute.Meta.IncomingXP")   ← 监听到
+  ├─ 读取 Payload.EventMagnitude (XP 值)
+  ├─ 创建 GE Spec
+  ├─ Spec = AssignTagSetByCallerMagnitude("My_Attribute.Meta.IncomingXP", XP值)
+  └─ ApplyGameplayEffectSpecToSelf(Spec)
+        │
+        ▼
+My_AuraAttributeSet::PostGameplayEffectExecute
+  ├─ 检测到 IncomingXP 被修改
+  ├─ LocalXP = GetIncomingXP(); SetIncomingXP(0.f)   ← 消费清零
+  └─ → PlayerState->AddXP(LocalXP)                   ← 转发到真实数据
+        │
+        ▼
+PlayerState → WidgetController → UI 更新
+```
+
+### 26.8 敌人 vs 玩家初始化方式汇总
+
+| | 敌人 (Enemy_Characte) | 玩家 (Aura_Character) |
+|---|---|---|
+| 入口 | `BeginPlay()` | `PossessedBy()` |
+| 属性初始化 | `InitializeDefaultAttribute()` 重写版 → DataAsset | `InitializeDefaultAttribute()` 基类版 → GE |
+| 能力来源 | `GiveStartupAbilities()` → DataAsset 按 CharacterClass 取 | `AddCharacterAbilities()` → 私有 TArray 成员 |
+| Passive 能力 | 无 | `AddCharacterPassiveAbilitiesFromASC()` → `StartupPassiveAbility` 数组 |
+| 为什么不同 | 敌人类型多，DataAsset 集中管理策划可配 | 只有玩家，直接硬编码数组更简洁 |
+
+### 26.9 ⚠️ Meta Attribute 清空必须用 SetXxx(0.f) 而非 SetXxx(LocalValue)
+
+```cpp
+// ❌ 错误 — SetIncomingXP(LocalIncomingXP) 是 no-op
+const float Local = GetIncomingXP();
+SetIncomingXP(Local);
+
+// ✅ 正确 — 消费后归零
+const float Local = GetIncomingXP();
+SetIncomingXP(0.f);
+```
+
+原因：Meta Attribute 被消费后必须归零，否则 GE 再次触发（如网络预测/重同步）会导致重复处理。

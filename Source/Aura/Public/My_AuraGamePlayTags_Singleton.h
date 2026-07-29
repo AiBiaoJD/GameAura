@@ -39,8 +39,11 @@ public:
 	FGameplayTag My_Attribute_Secondary_Resistance_Lighting;
 	FGameplayTag My_Attribute_Secondary_Resistance_Arcane;
 	FGameplayTag My_Attribute_Secondary_Resistance_Physical;
-		
 
+	// Meta Attributes Tag
+	FGameplayTag My_Attribute_Meta_IncomingXP;
+
+	
 	// InputActions Tag
 	FGameplayTag My_InputTag_LMB;
 	FGameplayTag My_InputTag_RMB;

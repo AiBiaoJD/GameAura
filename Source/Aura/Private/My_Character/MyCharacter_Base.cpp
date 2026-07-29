@@ -84,6 +84,12 @@ void AMyCharacter_Base::IncreaseMinionCount_Implementation(int32 num)
 	MinionCount += num;
 }
 
+EMy_CharacterClass AMyCharacter_Base::GetCharacterClass_Implementation()
+{
+	return CharacterClass;
+}
+
+
 void AMyCharacter_Base::Die()
 {
 	Weapon->DetachFromComponent(FDetachmentTransformRules(EDetachmentRule::KeepWorld, true));
@@ -190,5 +196,6 @@ void AMyCharacter_Base::AddCharacterAbilities()
 	UMy_AuraAbilitySystemComponent* ASC = CastChecked<UMy_AuraAbilitySystemComponent>(AbilitySystemComponent);
 
 	ASC->AddCharacterAbilitiesFromASC(StartupAbility);
+	ASC->AddCharacterPassiveAbilitiesFromASC(StartupPassiveAbility);
 }
 

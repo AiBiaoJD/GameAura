@@ -4,7 +4,6 @@
 
 #include "CoreMinimal.h"
 #include "Components/WidgetComponent.h"
-#include "MY_AbilitySystem/Data/My_CharacterClassInfo.h"
 #include "My_Character/MyCharacter_Base.h"
 #include "My_Interraction/My_Enemy_Interface.h"
 #include "My_UI/WidgetController/My_OverlayWidgetController.h"
@@ -67,9 +66,6 @@ protected:
 	//只关心检查敌人Level在服务器上,不需要Replied
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Character Class Default")
 	int32 Level = 1;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Character Class Default")
-	EMy_CharacterClass CharacterClass;
 
 
 	/*

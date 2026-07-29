@@ -21,15 +21,14 @@ void UMy_AuraAbilitySystemComponent::AbilityActorInfoSet()
 }
 
 void UMy_AuraAbilitySystemComponent::ClientEffectApplied_Implementation(UAbilitySystemComponent* AbilitySystemComponent,
-	const FGameplayEffectSpec& EffectSpec, FActiveGameplayEffectHandle ActiveGameplayEffectHandle)
+                                                                        const FGameplayEffectSpec& EffectSpec, FActiveGameplayEffectHandle ActiveGameplayEffectHandle)
 {
 	FGameplayTagContainer TagContainer;
 	EffectSpec.GetAllAssetTags(TagContainer);
-	
+
 	//使用委托进行TagContainer的广播,这样WidgetController就可以接受到
 	//这样My_ASC不知道WidgetController,而WidgetController知道ASC
 	EffectAssetTags.Broadcast(TagContainer);
-	
 }
 
 /*
@@ -52,6 +51,16 @@ void UMy_AuraAbilitySystemComponent::AddCharacterAbilitiesFromASC(const TArray<T
 	/* 角色添加能力的时候，可以给这个能力设置UI，和AbilityInfo对比*/
 	OnAbilityGiven.Broadcast(this);
 }
+
+void UMy_AuraAbilitySystemComponent::AddCharacterPassiveAbilitiesFromASC(const TArray<TSubclassOf<UGameplayAbility>>& StartupPassiveAbility)
+{
+	for (auto& Ability : StartupPassiveAbility)
+	{
+		FGameplayAbilitySpec AbilitySpec = FGameplayAbilitySpec(Ability, 1);
+		GiveAbilityAndActivateOnce(AbilitySpec);
+	}
+}
+
 
 //处理客户端不显示Ability的UI问题
 void UMy_AuraAbilitySystemComponent::OnRep_ActivateAbilities()
@@ -109,7 +118,6 @@ void UMy_AuraAbilitySystemComponent::ForEachAbility(const Fmy_ForEachAbility& De
 			UE_LOG(LogAura, Error, TEXT("Failed to execute delegate in %hs"), __FUNCTION__);
 		}
 	}
-	
 }
 
 FGameplayTag UMy_AuraAbilitySystemComponent::GetAbilityTagFromAbilitySpec(const FGameplayAbilitySpec& AbilitySpec)
@@ -141,5 +149,3 @@ FGameplayTag UMy_AuraAbilitySystemComponent::GetInputTagFromAbilitySpec(const FG
 	}
 	return FGameplayTag();
 }
-
-

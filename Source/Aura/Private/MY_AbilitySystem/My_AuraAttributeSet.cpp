@@ -6,6 +6,7 @@
 #include "AbilitySystemBlueprintLibrary.h"
 #include "GameplayEffectExtension.h"
 #include "My_AuraGamePlayTags_Singleton.h"
+#include "Aura/AuraLogChannels.h"
 #include "GameFramework/Character.h"
 #include "Kismet/GameplayStatics.h"
 #include "MY_AbilitySystem/My_AuraAbilitySystemLibrary.h"
@@ -136,7 +137,7 @@ void UMy_AuraAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffec
 		{
 			const float NewHealth = GetHealth() - LocalIncomingDamage;
 			SetHealth(FMath::Clamp(NewHealth, 0.f, GetMaxHealth()));
-			UE_LOG(LogTemp, Warning, TEXT("changed Health on %s, Health %f"), *Props.TargetAvatarActor->GetName(), GetHealth());
+			// UE_LOG(LogTemp, Warning, TEXT("changed Health on %s, Health %f"), *Props.TargetAvatarActor->GetName(), GetHealth());
 			const bool bFatal = NewHealth <= 0.f;
 			if (bFatal)
 			{
@@ -157,6 +158,13 @@ void UMy_AuraAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffec
 			const bool bCritical = UMy_AuraAbilitySystemLibrary::IsCriticalHit(Props.EffectContextHandle);
 			ShowDamageText(Props, LocalIncomingDamage, bBlock, bCritical);
 		}
+	}
+
+	if (Data.EvaluatedData.Attribute == GetIncomingXPAttribute())
+	{
+		const float LocalIncomingXP = GetIncomingXP();
+		SetIncomingXP(LocalIncomingXP);
+		UE_LOG(LogAura,Warning, TEXT("IncomingXP has Changed %f!"), LocalIncomingXP);
 	}
 }
 
