@@ -146,6 +146,7 @@ void UMy_AuraAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffec
 				{
 					CombatInterface->Die();
 				}
+				SendXPEvent(Props);
 			}
 			else
 			{
@@ -163,7 +164,7 @@ void UMy_AuraAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffec
 	if (Data.EvaluatedData.Attribute == GetIncomingXPAttribute())
 	{
 		const float LocalIncomingXP = GetIncomingXP();
-		SetIncomingXP(LocalIncomingXP);
+		SetIncomingXP(0.f);
 		UE_LOG(LogAura,Warning, TEXT("IncomingXP has Changed %f!"), LocalIncomingXP);
 	}
 }
@@ -185,6 +186,22 @@ void UMy_AuraAttributeSet::ShowDamageText(const FMy_EffectProperties& Props, flo
 		{
 			PC->ClientShowDamageNum(Damage, Props.TargetCharacter, IsBlockedHit, IsCriticalHit);
 		}
+	}
+}
+
+void UMy_AuraAttributeSet::SendXPEvent(const FMy_EffectProperties& Props) const
+{
+	if (IMy_CombatInterface* CombatInterface = Cast<IMy_CombatInterface>(Props.TargetAvatarActor))
+	{
+		const int32 TargetLevel = CombatInterface->GetPlayerLevel();
+		const EMy_CharacterClass TargetClass = IMy_CombatInterface::Execute_GetCharacterClass(Props.TargetCharacter);
+		const int32 XP = UMy_AuraAbilitySystemLibrary::GetXPRewardForClassAndLevel(Props.TargetCharacter, TargetClass, TargetLevel);
+		
+		const FMy_AuraGameplayTags& GameplayTags = FMy_AuraGameplayTags::GetInstance();
+		FGameplayEventData EventData;
+		EventData.EventTag = GameplayTags.My_Attribute_Meta_IncomingXP;
+		EventData.EventMagnitude = XP;
+		UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(Props.SourceCharacter, GameplayTags.My_Attribute_Meta_IncomingXP, EventData);
 	}
 }
 

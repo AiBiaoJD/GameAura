@@ -1954,3 +1954,68 @@ SetIncomingXP(0.f);
 ```
 
 原因：Meta Attribute 被消费后必须归零，否则 GE 再次触发（如网络预测/重同步）会导致重复处理。
+
+### 26.10 SendXPEvent — 敌人死亡时发送 XP GameplayEvent
+
+```
+敌人死亡（PostGameplayEffectExecute 检测到致命伤害）
+  ├─ CombatInterface->Die()
+  └─ SendXPEvent(Props)                    ← 新增
+       ├─ 获取 TargetLevel（敌人等级）
+       ├─ 获取 TargetClass（敌人职业）
+       ├─ GetXPRewardForClassAndLevel()     ← CurveTable 查表得到原始 XP
+       └─ SendGameplayEventToActor(SourceCharacter, "Meta.IncomingXP", XP)
+            ↓
+        玩家 Passive GA 监听到 → SetByCaller → GE → IncomingXP
+```
+
+```cpp
+void UMy_AuraAttributeSet::SendXPEvent(const FMy_EffectProperties& Props) const
+{
+    if (IMy_CombatInterface* CombatInterface = Cast<IMy_CombatInterface>(Props.TargetAvatarActor))
+    {
+        const int32 TargetLevel = CombatInterface->GetPlayerLevel();
+        const EMy_CharacterClass TargetClass = IMy_CombatInterface::Execute_GetCharacterClass(Props.TargetCharacter);
+        const int32 XP = UMy_AuraAbilitySystemLibrary::GetXPRewardForClassAndLevel(Props.TargetCharacter, TargetClass, TargetLevel);
+
+        const FMy_AuraGameplayTags& GameplayTags = FMy_AuraGameplayTags::GetInstance();
+        FGameplayEventData EventData;
+        EventData.EventTag = GameplayTags.My_Attribute_Meta_IncomingXP;
+        EventData.EventMagnitude = XP;
+        UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(Props.SourceCharacter, GameplayTags.My_Attribute_Meta_IncomingXP, EventData);
+    }
+}
+```
+
+关键点：
+- `TargetCharacter` 是**敌人**（被杀者），`SourceCharacter` 是**玩家**（杀人者）
+- `SendGameplayEventToActor` 发送给 `SourceCharacter`，这样玩家的 Passive GA 才能监听到
+- `EventMagnitude` 携带 XP 值，Passive GA 通过 `Payload.EventMagnitude` 读取
+
+### 26.11 ⚠️ 接口 BlueprintNativeEvent 必须用 Execute_ 调用
+
+接口里的 `BlueprintNativeEvent` / `BlueprintImplementableEvent` 和普通类里的行为不同：
+
+```cpp
+// UHT 生成的接口函数体（.gen.cpp）
+EMy_CharacterClass IMy_CombatInterface::GetCharacterClass()
+{
+    check(0 && "Do not directly call Event functions in Interfaces. Call Execute_GetCharacterClass instead.");
+    // 直接调用 = 断言崩溃！
+}
+```
+
+```cpp
+// 正确的调用方式
+IMy_CombatInterface::Execute_GetCharacterClass(Actor);  // ✅
+```
+
+`Execute_` 内部逻辑：先找蓝图重写（`FindFunction` + `ProcessEvent`），找不到才走 C++ `_Implementation`。
+
+| 场景 | 直接调 | Execute_ |
+|------|:--:|:--:|
+| 接口 BlueprintNativeEvent | ❌ check(0) 崩 | ✅ |
+| 普通类 BlueprintNativeEvent | ✅ | 不需要 |
+| 普通 virtual（无 UFUNCTION） | ✅ | 没有 Execute_ |
+
+规则：**接口里的 UFUNCTION 事件，无脑用 Execute_**。和 Cast 不 Cast 无关——即使 Cast 成接口指针也不会绕过 `check(0)`。
