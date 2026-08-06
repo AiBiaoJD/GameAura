@@ -2019,3 +2019,138 @@ IMy_CombatInterface::Execute_GetCharacterClass(Actor);  // ✅
 | 普通 virtual（无 UFUNCTION） | ✅ | 没有 Execute_ |
 
 规则：**接口里的 UFUNCTION 事件，无脑用 Execute_**。和 Cast 不 Cast 无关——即使 Cast 成接口指针也不会绕过 `check(0)`。
+
+---
+
+## 二十七、PlayerInterface 桥接：AttributeSet → Character → PlayerState
+
+> 2026-08-06，XP 流程收尾——AttributeSet 通过接口间接操作 PlayerState，UI 完整显示
+
+### 27.1 问题：AttributeSet 不能直接依赖 PlayerState
+
+`HandleIncomingXP` 在 AttributeSet 中执行，需要把 XP 加到 PlayerState。但 AttributeSet 是通用属性层（玩家和敌人都用），直接 include PlayerState 会导致：
+
+- **敌人也依赖 PlayerState**——编译能过但设计上低层模块反向依赖了高层
+- **紧耦合**——将来换存储方式（如存档系统接管 XP）需要改 AttributeSet
+
+### 27.2 解决方案：接口居中翻译
+
+```
+AttributeSet                PlayerInterface              Aura_Character            PlayerState
+     │                            │                            │                        │
+     │  Implements<IPlayer>()?    │                            │                        │
+     ├───────────────────────────►│                            │                        │
+     │  Execute_AddToXP(XP)       │                            │                        │
+     │ ──────────────────────────►│  AddToXP_Implementation()  │                        │
+     │                            │ ──────────────────────────►│  GetPlayerState<PS>()  │
+     │                            │                            │ ──────────────────────►│
+     │                            │                            │       PS->AddXP(XP)    │
+```
+
+### 27.3 接口定义
+
+```cpp
+// My_PlayerInterface.h
+class AURA_API IMy_PlayerInterface
+{
+    GENERATED_BODY()
+public:
+    UFUNCTION(BlueprintNativeEvent)
+    void AddToXP(int32 InXp);
+};
+```
+
+### 27.4 Character 实现接口
+
+```cpp
+// Aura_Character.h — 新增接口继承
+class AAura_Character : public AMyCharacter_Base, public IMy_PlayerInterface
+
+// Aura_Character.cpp — 实现
+void AAura_Character::AddToXP_Implementation(int32 InXp)
+{
+    AMy_AuraPlayerState* AuraPlayerState = GetPlayerState<AMy_AuraPlayerState>();
+    check(AuraPlayerState);
+    AuraPlayerState->AddXP(InXp);
+}
+```
+
+`AAura_Character` 的职责：拿到 PlayerState 指针，转发 XP。自己不存数据。
+
+### 27.5 AttributeSet 调用接口
+
+```cpp
+// My_AuraAttributeSet.cpp — HandleIncomingXP
+if (Props.SourceCharacter->Implements<UMy_PlayerInterface>())
+{
+    IMy_PlayerInterface::Execute_AddToXP(Props.SourceCharacter, LocalIncomingXP);
+}
+```
+
+`Implements<T>()` 运行时用 UHT 反射数据检测类的继承链中是否声明了该接口。敌人不实现 `IMy_PlayerInterface` → 返回 false → 整段跳过。全类型安全，不存在 nullptr 风险。
+
+### 27.6 Implements vs Cast
+
+| | `Cast<T>()` | `Implements<T>()` |
+|---|---|---|
+| 机制 | vtable 查找 | UHT 反射数据 |
+| 需要 | T 的类定义（include） | T 的前向声明 |
+| 耦合 | 紧（依赖具体类） | 松（只依赖接口头文件） |
+
+AttributeSet 只需要 `#include "My_Interraction/My_PlayerInterface.h"`，不需要知道 `AAura_Character` 的存在。
+
+### 27.7 LevelUpInfo 必须蓝图中赋值
+
+```cpp
+// My_AuraPlayerState.h
+UPROPERTY(EditDefaultsOnly)
+TObjectPtr<UMy_LevelUpInfo> LevelUpInfo;
+```
+
+`EditDefaultsOnly` 不会自动创建实例——必须在 PlayerState 蓝图的 Class Defaults 中手动选择 LevelUpInfo DataAsset。否则运行时 `LevelUpInfo == nullptr`，WidgetController 的 `OnXPChangedFunc` 中 `checkf(MyPS->LevelUpInfo)` 断言失败崩溃。
+
+### 27.8 完整 XP 流程（最终版）
+
+```
+击杀敌人
+  │
+  └─ SendXPEvent(Props)                      ← AttributeSet 查 CurveTable 算 XP
+       └─ SendGameplayEventToActor(玩家, "Meta.IncomingXP", XP值)
+            │
+            ▼
+       玩家 Passive GA (GA_ListenForEvents)
+         ├─ WaitGameplayEvent("Meta.IncomingXP")   ← 监听到
+         ├─ AssignTagSetByCallerMagnitude           ← 填 XP 到 GE Spec
+         └─ ApplyGameplayEffectSpecToSelf           ← GE 写入 IncomingXP
+              │
+              ▼
+         PostGameplayEffectExecute
+           ├─ HandleIncomingXP:
+           │    ├─ LocalXP = GetIncomingXP()
+           │    ├─ SetIncomingXP(0.f)              ← 读走清零
+           │    └─ PlayerInterface::Execute_AddToXP(Character, XP)  ← 接口桥接
+           │         │
+           │         ▼
+           │    AAura_Character::AddToXP_Implementation
+           │         └─ PlayerState->AddXP(XP)
+           │              ├─ XP += InXP
+           │              └─ OnXPChanged.Broadcast(XP)    ← 广播委托
+           │                   │
+           │                   ▼
+           │              WidgetController::OnXPChangedFunc
+           │                   ├─ LevelUpInfo->FindLevelForXP()  ← 翻译为百分比
+           │                   └─ OnXPPercentChanged.Broadcast(%)
+           │                        │
+           │                        ▼
+           │                   UI Widget → XP 进度条更新
+```
+
+### 27.9 C++ 继承访问控制总结
+
+| 继承方式 | public 成员变… | protected 成员变… | 外部能调接口？ |
+|---------|---------------|-------------------|:---:|
+| `public` 继承 | public | protected | ✅ |
+| `protected` 继承 | protected | protected | ❌ |
+| `private` 继承 | private | private | ❌ |
+
+UE 中继承接口永远用 `public`。"是一个"的关系必须对外可见。

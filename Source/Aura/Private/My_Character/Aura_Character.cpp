@@ -52,6 +52,13 @@ void AAura_Character::OnRep_PlayerState()
 
 }
 
+void AAura_Character::AddToXP_Implementation(int32 InXp)
+{
+	AMy_AuraPlayerState* AuraPlayerState = GetPlayerState<AMy_AuraPlayerState>();
+	check(AuraPlayerState);
+	AuraPlayerState->AddXP(InXp);
+}
+
 int32 AAura_Character::GetPlayerLevel()
 {
 	const AMy_AuraPlayerState* AuraPlayerState = GetPlayerState<AMy_AuraPlayerState>();

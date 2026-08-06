@@ -12,6 +12,7 @@
 #include "MY_AbilitySystem/My_AuraAbilitySystemLibrary.h"
 #include "My_Controler/My_Aura_Controller.h"
 #include "My_Interraction/My_CombatInterface.h"
+#include "My_Interraction/My_PlayerInterface.h"
 #include "Net/UnrealNetwork.h"
 
 UMy_AuraAttributeSet::UMy_AuraAttributeSet()
@@ -165,7 +166,12 @@ void UMy_AuraAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffec
 	{
 		const float LocalIncomingXP = GetIncomingXP();
 		SetIncomingXP(0.f);
-		UE_LOG(LogAura,Warning, TEXT("IncomingXP has Changed %f!"), LocalIncomingXP);
+		// UE_LOG(LogAura,Warning, TEXT("IncomingXP has Changed %f!"), LocalIncomingXP);
+		if (Props.SourceCharacter->Implements<UMy_PlayerInterface>())
+		{
+			IMy_PlayerInterface::Execute_AddToXP(Props.SourceCharacter, LocalIncomingXP);
+			
+		}
 	}
 }
 
