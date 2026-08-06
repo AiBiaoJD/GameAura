@@ -23,7 +23,7 @@ struct FMy_TaggedMontage
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	FGameplayTag SocketTag;
-	
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	USoundBase* ImpactSound = nullptr;
 };
@@ -45,8 +45,6 @@ class AURA_API IMy_CombatInterface
 
 	// Add interface functions to this class. This is the class that will be inherited to implement this interface.
 public:
-	virtual int32 GetPlayerLevel();
-
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable)
 	FVector GetWeaponSockLocation(const FGameplayTag& MontageTag);
 
@@ -67,18 +65,21 @@ public:
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable)
 	TArray<FMy_TaggedMontage> GetAttackMontage();
 
-	UFUNCTION(BlueprintNativeEvent,BlueprintCallable)
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable)
 	UNiagaraSystem* GetBloodEffect();
 
-	UFUNCTION(BlueprintNativeEvent,BlueprintCallable)
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable)
 	FMy_TaggedMontage GetTaggedMontageByTag(const FGameplayTag& MontageTag);
 
-	UFUNCTION(BlueprintNativeEvent,BlueprintCallable)
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable)
 	int32 GetMinionCount();
 
-	UFUNCTION(BlueprintNativeEvent,BlueprintCallable)
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable)
 	void IncreaseMinionCount(int32 num);
 
-	UFUNCTION(BlueprintNativeEvent,BlueprintCallable)
+	UFUNCTION(BlueprintNativeEvent)
+	int32 GetPlayerLevel();
+
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable)
 	EMy_CharacterClass GetCharacterClass();
 };

@@ -31,10 +31,13 @@ float UMy_MMC_MaxHealth::CalculateBaseMagnitude_Implementation(const FGameplayEf
 	Vigor = FMath::Max(Vigor, 0.0f);
 
 	//CombatInterface是在Character_base中的,这样父类的指针可以调用不同子类的函数
-	IMy_CombatInterface* CombatInterface = Cast<IMy_CombatInterface>(Spec.GetContext().GetSourceObject());
-	const int32 PlayerLevel = CombatInterface->GetPlayerLevel();
+	int32 Level = 1;
+	if (Spec.GetContext().GetSourceObject()->Implements<UMy_CombatInterface>())
+	{
+		Level = IMy_CombatInterface::Execute_GetPlayerLevel(Spec.GetContext().GetSourceObject());
+	}
 
-	return 100.0f + 8.0f * (Vigor+30.0f) + 10.0f * PlayerLevel;
+	return 100.0f + 8.0f * (Vigor+30.0f) + 10.0f * Level;
 }
 
 

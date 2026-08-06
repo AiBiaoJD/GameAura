@@ -30,11 +30,11 @@ void AEnemy_Characte::HighlightActor()
 void AEnemy_Characte::UnHighlightActor()
 {
 	// 不启用 Custom Depth
-	GetMesh()->SetRenderCustomDepth(false);
+	GetMesh()->SetRenderCustomDepth(false);	
 	Weapon->SetRenderCustomDepth(false);
 }
 
-int32 AEnemy_Characte::GetPlayerLevel()
+int32 AEnemy_Characte::GetPlayerLevel_Implementation()
 {
 	return Level;
 }

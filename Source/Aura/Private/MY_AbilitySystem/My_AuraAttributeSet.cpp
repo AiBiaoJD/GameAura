@@ -166,7 +166,6 @@ void UMy_AuraAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffec
 	{
 		const float LocalIncomingXP = GetIncomingXP();
 		SetIncomingXP(0.f);
-		// UE_LOG(LogAura,Warning, TEXT("IncomingXP has Changed %f!"), LocalIncomingXP);
 		if (Props.SourceCharacter->Implements<UMy_PlayerInterface>())
 		{
 			IMy_PlayerInterface::Execute_AddToXP(Props.SourceCharacter, LocalIncomingXP);
@@ -197,9 +196,9 @@ void UMy_AuraAttributeSet::ShowDamageText(const FMy_EffectProperties& Props, flo
 
 void UMy_AuraAttributeSet::SendXPEvent(const FMy_EffectProperties& Props) const
 {
-	if (IMy_CombatInterface* CombatInterface = Cast<IMy_CombatInterface>(Props.TargetAvatarActor))
+	if (Props.TargetCharacter->Implements<UMy_CombatInterface>())
 	{
-		const int32 TargetLevel = CombatInterface->GetPlayerLevel();
+		const int32 TargetLevel = IMy_CombatInterface::Execute_GetPlayerLevel(Props.TargetCharacter);
 		const EMy_CharacterClass TargetClass = IMy_CombatInterface::Execute_GetCharacterClass(Props.TargetCharacter);
 		const int32 XP = UMy_AuraAbilitySystemLibrary::GetXPRewardForClassAndLevel(Props.TargetCharacter, TargetClass, TargetLevel);
 		

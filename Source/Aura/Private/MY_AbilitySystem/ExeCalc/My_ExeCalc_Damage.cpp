@@ -70,8 +70,16 @@ void UMy_ExeCalc_Damage::Execute_Implementation(const FGameplayEffectCustomExecu
 	AActor* TargetAvatar = TargetASC ? TargetASC->GetAvatarActor() : nullptr;
 
 	// 获取战斗接口用于获取角色等级等信息
-	IMy_CombatInterface* SourceCombatInterface = Cast<IMy_CombatInterface>(SourceAvatar);
-	IMy_CombatInterface* TargetCombatInterface = Cast<IMy_CombatInterface>(TargetAvatar);
+	int32 SourceLevel = 1;
+	if (SourceAvatar->Implements<UMy_CombatInterface>())
+	{
+		SourceLevel = IMy_CombatInterface::Execute_GetPlayerLevel(SourceAvatar);
+	}
+	int32 TargetLevel = 1;
+	if (TargetAvatar->Implements<UMy_CombatInterface>())
+	{
+		TargetLevel = IMy_CombatInterface::Execute_GetPlayerLevel(TargetAvatar);
+	}
 
 	// 获取效果规格和评估参数
 	const FGameplayEffectSpec& Spec = ExecutionParams.GetOwningSpec();
@@ -129,9 +137,9 @@ void UMy_ExeCalc_Damage::Execute_Implementation(const FGameplayEffectCustomExecu
 	FRealCurve* CriticalHitResistanceCurve = CharacterClassInfo->DamageCalculationCoefficients->FindCurve(FName("CriticalHitResistance"), FString());
 
 	// 根据角色等级获取曲线值
-	const float ArmorPenetrationCoefficient = ArmorPenetrationCurve->Eval(SourceCombatInterface->GetPlayerLevel());
-	const float EffectiveArmorCoefficient = EffectiveArmorCurve->Eval(TargetCombatInterface->GetPlayerLevel());
-	const float CriticalHitResistanceCoefficient = CriticalHitResistanceCurve->Eval(TargetCombatInterface->GetPlayerLevel());
+	const float ArmorPenetrationCoefficient = ArmorPenetrationCurve->Eval(SourceLevel);
+	const float EffectiveArmorCoefficient = EffectiveArmorCurve->Eval(TargetLevel);
+	const float CriticalHitResistanceCoefficient = CriticalHitResistanceCurve->Eval(TargetLevel);
 
 
 	// ===== 伤害计算流程 =====

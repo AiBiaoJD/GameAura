@@ -24,4 +24,7 @@ class AURA_API IMy_PlayerInterface
 public:
 	UFUNCTION(BlueprintNativeEvent)
 	void AddToXP(int32 InXp);
+
+	UFUNCTION(BlueprintNativeEvent)
+	void LevelUp();
 };
