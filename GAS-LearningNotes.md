@@ -2154,3 +2154,113 @@ TObjectPtr<UMy_LevelUpInfo> LevelUpInfo;
 | `private` 继承 | private | private | ❌ |
 
 UE 中继承接口永远用 `public`。"是一个"的关系必须对外可见。
+
+---
+
+## 二十八、接口 BlueprintNativeEvent、网络策略、冷却机制
+
+> 2026-08-07，接口函数重构 + 客户端火球调试实战
+
+### 28.1 virtual → BlueprintNativeEvent 重构要点
+
+**改前：**
+```cpp
+// .h
+virtual int32 GetPlayerLevel();  // 纯 C++ virtual，BP 看不见
+
+// .cpp
+int32 IMy_CombatInterface::GetPlayerLevel() { return 0; }
+```
+
+**改后：**
+```cpp
+// .h
+UFUNCTION(BlueprintNativeEvent)
+int32 GetPlayerLevel();  // UHT 生成 Execute_ + _Implementation 包装
+
+// .cpp — 默认实现可以删掉！UHT 自动生成 virtual int32 GetPlayerLevel_Implementation() { return 0; }
+```
+
+**调用方式变化：**
+
+| 方面 | virtual | BlueprintNativeEvent |
+|------|---------|---------------------|
+| C++ 调用 | `Cast<IXXX>(obj)->Func()` | `IXXX::Execute_Func(obj)` |
+| Implements 检查 | 不需要（直接 Cast） | `obj->Implements<UXxx>()` 先检查 |
+| BP 可见 | ❌ | ✅ |
+| UHT 生成默认实现 | 需要手动在 .cpp 写 | 自动生成 return 默认值 |
+| 直接调用包装函数 | — | 会 crash："Do not directly call Event functions in Interfaces. Call Execute_XXX instead." |
+
+**⚠️ `Implements<>` 必须传 U 类，不能传 I 类：**
+```cpp
+✅ obj->Implements<UMy_CombatInterface>()   // UHT 生成的 UINTERFACE 类
+❌ obj->Implements<IMy_CombatInterface>()   // I 类没有 UClass，行为未定义
+```
+
+UHT 为 I 类生成的包装函数：
+```cpp
+// .gen.cpp
+int32 IMy_CombatInterface::GetPlayerLevel()
+{
+    check(0 && "Do not directly call Event functions in Interfaces. Call Execute_GetPlayerLevel instead.");
+    // 永远不要直接调用！使用 Execute_GetPlayerLevel()
+}
+```
+
+### 28.2 NetExecutionPolicy 四种模式
+
+| 策略 | 客户端激活 | 触发逻辑 | 典型用途 |
+|------|:---------:|---------|---------|
+| **LocalPredicted** | ✅ 立即 | 客户+服务端都激活；客户端先播，服务端验证 | 投射物、跳跃、冲刺 |
+| **LocalOnly** | ✅ 立即 | 仅客户端激活；服务端不执行 | 纯UI/视觉效果 |
+| **ServerInitiated** | ⏳ 等待 | 服务端先激活→确认后客户端跟进 | 需服务端计算结果 |
+| **ServerOnly** | ❌ 不激活 | 仅服务端激活；客户端只接收属性复制 | AI技能、GM命令 |
+
+**ServerOnly 陷阱**：属性变化会复制（法力扣了），但动画/Actor 生成不复制——客户端看不到任何反馈。
+
+### 28.3 投射物生成架构
+
+```
+LocalPredicted + HasAuthority 守卫：
+
+客户端 ActivateAbility → 播动画 ✅ → SpawnProjectile → HasAuthority? No → return
+                                                        ↓
+服务端 ActivateAbility → 播动画 → SpawnProjectile → HasAuthority? Yes → 生成火球
+                                                                       ↓
+                                                                Replicate 到客户端 ✅
+```
+
+**关键**：动画是"预测"的（客户端立即播），火球是"复制"的（服务端生成→同步）
+——两件事走不同路径。
+
+### 28.4 冷却机制：GE + Tag 阻塞
+
+```
+按下技能 → CooldownGE 应用到身上
+             └─ GrantedTags: Cooldown.FireBolt
+                    │
+                    ▼
+              Ability 的 ActivationBlockedTags 包含 Cooldown.FireBolt
+                    │
+                    ▼
+              冷却期间 TryActivateAbility → false（Tag 阻塞）
+                    │
+              CooldownGE 过期 → Tag 自动移除
+                    │
+                    ▼
+              可以再次激活 ✅
+```
+
+本质：**GE 贴 Tag → Tag 阻塞 Ability → GE 过期 Tag 消失 → 解除阻塞**
+
+### 28.5 Git Bisect 定位 Bug
+
+```bash
+git log --oneline           # 确认提交历史
+git checkout <commit-hash>  # 逐个回退测试（二分法）
+# 编译 → 编辑器测试 → 不行继续往回跳
+# 找到最后一个"好"的版本，diff 对比下一个"坏"的版本
+git checkout master         # 回到最新
+```
+
+本次实战经验：bug 不一定是你最近引入的——可能藏了很久。先确认是哪个 commit 引入的，再分析改动。盲目回退自己的最新改动会浪费排查时间。
