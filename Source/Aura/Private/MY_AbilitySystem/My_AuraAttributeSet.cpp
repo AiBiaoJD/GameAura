@@ -166,10 +166,30 @@ void UMy_AuraAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffec
 	{
 		const float LocalIncomingXP = GetIncomingXP();
 		SetIncomingXP(0.f);
-		if (Props.SourceCharacter->Implements<UMy_PlayerInterface>())
+
+		if (Props.SourceCharacter->Implements<UMy_PlayerInterface>() && Props.SourceCharacter->Implements<UMy_CombatInterface>())
 		{
+			const int32 CurrentLevel = IMy_CombatInterface::Execute_GetPlayerLevel(Props.SourceCharacter);
+			const int32 CurrentXP = IMy_PlayerInterface::Execute_GetXP(Props.SourceCharacter);
+			const int32 NewLevel = IMy_PlayerInterface::Execute_FindLevelForXP(Props.SourceCharacter, CurrentXP + LocalIncomingXP);
+			const int32 NumLevelUp = NewLevel - CurrentLevel;
+			// 如果升级了
+			if (NumLevelUp > 0)
+			{
+				const int32 AttributePointReward = IMy_PlayerInterface::Execute_GetAttributePointReward(Props.SourceCharacter, CurrentLevel);
+				const int32 SpellPointReward =IMy_PlayerInterface::Execute_GetSpellPointReward(Props.SourceCharacter, CurrentLevel);
+
+				IMy_PlayerInterface::Execute_AddToPlayerLevel(Props.SourceCharacter, NumLevelUp);
+				IMy_PlayerInterface::Execute_AddToAttributePoint(Props.SourceCharacter, AttributePointReward);
+				IMy_PlayerInterface::Execute_AddToSpellPoint(Props.SourceCharacter, SpellPointReward);
+
+				SetHealth(GetMaxHealth());
+				SetMana(GetMaxMana());
+
+				IMy_PlayerInterface::Execute_LevelUp(Props.SourceCharacter);
+			}
+
 			IMy_PlayerInterface::Execute_AddToXP(Props.SourceCharacter, LocalIncomingXP);
-			
 		}
 	}
 }
@@ -201,7 +221,7 @@ void UMy_AuraAttributeSet::SendXPEvent(const FMy_EffectProperties& Props) const
 		const int32 TargetLevel = IMy_CombatInterface::Execute_GetPlayerLevel(Props.TargetCharacter);
 		const EMy_CharacterClass TargetClass = IMy_CombatInterface::Execute_GetCharacterClass(Props.TargetCharacter);
 		const int32 XP = UMy_AuraAbilitySystemLibrary::GetXPRewardForClassAndLevel(Props.TargetCharacter, TargetClass, TargetLevel);
-		
+
 		const FMy_AuraGameplayTags& GameplayTags = FMy_AuraGameplayTags::GetInstance();
 		FGameplayEventData EventData;
 		EventData.EventTag = GameplayTags.My_Attribute_Meta_IncomingXP;

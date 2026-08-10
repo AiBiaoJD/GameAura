@@ -108,12 +108,15 @@ void UMy_OverlayWidgetController::OnXPChangedFunc(int32 NewXP)
 	const int32 Level = MyPS->LevelUpInfo->FindLevelForXP(NewXP);
 	const int32 MaxLevel = MyPS->LevelUpInfo->LevelUpInformation.Num();
 
-	if (Level <= MaxLevel && Level > 0)
+	if (Level == MaxLevel)
+	{
+		OnXPPercentChanged.Broadcast(1.0f);
+	}
+	else
 	{
 		const int32 LevelUpReq = MyPS->LevelUpInfo->LevelUpInformation[Level].LevelUpRequirement;
-		const int32 PrevLevelUpReq = MyPS->LevelUpInfo->LevelUpInformation[Level-1].LevelUpRequirement;
-		
-		const float XPBarPercent = static_cast<float>(NewXP-PrevLevelUpReq) / static_cast<float>(LevelUpReq - PrevLevelUpReq);
+		const int32 PrevLevelUpReq = MyPS->LevelUpInfo->LevelUpInformation[Level - 1].LevelUpRequirement;
+		const float XPBarPercent = static_cast<float>(NewXP - PrevLevelUpReq) / static_cast<float>(LevelUpReq - PrevLevelUpReq);
 		OnXPPercentChanged.Broadcast(XPBarPercent);
 	}
 }

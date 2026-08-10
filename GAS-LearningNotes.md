@@ -2264,3 +2264,194 @@ git checkout master         # 回到最新
 ```
 
 本次实战经验：bug 不一定是你最近引入的——可能藏了很久。先确认是哪个 commit 引入的，再分析改动。盲目回退自己的最新改动会浪费排查时间。
+
+---
+
+## 二十九、UE5 相机系统：SpringArm + Camera 完全指南
+
+> 2026-08-11，C++ 构造函数配置相机，理解各种旋转参数，主流游戏配置对比
+
+### 29.1 旋转的三个基本轴
+
+```
+Pitch = 点头（绕 Y 轴：上下摆头）
+Yaw   = 摇头（绕 Z 轴：左右转身）
+Roll  = 歪头（绕 X 轴：侧着头靠肩膀）
+
+放角色身上：
+  Pitch → 身体前倾/后仰（别开，角色会躺倒）
+  Yaw   → 全身左右转
+  Roll  → 歪身子（几乎永远不开）
+```
+
+三个开关在 Pawn 上的效果：
+
+| 参数 | 开了的效果 |
+|------|-----------|
+| `bUseControllerRotationYaw` | 鼠标左右移 → 角色原地转向 |
+| `bUseControllerRotationPitch` | 鼠标上下移 → 角色前倾后仰（**别开**） |
+| `bUseControllerRotationRoll` | 鼠标侧移 → 角色歪身子（**永远别开**） |
+
+### 29.2 旋转控制链
+
+```
+Controller（鼠标/手柄输入）
+  → Pawn::ControlRotation（存储累积旋转值）
+    → SpringArm（可选：跟不跟这个旋转）
+      → Camera（挂在弹簧臂末端）
+```
+
+**关键**：`bUsePawnControlRotation` 里的 "Pawn" 有误导性。数据确实存在 Pawn 上，但**值是由 Controller 写入的**：
+
+```
+手柄右摇杆 → PlayerController::AddYawInput/AddPitchInput
+           → 写入 Pawn::ControlRotation
+           → SpringArm 读这个值来旋转
+```
+
+Controller 是"方向盘"，Pawn::ControlRotation 是"转向机"，SpringArm 的开关决定"跟不跟转向机走"。
+
+### 29.3 三个关键开关
+
+| 开关 | 在哪设 | 含义 |
+|------|--------|------|
+| `bUseControllerRotationYaw/Pitch/Roll` | Pawn（角色） | 角色的身体跟不跟鼠标转 |
+| `SetUsingAbsoluteRotation(bool)` | SpringArm | true=世界绝对旋转；false=跟 Pawn/Controller |
+| `bUsePawnControlRotation` | SpringArm | 弹簧臂跟不跟 Pawn::ControlRotation |
+
+**重要**：`bUsePawnControlRotation = true` 会**覆盖** `SetRelativeRotation` 手动设置的旋转值。因为弹簧臂直接读 ControlRotation（默认 0° 水平），不理 RelativeRotation。
+
+### 29.4 三种主流配置
+
+#### FPS / 越肩第三人称（使命召唤、吃鸡）
+
+```
+体验：鼠标完全控制视角旋转，角色身体 Yaw 跟鼠标，相机全跟
+```
+
+```cpp
+// Pawn（角色）
+bUseControllerRotationYaw   = true;   // 鼠标左右 → 角色转
+bUseControllerRotationPitch = false;
+bUseControllerRotationRoll  = false;
+
+// SpringArm — 跟 Controller 旋转
+SpringArm->bUsePawnControlRotation = true;
+// 不调 SetUsingAbsoluteRotation（默认 false = 跟 Pawn Rotation）
+
+// Camera — 挂在弹簧臂末端，不用再设
+Camera->bUsePawnControlRotation = false;
+```
+
+#### 黑魂 / 怪猎（右摇杆转视角，角色不转）
+
+```
+体验：右摇杆看风景，角色身体跟移动方向转，和相机解耦
+```
+
+```cpp
+// Pawn（角色）— 不跟右摇杆
+bUseControllerRotationYaw   = false;  // 角色身体不跟相机
+bUseControllerRotationPitch = false;
+bUseControllerRotationRoll  = false;
+
+// 角色跟移动方向（左摇杆）
+GetCharacterMovement()->bOrientRotationToMovement = true;
+
+// SpringArm — 跟右摇杆（Controller）
+SpringArm->bUsePawnControlRotation = true;
+
+// Camera
+Camera->bUsePawnControlRotation = false;
+```
+
+#### Top-Down / MOBA（暗黑、LOL）
+
+```
+体验：相机固定俯角，鼠标只移动角色/释放技能，不转视角
+```
+
+```cpp
+// Pawn（角色）— 全 false
+bUseControllerRotationYaw   = false;
+bUseControllerRotationPitch = false;
+bUseControllerRotationRoll  = false;
+
+// 角色朝移动方向转
+GetCharacterMovement()->bOrientRotationToMovement = true;
+
+// SpringArm — 固定俯角，世界绝对旋转
+SpringArm->SetUsingAbsoluteRotation(true);          // 不受任何人影响
+SpringArm->SetRelativeRotation(FRotator(-45, 0, 0)); // 45° 斜向下
+SpringArm->bDoCollisionTest = false;                // 不撞墙拉近
+SpringArm->TargetArmLength = 800.f;                 // 弹簧臂长度
+
+// Camera — 不跟任何旋转
+Camera->bUsePawnControlRotation = false;
+```
+
+### 29.5 bUsePawnControlRotation 和 SetRelativeRotation 的互斥
+
+```
+bUsePawnControlRotation = false → 用你手动设的 RelativeRotation（-45° 生效）
+bUsePawnControlRotation = true  → 无视 RelativeRotation，用 ControlRotation（默认 0° 水平）
+```
+
+如果设了 `bUsePawnControlRotation = true` 但没写输入处理，ControlRotation 默认 `(0,0,0)`，相机就变成水平方向。需要手动设初始 ControlRotation：
+
+```cpp
+// PlayerController::BeginPlay
+SetControlRotation(FRotator(-45.f, 0.f, 0.f));
+```
+
+### 29.6 Camera 的 bUsePawnControlRotation 基本不需要管
+
+Camera 是 SpringArm 的子节点，Transform 完全继承自 SpringArm。SpringArm 已经把旋转管死了，Camera 设 `false` 即可。设 `true` 反而可能产生奇怪的双重旋转。
+
+### 29.7 写 ControlRotation 但不使用 = 没影响
+
+`AddYawInput` / `SetControlRotation` 只是往 Pawn::ControlRotation 写值。如果 SpringArm 的 `bUsePawnControlRotation = false`，没人读这个值，写了也等于白写。对游戏表现零影响。
+
+---
+
+## 三十、Niagara 粒子面向相机 & 构造函数组件创建细节
+
+> 2026-08-11
+
+### 30.1 Niagara 升级特效始终面向相机
+
+```cpp
+const FVector CameraLocation = TopDownCameraComponent->GetComponentLocation();
+const FVector NiagaraLocation = LevelUpNiagaraComponent->GetComponentLocation();
+const FRotator ToCamera = (CameraLocation - NiagaraLocation).Rotation();
+LevelUpNiagaraComponent->SetWorldRotation(ToCamera);
+```
+
+`ToCamera` 是**绝对世界朝向**（从 Niagara 指向相机的方向），不是"旋转差值"。用 `SetWorldRotation` 直接设到位。
+
+### 30.2 为什么不用 AddLocalRotation
+
+`AddLocalRotation` 是在**当前旋转上叠加增量**，在 Local 空间加。
+
+- `SetWorldRotation(ToCamera)`：**"你的朝向 = 这个方向"** → 正对相机 ✅
+- `AddLocalRotation(ToCamera)`：**"在你的朝向上再扭这么一个幅度"** → 语义不对，且如果父组件有旋转，Local 和 World 空间不重合会歪 ❌
+
+### 30.3 bAutoActivate 是成员变量不是函数
+
+```cpp
+// ❌ 编译错误 C2064
+LevelUpNiagaraComponent->bAutoActivate(false);
+
+// ✅ 正确
+LevelUpNiagaraComponent->bAutoActivate = false;
+```
+
+`bAutoActivate` 是 `UActorComponent` 的 public 成员变量，赋值不是函数调用。
+
+### 30.4 统计帧率命令
+
+```
+stat fps       — 显示帧率（再输一次关闭）
+stat unit      — 帧时间详情（Game/Draw/GPU 耗时）
+stat none      — 一次性关闭所有 stat
+```
