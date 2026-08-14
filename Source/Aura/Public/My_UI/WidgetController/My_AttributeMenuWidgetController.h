@@ -8,7 +8,7 @@
 #include "My_AttributeMenuWidgetController.generated.h"
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FMy_OnAttributeInfoSignature, const FMy_AuraAttributeInfo&, info);
-
+struct FGameplayTag;
 /**
  *
  */
@@ -25,6 +25,9 @@ public:
 
 	//ATTribute属性改变，委托调用的回调函数
 	virtual void BindCallbacksToDependencies();
+
+	UFUNCTION(BlueprintCallable)
+	void UpgradeAttribute(const FGameplayTag& AttributeTag);
 
 	UPROPERTY(BlueprintAssignable, Category = "My_GAS|Attributes")
 	FMy_OnAttributeInfoSignature OnAttributeInfo;

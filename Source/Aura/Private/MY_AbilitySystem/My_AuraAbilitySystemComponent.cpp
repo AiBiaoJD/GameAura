@@ -3,9 +3,11 @@
 
 #include "MY_AbilitySystem/My_AuraAbilitySystemComponent.h"
 
+#include "AbilitySystemBlueprintLibrary.h"
 #include "My_AuraGamePlayTags_Singleton.h"
 #include "Aura/AuraLogChannels.h"
 #include "MY_AbilitySystem/Ability/My_AuraGameplayAbilityBase.h"
+#include "My_Interraction/My_PlayerInterface.h"
 
 UMy_AuraAbilitySystemComponent::UMy_AuraAbilitySystemComponent()
 {
@@ -20,6 +22,7 @@ void UMy_AuraAbilitySystemComponent::AbilityActorInfoSet()
 	OnGameplayEffectAppliedDelegateToSelf.AddUObject(this, &UMy_AuraAbilitySystemComponent::ClientEffectApplied);
 }
 
+//把"服务器上施加了 GE"这件事通知给客户端，让 UI 显示效果消息（比如拾取药水、获得增益）
 void UMy_AuraAbilitySystemComponent::ClientEffectApplied_Implementation(UAbilitySystemComponent* AbilitySystemComponent,
                                                                         const FGameplayEffectSpec& EffectSpec, FActiveGameplayEffectHandle ActiveGameplayEffectHandle)
 {
@@ -47,6 +50,7 @@ void UMy_AuraAbilitySystemComponent::AddCharacterAbilitiesFromASC(const TArray<T
 		}
 	}
 
+	//处理技能UI显示的旗子标记
 	bStartupAbilityGiven = true;
 	/* 角色添加能力的时候，可以给这个能力设置UI，和AbilityInfo对比*/
 	OnAbilityGiven.Broadcast(this);
@@ -61,7 +65,6 @@ void UMy_AuraAbilitySystemComponent::AddCharacterPassiveAbilitiesFromASC(const T
 	}
 }
 
-
 //处理客户端不显示Ability的UI问题
 void UMy_AuraAbilitySystemComponent::OnRep_ActivateAbilities()
 {
@@ -72,7 +75,6 @@ void UMy_AuraAbilitySystemComponent::OnRep_ActivateAbilities()
 		OnAbilityGiven.Broadcast(this);
 	}
 }
-
 
 /*
  * 当PlayerController 按下/放开 按键会激活下面的函数
@@ -148,4 +150,28 @@ FGameplayTag UMy_AuraAbilitySystemComponent::GetInputTagFromAbilitySpec(const FG
 		}
 	}
 	return FGameplayTag();
+}
+
+void UMy_AuraAbilitySystemComponent::UpgradeAttribute(const FGameplayTag& AttributeTag)
+{
+	if (GetAvatarActor()->Implements<UMy_PlayerInterface>())
+	{
+		//有属性点
+		if (IMy_PlayerInterface::Execute_GetAttributePointFormPlayerState(GetAvatarActor()) > 0)
+		{
+			ServerUpgradeAttribute(AttributeTag);
+		}
+	}
+}
+
+void UMy_AuraAbilitySystemComponent::ServerUpgradeAttribute_Implementation(const FGameplayTag AttributeTag)
+{
+	if (IMy_PlayerInterface::Execute_GetAttributePointFormPlayerState(GetAvatarActor()) < 0) return;
+	FGameplayEventData EventData;
+	EventData.EventTag = AttributeTag;
+	EventData.EventMagnitude = 1.f;
+	//使用SendEvent的方式修改Attribute,因为PassiveAbility可以监听AttributeTag的Event
+	UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(GetAvatarActor(), AttributeTag, EventData);
+	//属性点-1
+	IMy_PlayerInterface::Execute_AddToAttributePoint(GetAvatarActor(), -1);
 }

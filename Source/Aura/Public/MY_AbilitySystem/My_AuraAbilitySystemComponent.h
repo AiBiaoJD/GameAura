@@ -23,8 +23,8 @@ public:
 
 	void AbilityActorInfoSet();
 
-	FMy_EffectAssetTags EffectAssetTags;
-	FMy_AbilityGiven OnAbilityGiven;
+	FMy_EffectAssetTags EffectAssetTags; //处理捡东西MessageUI
+	FMy_AbilityGiven OnAbilityGiven; //处理技能显示UI
 
 	// Character添加能力
 	void AddCharacterAbilitiesFromASC(const TArray<TSubclassOf<UGameplayAbility>>& StartupAbility);
@@ -38,6 +38,11 @@ public:
 	void ForEachAbility(const Fmy_ForEachAbility& Delegate);
 	static FGameplayTag GetAbilityTagFromAbilitySpec(const FGameplayAbilitySpec& AbilitySpec);
 	static FGameplayTag GetInputTagFromAbilitySpec(const FGameplayAbilitySpec& AbilitySpec);
+
+	void UpgradeAttribute(const FGameplayTag& AttributeTag);
+
+	UFUNCTION(Server, Reliable)
+	void ServerUpgradeAttribute(const FGameplayTag AttributeTag);
 protected:
 	/*
 	 * OnGameplayEffectAppliedDelegateToSelf 委托是只在服务器调用回调函数

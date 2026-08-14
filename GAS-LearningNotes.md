@@ -2606,4 +2606,144 @@ return MenuWidgetController;
 - UMG 子 widget 先 Construct、父后 Construct → 时序天然正确
 - 子 widget 必须**自己拿控制器**（`My_GetMenuWidgetController`），不能等父传——否则 Assign 绑空
 - 所有调用走同一 HUD → 同一控制器，不会创建第二个（见 31.4）
+
+## 三十二、网络架构：客户端/服务器分工、Ability UI 显示链路、InputTag 一物三用
+
+### 32.1 核心心法：一套代码，两种角色
+
+服务器和客户端运行的是**同一份代码**（同一引擎、同一 Actor 类、同一函数）。区别是"角色"：
+
+- **服务器 = 裁判**：持有权威数据、执行规则；没有 UI、没有输入、没有渲染
+- **客户端 = 观众**：有 UI、有输入；只有数据的复制副本
+
+比喻：裁判和观众站在同一个球场看同一场球（世界状态同步），但吹哨、记分只有裁判有权。
+
+### 32.2 客户端与服务器各自拥有什么（修正"服务器什么都有"）
+
+"服务器什么都有"只说对一半：**服务器有所有数据的真值，但没有 UI/输入**。
+
+| | 客户端 | 服务器 |
+|---|---|---|
+| UI / 按钮 | ✅（Overlay、菜单） | ❌ 不创建 UMG Widget |
+| 输入（键鼠） | ✅ | ❌ 无头运行 |
+| 渲染 | ✅ | ❌ |
+| 数据 | 复制副本 | 权威真值 |
+| 规则执行 | 预测/表现 | 权威执行 |
+
+**"拥有"分两种：数据副本人人有，权威身份只属服务器。**
+
+### 32.3 PlayerController 分配
+
+规则：**服务器为每个连入的玩家 spawn 一个 PC，且每个 PC 只复制给对应的拥有者客户端**（`bOnlyRelevantToOwner`）。
+
+```
+服务器: PC[玩家1] PC[玩家2] + 所有权威数据
+客户端1: PC[玩家1]（只看到自己）+ 所有玩家的 PlayerState 副本
+客户端2: PC[玩家2]（只看到自己）+ 所有玩家的 PlayerState 副本
+```
+
+- PC 只对拥有者相关 → 客户端代码里 `PlayerController->GetPlayerState()/GetHUD()` 永远是"自己"的 → UI、WidgetController、按钮都是自己的
+- PlayerState 复制给**所有**客户端（要看别人等级/血量），但只有服务器能改真值
+- 服务器持有所有 PC 的权威实例，但**不执行 UI**
+
+### 32.4 三种同步机制（同一段代码如何分流）
+
+"都运行同一段代码"的真实含义：**每个函数都存在于两端，但只有匹配角色的一端真正执行函数体**。三种标记决定谁执行：
+
+1. **Replication**：`UPROPERTY(ReplicatedUsing=OnRep)` 服务器改值 → 复制 → 客户端 OnRep 只在客户端跑
+2. **Server RPC**：`UFUNCTION(Server, Reliable)` 客户端调用 → `_Implementation` 只在服务器执行
+3. **Client RPC**：`UFUNCTION(Client, Reliable)` 服务器调用 → `_Implementation` 只在客户端执行（例：`ClientEffectApplied`）
+
+### 32.5 为什么服务器"没有按钮" + 升级链路职责划分
+
+按钮属于人机交互，**只有客户端创建**。服务器的工作是接收请求、验证、执行规则，它不"操作 UI"。
+
+升级按钮完整链路（本项目 My_ 版已实现）：
+
+```
+客户端: 按钮点击 → AttributeMenuWC::UpgradeAttribute → ASC::UpgradeAttribute
+         → 查 GetAttributePointFormPlayerState() > 0（客户端缓存值，防呆）
+         → ServerUpgradeAttribute()（Server RPC，客户端函数体不执行）
+服务器: ServerUpgradeAttribute_Implementation
+         → 再查点数（权威真值，防作弊）
+         → SendGameplayEventToActor(属性Tag) → 改属性
+         → AddToAttributePoint(-1)
+结果: 复制回客户端 → 菜单刷新显示
+```
+
+### 32.6 Ability UI 显示链路（OnAbilityGiven 双路径）
+
+**问题根源**：`GiveAbility` 只在服务器 + multicast 委托不跨网络 → 客户端 UI 收不到"能力已就绪"的通知。
+
+**双路径补广播**：
+
+```
+服务器: AddCharacterAbilitiesFromASC → GiveAbility
+         → bStartupAbilityGiven=true（服务器的副本）
+         → OnAbilityGiven.Broadcast（只对本机 UI=监听服务器主机有用）
+客户端: ActiveAbilities 复制下来 → OnRep_ActivateAbilities
+         → bStartupAbilityGiven:false→true（客户端的副本）
+         → OnAbilityGiven.Broadcast（本地补广播）
+```
+
+**bStartupAbilityGiven 是非复制属性，每台机器一份**：
+- 服务器在 AddCharacterAbilitiesFromASC 置 true
+- 客户端在 OnRep_ActivateAbilities 置 true
+- 作用：OnRep 会多次触发（以后加新能力数组再变），旗标保证只初始化一次
+
+**WidgetController 时序兜底（存量/增量）**：
+
+```cpp
+if (AuraASC->bStartupAbilityGiven)
+    OnInitializeStartupAbilities(AuraASC);       // 存量：直接拉当前列表
+else
+    AuraASC->OnAbilityGiven.AddUObject(...);      // 增量：订阅等广播
+```
+
+竞态：`GiveAbility` 和 "HUD 创建 WidgetController" 时序不定。if/else 两种顺序都覆盖。
+
+完整链路：服务器 PossessedBy → InitAbilityActorInfo → AddCharacterAbilities（HasAuthority 保险）→ GiveAbility → ActiveAbilities 复制 → 客户端 OnRep → 广播 → WidgetController if/else → OnInitializeStartupAbilities → ForEachAbility 遍历 → 查 AbilityDA → OnAbilityInfo.Broadcast → 图标显示。
+
+### 32.7 没有 OnRep 的后果（远程客户端必坏，不是"运气"）
+
+⚠️ 修正：删掉 OnRep 不是"运气好能显示/运气不好不显示"，而是**远程客户端 100% 必坏**。
+
+原因：客户端 `bStartupAbilityGiven` 永远 false（非复制 + 只有 OnRep 置位）→ WidgetController 永远走 else 订阅 → 广播无人发 → 技能栏永远空白。
+
+"运气"只是描述"没有 if/else 只靠订阅"的旧写法；有了 OnRep + if/else，两种时序都覆盖，不靠运气。
+
+| 机器 | 没有 OnRep 的后果 |
+|---|---|
+| 远程客户端 | ❌ 必坏 |
+| 监听服务器主机 | ✅ 靠服务器广播直通本机 UI |
+| 单机 | ✅ 同上 |
+
+### 32.8 InputTag 一物三用：设置 → 存储 → 输入路由 + UI 显示
+
+同一个 Tag，三个环节：
+
+```
+① 设置：Ability BP 的 StartUpInputTag = My_InputTag.1
+② 存储：AddCharacterAbilitiesFromASC
+         AbilitySpec.DynamicAbilityTags.AddTag(StartUpInputTag)  // tag 跟 spec 复制到客户端
+③ 两条消费路径，读同一 DynamicAbilityTags：
+   输入路由：按"1" → InputConfig 查 My_InputTag.1 → ASC 遍历
+            spec.DynamicAbilityTags.HasTagExact(Tag) → 激活 ✅
+   UI 显示：GetInputTagFromAbilitySpec 从 DynamicAbilityTags 读回 tag
+            → info.InputTag → 图标显示"1" ✅
+```
+
+**UI 不是自己猜按键，而是把能力身上存的 tag 读出来显示 → 永远和输入绑定一致。**
+
+tag 是"按键身份证"不是物理键：物理键→tag 映射在 InputConfig DataAsset 改；tag→能力 匹配靠 StartUpInputTag 改。
+
+### 32.9 升级按钮 Anti-cheat 细节（本次实现回顾）
+
+本次 `ServerUpgradeAttribute_Implementation` 的服务器校验：
+
+```cpp
+if (IMy_PlayerInterface::Execute_GetAttributePointFormPlayerState(GetAvatarActor()) < 0) return;
+```
+
+⚠️ 注意：`< 0` 允许点数扣到 0、-1、-2... 只拦"已负再扣"。真正封死作弊应改 `<= 0`（等于 0 就 return），保证永不为负。客户端 `> 0` 是防呆、服务器 `<= 0` 才是防作弊边界。
 ```
