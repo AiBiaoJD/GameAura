@@ -24,7 +24,20 @@ Source/Aura/
 
 ## 中文注释与 GBK 编码（⚠️ 关键）
 
-C++ 源文件是 **GBK 编码**（Windows 中文 codepage 936）。UE5 在中文 Windows 上默认以 GBK 保存 C++ 文件。
+C++ 源文件**大部分是 GBK 编码**（Windows 中文 codepage 936），但**不统一**——`My_Character/` 目录（如 `Aura_Character.cpp`）是 **UTF-8**（2026-08-14 确认）。改文件前**先检测编码**，再选 `gbk` 或 `utf-8`：
+
+```bash
+/c/Users/79467/anaconda3/python -c "
+d = open('file.cpp', 'rb').read()
+for enc in ['gbk', 'utf-8']:
+    try:
+        d.decode(enc); print(enc, 'OK')
+    except Exception:
+        print(enc, 'FAIL')
+"
+```
+
+**信号**：用 GBK 读 UTF-8 文件会报 `UnicodeDecodeError: 'gbk' codec can't decode byte`——这不是文件损坏，而是文件其实是 UTF-8，改用 `encoding='utf-8'` 读写。
 
 **禁止操作**：
 - 不要用 `Edit` 工具直接修改含中文注释的 `.h`/`.cpp`——会转 UTF-8 导致全部中文乱码（**即使只改 ASCII 部分的文本，整个文件都会被重新编码为 UTF-8**）

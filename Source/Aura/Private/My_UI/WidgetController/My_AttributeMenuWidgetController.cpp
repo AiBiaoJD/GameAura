@@ -4,6 +4,8 @@
 #include "My_UI/WidgetController/My_AttributeMenuWidgetController.h"
 
 #include "MY_AbilitySystem/My_AuraAttributeSet.h"
+#include "My_Controler/My_AuraPlayerState.h"
+
 
 void UMy_AttributeMenuWidgetController::BroadcastInitiaValues()
 {
@@ -14,6 +16,12 @@ void UMy_AttributeMenuWidgetController::BroadcastInitiaValues()
 	for (auto& Pair : AS->M_TagsToAttribute)
 	{
 		BroadAttributeInfo(Pair.Key, Pair.Value());
+	}
+
+	AMy_AuraPlayerState* MyPS = Cast<AMy_AuraPlayerState>(PlayerState);
+	if (MyPS)
+	{
+		OnPlayerAttributeChanged.Broadcast(MyPS->GetAttributePoint());
 	}
 
 }
@@ -29,6 +37,15 @@ void UMy_AttributeMenuWidgetController::BindCallbacksToDependencies()
 			{
 				BroadAttributeInfo(Pair.Key, Pair.Value());
 			});
+	}
+
+	AMy_AuraPlayerState* MyPS = Cast<AMy_AuraPlayerState>(PlayerState);
+	if (MyPS)
+	{
+		MyPS->OnAttributePointChanged.AddLambda([this](int32 NewAttributePoint)
+		{
+			OnPlayerAttributeChanged.Broadcast(NewAttributePoint);
+		});
 	}
 }
 

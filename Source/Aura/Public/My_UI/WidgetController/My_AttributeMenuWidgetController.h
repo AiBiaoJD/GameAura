@@ -26,8 +26,10 @@ public:
 	//ATTribute属性改变，委托调用的回调函数
 	virtual void BindCallbacksToDependencies();
 
-	UPROPERTY(BlueprintAssignable, Category = "My_GAS|Attibutes")
+	UPROPERTY(BlueprintAssignable, Category = "My_GAS|Attributes")
 	FMy_OnAttributeInfoSignature OnAttributeInfo;
+	UPROPERTY(BlueprintAssignable, Category = "My_GAS|AttributePoint")
+	FMy_OnPlayerStateChangedSignature OnPlayerAttributeChanged;
 protected:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Attribute DataAsset")

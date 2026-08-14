@@ -1771,6 +1771,67 @@ OnPlayerLevelChanged.Broadcast(MyPS->GetPlayerLevel());
 
 WidgetController 不直接暴露 PlayerState 的委托给 Widget——它用自己的委托做翻译中转，保持上层 UI 和底层数据解耦。
 
+### 25.11 OnRep_Level 网络复制完整流程（服务器推送 → 客户端 OnRep）
+
+> 核心认知：`Level` 变量在服务器和每个客户端**各有一份**，是独立内存变量。复制 = 引擎把服务器那份的值**拷贝**到客户端那份。
+
+```
+服务器机器:   Level = 3   ← 权威值（真值）
+客户端机器:   Level = 3   ← 拷贝值（可能是过期的）
+```
+
+#### 服务器端（权威，主动推送）
+
+```cpp
+// 升级逻辑最终调用 Aura_Character.cpp:111
+AuraPlayerState->AddToLevel(1);   // 服务器当前 Level = 3
+
+void AMy_AuraPlayerState::AddToLevel(int32 number)  // My_AuraPlayerState.cpp:64
+{
+    Level += number;                 // ① 服务器的 Level：3 → 4，被标记 dirty
+    OnLevelChanged.Broadcast(Level); // ② 服务器 UI 立即更新（与网络无关）
+}
+```
+
+- **①** `UPROPERTY(ReplicatedUsing = OnRep_Level)` 让引擎自动把属性标 dirty
+- **②** 服务器自己立刻知道，直接 broadcast 给服务器端 UI
+
+服务器**不会**等客户端问，也**不会**调 `OnRep_Level`。它每帧检查 dirty 属性，把 `Level=4` 打包成 bunch，通过 PlayerState 的 Actor Channel 推给所有客户端（`NetUpdateFrequency = 100` 是每秒最多推 100 次，只有 dirty 才发）。
+
+#### 客户端（被通知）
+
+```
+收到 bunch
+① 先把本地旧值 3 存临时变量            → 这就是 OldLevel
+② 用新值 4 覆盖本地 Level              → 客户端 Level: 3 → 4
+③ 有 OnRep → 调用 OnRep_Level(3)
+```
+
+```cpp
+void AMy_AuraPlayerState::OnRep_Level(int32 OldLevel)  // My_AuraPlayerState.cpp:36
+{
+    OnLevelChanged.Broadcast(Level);  // 客户端 UI 收到通知，显示 4 级
+}
+```
+
+#### 双入口模式总结
+
+`AddToLevel` 和 `OnRep_Level` 里是**同一行 broadcast**，但跑在**不同机器**上：
+
+| 入口 | 跑在哪台机器 | 触发时机 | 作用 |
+|------|------|----------|------|
+| `SetLevel` / `AddToLevel` 内 broadcast | 服务器 | 服务器改值时 | 更新服务器 UI |
+| `OnRep_Level` 内 broadcast | 客户端 | 收到网络复制后 | 更新客户端 UI |
+
+**`OnRep_Level` 不是服务器调的**——是引擎替客户端调的：每当新值从网络到达并覆盖本地值后，引擎自动喊 `OnRep_Level(旧值)`，让客户端有机会"对变化做出反应"。`OldLevel` 参数就是给你对比用的（如"从 3 变 4 = 升了一级"）。
+
+#### 注意点
+
+- **单机测试看不到 OnRep**：Standalone 下服务器=客户端，`AddToLevel` 直接广播就完事，复制不发生，`OnRep_Level` 永不调用。验证复制需 ≥2 玩家或监听服务器。
+- **`DOREPLIFETIME` 默认 `REPNOTIFY_OnChanged`**：只有客户端当前值 ≠ 新值才调 OnRep，设成相同值不触发。AttributeSet 用的 `REPNOTIFY_Always` 是"值相同也触发"（`My_AuraAttributeSet.cpp:52`），两者语义不同。
+- **Listen Server 主机**：既是服务器又是客户端，会收到自己的复制 → `AddToLevel` 和 `OnRep_Level` 都 broadcast，可能重复广播。单机学习项目无影响。
+- **别在 OnRep 里写服务器逻辑**：它只在客户端跑，`HasAuthority()` 在此通常为 false。
+
 ---
 
 ## 二十六、敌人 XP 奖励 & Meta Attribute & Passive Ability 事件监听
@@ -2454,4 +2515,95 @@ LevelUpNiagaraComponent->bAutoActivate = false;
 stat fps       — 显示帧率（再输一次关闭）
 stat unit      — 帧时间详情（Game/Draw/GPU 耗时）
 stat none      — 一次性关闭所有 stat
+
+---
+
+## 三十一、AttributePoint/SpellPoint 点数系统 + 菜单初始广播
+
+> 2026-08-14。属性点/法术点系统：PlayerState 存储复制 + Character 转发 + 菜单 WidgetController 初始广播。核心是两个模式："双入口广播"和"事件驱动 UI 要补存量"。
+
+### 31.1 完整链路
+
+```
+升级 GE → My_AuraAttributeSet::PostGameplayEffectExecute 算奖励
+  → Execute_AddToAttributePoint(SourceCharacter, 奖励)
+  → AAura_Character::AddToAttributePoint_Implementation   ← 转发（曾漏成 TODO，是断链点）
+  → AMy_AuraPlayerState::AddAttributePoint()
+  → OnAttributePointChanged.Broadcast
+      ├─ 服务器：AddAttributePoint 内直接广播
+      └─ 客户端：OnRep_AttributePoint → 广播（复制流程见 25.11）
+  → 菜单 OnPlayerAttributeChanged → 点数文本
+```
+
+### 31.2 PlayerState 端四件套（与 Level/XP 完全同款）
+
+```cpp
+UPROPERTY(VisibleAnywhere, ReplicatedUsing = OnRep_AttributePoint)
+int32 AttributePoint;
+
+void SetAttributePoint(int32 n) { AttributePoint = n; OnAttributePointChanged.Broadcast(AttributePoint); }  // 服务器
+void AddAttributePoint(int32 n) { AttributePoint += n; OnAttributePointChanged.Broadcast(AttributePoint); } // 服务器
+void OnRep_AttributePoint(int32 Old) { OnAttributePointChanged.Broadcast(AttributePoint); }                 // 客户端
+// DOREPLIFETIME(AMy_AuraPlayerState, AttributePoint);
+```
+
+`SpellPoint` 同理。**每个可复制点数据都要凑齐：属性 + DOREPLIFETIME + OnRep + Set/Add + 委托**，是一套固定模板。
+
+### 31.3 菜单初始广播的坑（BroadcastInitiaValues）
+
+WidgetController 两个阶段分工不同：
+
+| 函数 | 职责 | 时机 |
+|------|------|------|
+| `BroadcastInitiaValues` | 推当前值（存量） | 创建时一次 |
+| `BindCallbacksToDependencies` | 绑委托，响应将来变化（增量） | 创建时一次 |
+
+**坑**：只绑委托、不广播初始值 → 菜单首次打开显示 0/陈旧。
+
+**原理**：委托是"时点事件"，只能通知到"那一刻已存在的监听者"。升级发生在菜单创建**之前**，lambda 注册晚于变化 → 错过。且 UI 是**被动接收**（解耦架构），不会主动查数据。
+
+**修复**：`BroadcastInitiaValues` 里主动查一次当前值：
+
+```cpp
+AMy_AuraPlayerState* MyPS = Cast<AMy_AuraPlayerState>(PlayerState);
+if (MyPS)
+{
+	OnPlayerAttributeChanged.Broadcast(MyPS->GetAttributePoint());
+}
+```
+
+**通用原则：创建时补存量，变化时推增量，两条路都得有。**（XP 进度条 25.9 同款坑）
+
+### 31.4 WidgetController 单例 + AddLambda 重复绑定坑
+
+HUD 用 `if (XxxWidgetController == nullptr)` 缓存控制器，保证只创建一次：
+
+```cpp
+if (MenuWidgetController == nullptr)
+{
+	MenuWidgetController = NewObject<...>(this, MenuWidgetControllerClass);
+	MenuWidgetController->SetWidgetControllerParams(WCParams);
+	MenuWidgetController->BindCallbacksToDependencies();  // 只在这里执行一次
+}
+return MenuWidgetController;
+```
+
+**去掉守卫的坑**：每次创建都调 `BindCallbacksToDependencies` → `AddLambda([this])` 往 PlayerState 委托上**累积**绑定。打开菜单 N 次 → 一次点数变化触发 N 次广播（浪费）；旧控制器被 GC 后 lambda 还挂着（访问已销毁 UObject → 崩溃）；强捕获让旧对象泄漏。
+
+**这个守卫保证了"绑定一次"的不变式**——所有 `AddLambda` 代码都依赖它。
+
+### 31.5 子 widget Assign 与菜单 Broadcast 的时序
+
+菜单是 Overlay 的子 widget：子 widget（行）做 Assign，菜单做 Broadcast。
+
+```
+子 widget Construct → 自己调 My_GetMenuWidgetController（创建控制器 + C++ 绑定）
+  → Assign OnAttributeInfo / OnPlayerAttributeChanged
+菜单 Construct → 调 My_GetMenuWidgetController（返回缓存）→ Broadcast Initial Values
+```
+
+**关键**：
+- UMG 子 widget 先 Construct、父后 Construct → 时序天然正确
+- 子 widget 必须**自己拿控制器**（`My_GetMenuWidgetController`），不能等父传——否则 Assign 绑空
+- 所有调用走同一 HUD → 同一控制器，不会创建第二个（见 31.4）
 ```

@@ -6,6 +6,10 @@
 #include "AbilitySystemComponent.h"
 #include "My_AuraWidgetController.generated.h"
 
+//更新PlayerState委托
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FMy_OnPlayerStateChangedSignature, int32, NewValue);
+
+
 USTRUCT(BlueprintType)
 struct FMY_WidgetControllerParams
 {
