@@ -166,7 +166,7 @@ void UMy_AuraAbilitySystemComponent::UpgradeAttribute(const FGameplayTag& Attrib
 
 void UMy_AuraAbilitySystemComponent::ServerUpgradeAttribute_Implementation(const FGameplayTag AttributeTag)
 {
-	if (IMy_PlayerInterface::Execute_GetAttributePointFormPlayerState(GetAvatarActor()) < 0) return;
+	if (IMy_PlayerInterface::Execute_GetAttributePointFormPlayerState(GetAvatarActor()) <= 0) return;
 	FGameplayEventData EventData;
 	EventData.EventTag = AttributeTag;
 	EventData.EventMagnitude = 1.f;

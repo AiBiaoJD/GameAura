@@ -2742,8 +2742,8 @@ tag 是"按键身份证"不是物理键：物理键→tag 映射在 InputConfig 
 本次 `ServerUpgradeAttribute_Implementation` 的服务器校验：
 
 ```cpp
-if (IMy_PlayerInterface::Execute_GetAttributePointFormPlayerState(GetAvatarActor()) < 0) return;
+if (IMy_PlayerInterface::Execute_GetAttributePointFormPlayerState(GetAvatarActor()) <= 0) return;
 ```
 
-⚠️ 注意：`< 0` 允许点数扣到 0、-1、-2... 只拦"已负再扣"。真正封死作弊应改 `<= 0`（等于 0 就 return），保证永不为负。客户端 `> 0` 是防呆、服务器 `<= 0` 才是防作弊边界。
+✅ 已修正为 `<= 0`：等于 0 就 return，保证永不为负。客户端 `> 0` 是防呆、服务器 `<= 0` 才是防作弊边界。
 ```
