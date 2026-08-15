@@ -2818,5 +2818,40 @@ if (AbilityTag.IsValid())  // 跳过被动这类没配 My_Abilities tag 的能�
 }
 ```
 
-完整分析见 `BugNotes-PIE-AbilityInfo-None.md`。
+其拓扑根源见下节 32.12。
+
+### 32.12 PIE ListenServer 多人测试拓扑（镜像 pawn 是万恶之源，两个 bug 同一根源）
+
+PIE 设 2 个玩家 + ListenServer 时，编辑器给**每个连接**各建一个"客户端视图世界"：
+
+```
+服务器世界（权威）                    玩家各自的客户端视图世界
+├─ pawn A  Auth=1  ← 主机真实 pawn    ├─ pawn A' Auth=0  ← 主机的镜像
+└─ pawn B  Auth=1  ← 客户端真实 pawn   └─ pawn B' Auth=0  ← 客户端的镜像
+→ 一共 4 个 pawn（2×Auth=1 + 2×Auth=0）
+```
+
+**关键区别：镜像 pawn 的 ASC 归属不同**
+
+| 谁的镜像 | 用的 ASC | 二次 InitAbilityActorInfo 的后果 |
+|----------|----------|-------------------------------|
+| 主机 A' | **共享主机权威 PlayerState/ASC**（主机 PC 驻留服务器世界，同一份 ASC 被两个 pawn 先后初始化） | 权威 ASC 上**二次施放属性 GE** → 覆盖 MMC 捕获链 → 升级 MaxHealth 不重算（430 钉死） |
+| 客户端 B' | **独立的非权威 ASC** | 二次施放 GE 是 no-op（只改显示、不改数据）→ 一直正常 |
+
+**为什么 2P 才会出问题、单人/客户端不出**：镜像 pawn 只在编辑器多窗口 PIE 里存在；它二次跑 `My_InitAbilityActorInfo()` 会重复两件事——
+
+1. 二次施放属性 GE（`InitializeDefaultAttribute`）→ 断 MMC 捕获链 → **MaxHealth bug**
+2. 重新 `InitOverlay` → 重新遍历全部能力 → 此时被动技能已在列表（无 `My_Abilities` tag）→ **AbilityTag [None] 报错**
+
+**打包后为什么没有**：
+
+| 环境 | 主机结构 | 会不会二次施放 |
+|------|----------|--------------|
+| 打包 ListenServer | 主机视图 = 服务器世界本身，一个 pawn、一次 PossessedBy | 不会 |
+| 打包 Dedicated | 主机是普通客户端，独立进程，非权威 ASC，GE 施放 no-op | 不会 |
+| PIE 2 人 | 主机多一个镜像 pawn，共享权威 ASC | 会 ← 唯一 |
+
+**调试要点**：
+- 数 pawn / 看镜像：`My_InitAbilityActorInfo` 里打 `GetLocalRole()`，`Role_Authority`=真 pawn、`Role_SimulatedProxy`=镜像
+- 结论：这两个 bug 是 **PIE 测试工具的产物**，不是游戏逻辑错误，打包多人不受影响（建议打包实测一次确认）
 ```
