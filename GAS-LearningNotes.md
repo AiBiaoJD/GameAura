@@ -2828,6 +2828,7 @@ if (AbilityTag.IsValid())  // 跳过被动这类没配 My_Abilities tag 的能�
 - 每个客户端有**自己的客户端视图世界**：服务器把状态复制过来，客户端看到的是**副本**（Auth=0）
   - 自己控制的那份副本 = **自主代理**：本地预测，操作经 RPC 发到服务器、作用在服务器世界的真实 pawn 上
   - 别人的角色 = **模拟代理**：纯展示，跟着服务器数据走
+- **pawn 总数公式**：服务器世界永远只有 **N 个真实 pawn**；每个客户端视图里有 **N 个副本**。总数 = N + N×客户端数 = **N²**：2P=4、3P=9（不是 6——每个客户端看到的是**所有** N 个角色的副本，不只"自己+别人"各 1 个）
 
 PIE 2 人 + ListenServer 时，编辑器给**每个连接**各建一个"客户端视图世界"——连**主机连接也有**（这是 PIE 特有）：
 
@@ -2852,6 +2853,17 @@ PIE 2 人 + ListenServer 时，编辑器给**每个连接**各建一个"客户�
 | 主机 A' | **共享主机权威 PlayerState/ASC**（主机 PC 驻留服务器世界，同一份 ASC 被两个 pawn 先后初始化） | 权威 ASC 上**二次施放属性 GE** → 覆盖 MMC 捕获链 → 升级 MaxHealth 不重算（430 钉死） |
 | 客户端 B' | **独立的非权威 ASC** | 二次施放 GE 是 no-op（只改显示、不改数据）→ 一直正常 |
 
+**主机进程里实际执行的初始化**（PIE 所有世界都在同一进程跑）：
+
+```
+服务器世界：  A → PossessedBy → Init ①（主机权威 ASC）
+             B → PossessedBy → Init ②（客户端B的权威 ASC）
+复制视图世界：A' → OnRep_PlayerState → Init ①'（同一份权威 ASC ← 二次！）
+             B' → OnRep_PlayerState → Init（客户端B的非权威副本，无害）
+```
+
+主机端有 A、B 两个角色，但初始化执行时 **A 和 A' 把同一个权威 ASC 碰了两遍**（①+①'）——A' 那次的 `InitializeDefaultAttribute` 二次施放属性 GE，就是断 MMC 链的那一下。
+
 **为什么 2P 才会出问题、单人/客户端不出**：镜像 pawn 只在编辑器多窗口 PIE 里存在；它二次跑 `My_InitAbilityActorInfo()` 会重复两件事——
 
 1. 二次施放属性 GE（`InitializeDefaultAttribute`）→ 断 MMC 捕获链 → **MaxHealth bug**
@@ -2864,6 +2876,8 @@ PIE 2 人 + ListenServer 时，编辑器给**每个连接**各建一个"客户�
 | 打包 ListenServer | 主机视图 = 服务器世界本身，一个 pawn、一次 PossessedBy | 不会 |
 | 打包 Dedicated | 主机是普通客户端，独立进程，非权威 ASC，GE 施放 no-op | 不会 |
 | PIE 2 人 | 主机多一个镜像 pawn，共享权威 ASC | 会 ← 唯一 |
+
+> 补充：打包的**客户端**视图里也仍有 A'（它看到的"主机"副本），也会跑 `OnRep_PlayerState` → `My_InitAbilityActorInfo` → 施放 GE——但用的是客户端**非权威 ASC 副本**，改的是本地临时值、随即被服务器复制覆盖，**碰不到主机权威 ASC** → 无害。关键区别始终是：**A' 拿到的是不是权威 ASC**。
 
 **调试要点**：
 - 数 pawn / 看镜像：`My_InitAbilityActorInfo` 里打 `GetLocalRole()`，`Role_Authority`=真 pawn、`Role_SimulatedProxy`=镜像
