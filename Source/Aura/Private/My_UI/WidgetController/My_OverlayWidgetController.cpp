@@ -129,9 +129,14 @@ void UMy_OverlayWidgetController::OnInitializeStartupAbilities(UMy_AuraAbilitySy
 	Fmy_ForEachAbility OnEachAbility;
 	OnEachAbility.BindLambda([this,AuraASC](const FGameplayAbilitySpec& AbilitySpec)
 	{
-		FMy_AuraAbilityInfo info = AbilityDA->FindAbilityInfoFromTag(AuraASC->GetAbilityTagFromAbilitySpec(AbilitySpec));
-		info.InputTag = AuraASC->GetInputTagFromAbilitySpec(AbilitySpec);
-		OnAbilityInfo.Broadcast(info);
+		//跳过被动等没有配 My_Abilities AbilityTag 的能力（查不到对应 AbilityInfo，会报 [None] 错误）
+		const FGameplayTag AbilityTag = AuraASC->GetAbilityTagFromAbilitySpec(AbilitySpec);
+		if (AbilityTag.IsValid())
+		{
+			FMy_AuraAbilityInfo info = AbilityDA->FindAbilityInfoFromTag(AbilityTag);
+			info.InputTag = AuraASC->GetInputTagFromAbilitySpec(AbilitySpec);
+			OnAbilityInfo.Broadcast(info);
+		}
 	});
 
 	//广播Fmy_ForEachAbility

@@ -2746,4 +2746,77 @@ if (IMy_PlayerInterface::Execute_GetAttributePointFormPlayerState(GetAvatarActor
 ```
 
 ✅ 已修正为 `<= 0`：等于 0 就 return，保证永不为负。客户端 `> 0` 是防呆、服务器 `<= 0` 才是防作弊边界。
+
+### 32.10 GAS 执行顺序：GE 执行中 SetHealth(GetMaxHealth()) 读到旧 Max
+
+**症状**：升级时 `PostGameplayEffectExecute` 里 `SetHealth(GetMaxHealth())`，MaxHealth 只升了上限、血量没跟着补满。
+
+**原因**：两条时间线错开——
+
+```
+GE 执行过程中：
+  InternalExecuteMod → PreAttributeChange → 写 BaseValue
+  → PostAttributeChange → PostGameplayEffectExecute   ← 此刻在此
+  → 整条 GE 完成后 → UpdateAllAggregators 全局刷新     ← MMC 在这里才跑
+```
+
+- Instant GE 的 `PostGameplayEffectExecute` 在**聚合器刷新之前**执行
+- MaxHealth 是 MMC（MMC 依赖 VIgor + Level）算出来的**聚合值**，此时还没重算 → `GetMaxHealth()` 读到的还是旧上限
+- 所以升级补满不能写在 GE 执行中，只能**置标记**，等 MMC 刷新后补
+
+**修法（教程 bool 标记法）**——`My_AuraAttributeSet`：
+
+```cpp
+// 升级分支：只置标记，不 SetHealth
+bTopOffHealthOnLevelUp = true;
+bTopOffManaOnLevelUp   = true;
+
+// PostAttributeChange：MMC 已刷新，MaxHealth/MaxMana 已是新值，再补满
+if (bTopOffHealthOnLevelUp && Attribute == GetMaxHealthAttribute())
+{
+    SetHealth(GetMaxHealth());
+    bTopOffHealthOnLevelUp = false;
+}
+if (bTopOffManaOnLevelUp && Attribute == GetMaxManaAttribute())
+{
+    SetMana(GetMaxMana());
+    bTopOffManaOnLevelUp = false;
+}
+```
+
+**要点**：`PostAttributeChange` 对所有类型 GE 都触发（含 Infinite），也晚于聚合器刷新——所以补满（读 GetMaxHealth）必须放这里，不能放 `PostGameplayEffectExecute`。
+
+### 32.11 AbilityTag [None] 报错：被动技能没配 My_Abilities tag
+
+**症状**：PIE 2 人 ListenServer 报 `Can not find info form AbilityTag [None]`，单人不报。
+
+**链路**：Overlay 遍历 ASC 所有能力 → `GetAbilityTagFromAbilitySpec` 找 `My_Abilities.*` 前缀 → 被动技能没配 → 返回 None → `FindAbilityInfoFromTag(None)` 查不到 → 报错。
+
+**为什么 1P 不报、2P 报**——给能力的顺序：
+
+```
+AddCharacterAbilities：
+  ① AddCharacterAbilitiesFromASC(主动)     → 结束即广播 OnAbilityGiven
+  ②（此刻被动还没给，遍历不到 → 1P 不报错）
+  ③ AddCharacterPassiveAbilitiesFromASC(被动)
+```
+
+- 1P：广播发生在 ③ 之前 → 被动不在列表 → 不报
+- 2P：客户端能力整体复制，`OnRep_ActivateAbilities` 触发广播时被动已在列表 → 遍历到它 → [None]
+
+**无害**：被动不需要图标，UI 忽略空 info，只是日志难看。
+
+**修法**：`OnInitializeStartupAbilities` lambda 加守卫：
+
+```cpp
+const FGameplayTag AbilityTag = AuraASC->GetAbilityTagFromAbilitySpec(AbilitySpec);
+if (AbilityTag.IsValid())  // 跳过被动这类没配 My_Abilities tag 的能力
+{
+    FMy_AuraAbilityInfo info = AbilityDA->FindAbilityInfoFromTag(AbilityTag);
+    info.InputTag = AuraASC->GetInputTagFromAbilitySpec(AbilitySpec);
+    OnAbilityInfo.Broadcast(info);
+}
+```
+
+完整分析见 `BugNotes-PIE-AbilityInfo-None.md`。
 ```

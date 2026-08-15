@@ -106,7 +106,20 @@ void UMy_AuraAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribut
 void UMy_AuraAttributeSet::PostAttributeChange(const FGameplayAttribute& Attribute, float OldValue, float NewValue)
 {
 	Super::PostAttributeChange(Attribute, OldValue, NewValue);
-	//好像对于持续的Effect,PostAttributeChange这里也限制不了
+
+	//升级补满：此刻MMC已完成聚合器刷新，MaxHealth/MaxMana已是新值，
+	//GetMaxHealth()/GetMaxMana()读到的才是新Max（旧写法在GE执行中读的是旧Max）
+	if (bTopOffHealthOnLevelUp && Attribute == GetMaxHealthAttribute())
+	{
+		SetHealth(GetMaxHealth());
+		bTopOffHealthOnLevelUp = false;
+	}
+	if (bTopOffManaOnLevelUp && Attribute == GetMaxManaAttribute())
+	{
+		SetMana(GetMaxMana());
+		bTopOffManaOnLevelUp = false;
+	}
+
 }
 
 //在 GameplayEffect 执行完毕后调用
@@ -183,8 +196,10 @@ void UMy_AuraAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffec
 				IMy_PlayerInterface::Execute_AddToAttributePoint(Props.SourceCharacter, AttributePointReward);
 				IMy_PlayerInterface::Execute_AddToSpellPoint(Props.SourceCharacter, SpellPointReward);
 
-				SetHealth(GetMaxHealth());
-				SetMana(GetMaxMana());
+				//升级补满不再在GE执行中做：此刻MMC还没刷新，GetMaxHealth()读到的是旧Max
+				//只置标记，等MMC刷新MaxHealth/MaxMana后在PostAttributeChange里补满
+				bTopOffHealthOnLevelUp = true;
+				bTopOffManaOnLevelUp = true;
 
 				IMy_PlayerInterface::Execute_LevelUp(Props.SourceCharacter);
 			}

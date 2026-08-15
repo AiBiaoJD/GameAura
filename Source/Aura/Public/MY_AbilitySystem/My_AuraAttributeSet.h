@@ -293,6 +293,11 @@ public:
 	void OnRep_PhysicalResistance(const FGameplayAttributeData& OldPhysicalResistance) const;
 
 private:
+	//升级补满标记：不在GE执行中SetHealth（此刻MMC还没刷新，GetMaxHealth读到的是旧值），
+	//只置标记，等MMC刷新MaxHealth/MaxMana后在PostAttributeChange里补满
+	bool bTopOffHealthOnLevelUp = false;
+	bool bTopOffManaOnLevelUp = false;
+
 	void SetEffectProperty(const struct FGameplayEffectModCallbackData& Data, FMy_EffectProperties& Props) const;
 	void ShowDamageText(const FMy_EffectProperties& Props, float Damage, bool IsBlockedHit, bool IsCriticalHit) const;
 	void SendXPEvent(const FMy_EffectProperties& Props) const;
