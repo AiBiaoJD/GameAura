@@ -4,11 +4,18 @@
 
 #include "CoreMinimal.h"
 #include "AbilitySystemComponent.h"
+#include "MY_AbilitySystem/My_AuraAttributeSet.h"
+#include "MY_AbilitySystem/Data/My_AbilityInfo.h"
+#include "My_Controler/My_AuraPlayerState.h"
+#include "My_Controler/My_Aura_Controller.h"
 #include "My_AuraWidgetController.generated.h"
+
 
 //更新PlayerState委托
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FMy_OnPlayerStateChangedSignature, int32, NewValue);
 
+//AbilityInfo委托,技能UI相关
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FMy_AbilityInfoSignature, const FMy_AuraAbilityInfo&, AbilityInfo);
 
 USTRUCT(BlueprintType)
 struct FMY_WidgetControllerParams
@@ -17,12 +24,12 @@ struct FMY_WidgetControllerParams
 
 	FMY_WidgetControllerParams()
 	{
-		
 	}
-	FMY_WidgetControllerParams(APlayerController* PC, APlayerState* PS, UAbilitySystemComponent* ASC, UAttributeSet* AS):PlayerController(PC),PlayerState(PS),AbilitySystemComponent(ASC),AttributeSet(AS)
-	{
 
+	FMY_WidgetControllerParams(APlayerController* PC, APlayerState* PS, UAbilitySystemComponent* ASC, UAttributeSet* AS): PlayerController(PC), PlayerState(PS), AbilitySystemComponent(ASC), AttributeSet(AS)
+	{
 	}
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	TObjectPtr<APlayerController> PlayerController = nullptr;
 
@@ -34,9 +41,7 @@ struct FMY_WidgetControllerParams
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	TObjectPtr<UAttributeSet> AttributeSet = nullptr;
-
 };
-
 
 /**
  * 
@@ -59,6 +64,12 @@ public:
 
 	//ATTribute属性改变，委托调用的回调函数
 	virtual void BindCallbacksToDependencies();
+
+	UPROPERTY(BlueprintAssignable, Category = "My_GAS|AbilityUI")
+	FMy_AbilityInfoSignature OnAbilityInfo;
+
+	void BroadcastAbilityInfo();
+
 protected:
 	UPROPERTY(BlueprintReadOnly, Category="WidgetController")
 	TObjectPtr<APlayerController> PlayerController;
@@ -71,4 +82,24 @@ protected:
 
 	UPROPERTY(BlueprintReadOnly, Category = "WidgetController")
 	TObjectPtr<UAttributeSet> AttributeSet;
+
+	UPROPERTY(BlueprintReadOnly, Category="WidgetController")
+	TObjectPtr<AMy_Aura_Controller> AuraPlayerController;
+
+	UPROPERTY(BlueprintReadOnly, Category = "WidgetController")
+	TObjectPtr<AMy_AuraPlayerState> AuraPlayerState;
+
+	UPROPERTY(BlueprintReadOnly, Category = "WidgetController")
+	TObjectPtr<UMy_AuraAbilitySystemComponent> AuraAbilitySystemComponent;
+
+	UPROPERTY(BlueprintReadOnly, Category = "WidgetController")
+	TObjectPtr<UMy_AuraAttributeSet> AuraAttributeSet;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Widget Data")
+	TObjectPtr<UMy_AbilityInfo> AbilityDA;
+
+	AMy_Aura_Controller* GetAuraPC();
+	AMy_AuraPlayerState* GetAuraPS();
+	UMy_AuraAbilitySystemComponent* GetAuraASC();
+	UMy_AuraAttributeSet* GetAuraAS();
 };

@@ -11,22 +11,32 @@ UMy_OverlayWidgetController* AMy_AuraHUD::GetOverlayWidgetController(const FMY_W
 	{
 		OverlayWidgetController = NewObject<UMy_OverlayWidgetController>(this, OverlayWidgetControllerClass);
 		OverlayWidgetController->SetWidgetControllerParams(WCParams);
-
 		//OverlayWidgetController创建好，就可以绑定回调函数(委托)来检查ATTribute变量改变
 		OverlayWidgetController->BindCallbacksToDependencies();
 	}
-	return  OverlayWidgetController;
+	return OverlayWidgetController;
 }
 
-UMy_AttributeMenuWidgetController* AMy_AuraHUD::GetMenuWidgetController(const FMY_WidgetControllerParams& WCParams)
+UMy_AttributeMenuWidgetController* AMy_AuraHUD::GetAttributeMenuWidgetController(const FMY_WidgetControllerParams& WCParams)
 {
-	if (MenuWidgetController == nullptr)
+	if (AttributeMenuWidgetController == nullptr)
 	{
-		MenuWidgetController = NewObject<UMy_AttributeMenuWidgetController>(this, MenuWidgetControllerClass);
-		MenuWidgetController->SetWidgetControllerParams(WCParams);
-		MenuWidgetController->BindCallbacksToDependencies();
+		AttributeMenuWidgetController = NewObject<UMy_AttributeMenuWidgetController>(this, AttributeMenuWidgetControllerClass);
+		AttributeMenuWidgetController->SetWidgetControllerParams(WCParams);
+		AttributeMenuWidgetController->BindCallbacksToDependencies();
 	}
-	return MenuWidgetController;
+	return AttributeMenuWidgetController;
+}
+
+UMy_SpellMenuWidgetController* AMy_AuraHUD::GetSpellMenuWidgetController(const FMY_WidgetControllerParams& WCParams)
+{
+	if (SpellMenuWidgetController == nullptr)
+	{
+		SpellMenuWidgetController = NewObject<UMy_SpellMenuWidgetController>(this, SpellMenuWidgetControllerClass);
+		SpellMenuWidgetController->SetWidgetControllerParams(WCParams);
+		SpellMenuWidgetController->BindCallbacksToDependencies();
+	}
+	return SpellMenuWidgetController;
 }
 
 

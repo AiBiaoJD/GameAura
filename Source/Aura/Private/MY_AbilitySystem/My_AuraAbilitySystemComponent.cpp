@@ -53,7 +53,7 @@ void UMy_AuraAbilitySystemComponent::AddCharacterAbilitiesFromASC(const TArray<T
 	//处理技能UI显示的旗子标记
 	bStartupAbilityGiven = true;
 	/* 角色添加能力的时候，可以给这个能力设置UI，和AbilityInfo对比*/
-	OnAbilityGiven.Broadcast(this);
+	OnAbilityGiven.Broadcast();
 }
 
 void UMy_AuraAbilitySystemComponent::AddCharacterPassiveAbilitiesFromASC(const TArray<TSubclassOf<UGameplayAbility>>& StartupPassiveAbility)
@@ -72,7 +72,7 @@ void UMy_AuraAbilitySystemComponent::OnRep_ActivateAbilities()
 	if (!bStartupAbilityGiven)
 	{
 		bStartupAbilityGiven = true;
-		OnAbilityGiven.Broadcast(this);
+		OnAbilityGiven.Broadcast();
 	}
 }
 

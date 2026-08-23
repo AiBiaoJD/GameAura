@@ -7,6 +7,7 @@
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "My_AuraAbilitySystemLibrary.generated.h"
 
+class UMy_SpellMenuWidgetController;
 class UMy_OverlayWidgetController;
 class UMy_AttributeMenuWidgetController;
 
@@ -20,11 +21,16 @@ class AURA_API UMy_AuraAbilitySystemLibrary : public UBlueprintFunctionLibrary
 
 public:
 	UFUNCTION(BlueprintPure, Category = "My_AuraAbilitySystemLibrary|My_WidgetController")
+	static bool MakeWidgetControllerParams(const UObject* WorldContextObject, FMY_WidgetControllerParams& Params, AMy_AuraHUD*& HUD);
+
+	UFUNCTION(BlueprintPure, Category = "My_AuraAbilitySystemLibrary|My_WidgetController", meta=(DefaultToSelf="WorldContextObject"))
 	static UMy_OverlayWidgetController* My_GetOverlayWidgetController(const UObject* WorldContextObject);
 
-	UFUNCTION(BlueprintPure, Category = "My_AuraAbilitySystemLibrary|My_WidgetController")
-	static UMy_AttributeMenuWidgetController* My_GetMenuWidgetController(const UObject* WorldContextObject);
+	UFUNCTION(BlueprintPure, Category = "My_AuraAbilitySystemLibrary|My_WidgetController", meta=(DefaultToSelf="WorldContextObject"))
+	static UMy_AttributeMenuWidgetController* My_GetAttributeMenuWidgetController(const UObject* WorldContextObject);
 
+	UFUNCTION(BlueprintPure, Category = "My_AuraAbilitySystemLibrary|My_WidgetController", meta=(DefaultToSelf="WorldContextObject"))
+	static UMy_SpellMenuWidgetController* My_GetSpellMenuWidgetController(const UObject* WorldContextObject);
 	/*
 	 * Enemy
 	 */
@@ -56,7 +62,7 @@ public:
 	// Attack Part: Get Actor from sphere
 	UFUNCTION(BlueprintCallable, Category = "My_AuraAbilitySystemLibrary|My_GameplayMachanics")
 	static void GetLivePlayersWithRadius(const UObject* WorldContextObject, TArray<AActor*>& OutOverLappingActors, const TArray<AActor*>& ActorToIgnore, float Radius, const FVector& SphereOrigin);
-	
+
 	UFUNCTION(BlueprintPure, Category = "My_AuraAbilitySystemLibrary|My_GameplayMachanics")
 	static bool IsNotFriend(AActor* FirstActor, AActor* SecondActor);
 

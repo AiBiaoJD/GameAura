@@ -302,3 +302,4 @@ private:
 	void ShowDamageText(const FMy_EffectProperties& Props, float Damage, bool IsBlockedHit, bool IsCriticalHit) const;
 	void SendXPEvent(const FMy_EffectProperties& Props) const;
 };
+

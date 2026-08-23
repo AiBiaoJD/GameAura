@@ -73,7 +73,9 @@
       "WebFetch(domain:www.unrealengine.com)",
       "WebFetch(domain:3dcghub.com)",
       "WebFetch(domain:www.fab.com)",
-      "WebFetch(domain:deepwiki.com)"
+      "WebFetch(domain:deepwiki.com)",
+      "Bash(grep -aoE '[ -~]{4,}' My_BP_Aura.uasset)",
+      "Bash(grep -aoE '[ -~]{4,}' My_GE_SecondAttribute_Aura.uasset)"
     ]
   }
 }

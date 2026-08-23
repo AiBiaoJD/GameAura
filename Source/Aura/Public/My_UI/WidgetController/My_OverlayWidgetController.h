@@ -36,10 +36,10 @@ struct FMy_UIWidgetRow : public FTableRowBase
 
 //更新Attribute委托
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FMy_OnAttributeChangedSignature, float, NewValue);
+
 //Message委托
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FMy_MessageWidgetRowSignature, FMy_UIWidgetRow, Row);
-//AbilityInfo委托
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FMy_AbilityInfoSignature, const FMy_AuraAbilityInfo&, AbilityInfo);
+
 
 //XP
 
@@ -50,6 +50,7 @@ UCLASS(BlueprintType, Blueprintable)
 class AURA_API UMy_OverlayWidgetController : public UMy_AuraWidgetController
 {
 	GENERATED_BODY()
+
 public:
 	virtual void BroadcastInitiaValues() override;
 
@@ -68,35 +69,28 @@ public:
 	FMy_OnAttributeChangedSignature OnMaxManaChanged;
 
 	UPROPERTY(BlueprintAssignable, Category = "My_GAS|XP")
-	FMy_OnAttributeChangedSignature OnXPPercentChanged;   // float: 0~1 进度
-	
+	FMy_OnAttributeChangedSignature OnXPPercentChanged; // float: 0~1 进度
+
 	UPROPERTY(BlueprintAssignable, Category = "My_GAS|Level")
-	FMy_OnPlayerStateChangedSignature OnPlayerLevelChanged;  // int32: 新等级
+	FMy_OnPlayerStateChangedSignature OnPlayerLevelChanged; // int32: 新等级
 
 	UPROPERTY(BlueprintAssignable, Category = "My_GAS|Message")
 	FMy_MessageWidgetRowSignature OnMessageWidgetRow;
 
-	UPROPERTY(BlueprintAssignable, Category = "My_GAS|Message")
-	FMy_AbilityInfoSignature OnAbilityInfo;
-
 protected:
-
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Widget Data")
 	TObjectPtr<UDataTable> MessageWidgetDataTable;
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Widget Data")
-	TObjectPtr<UMy_AbilityInfo> AbilityDA;
 
 	//获取数据表的特定行
-	template<typename T>
+	template <typename T>
 	T* GetDataTableRowByTag(UDataTable* DataTable, const FGameplayTag& Tag);
 
-	void OnInitializeStartupAbilities(UMy_AuraAbilitySystemComponent* AuraASC);
 
 	void OnXPChangedFunc(int32 NewXP);
 };
 
 
-template<typename T>
+template <typename T>
 inline T* UMy_OverlayWidgetController::GetDataTableRowByTag(UDataTable* DataTable, const FGameplayTag& Tag)
 {
 	return DataTable->FindRow<T>(Tag.GetTagName(), TEXT(""));

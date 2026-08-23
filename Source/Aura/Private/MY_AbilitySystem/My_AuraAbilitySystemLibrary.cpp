@@ -10,38 +10,57 @@
 #include "My_Interraction/My_CombatInterface.h"
 #include "My_UI/HUD/My_AuraHUD.h"
 
-UMy_OverlayWidgetController* UMy_AuraAbilitySystemLibrary::My_GetOverlayWidgetController(
-	const UObject* WorldContextObject)
+
+bool UMy_AuraAbilitySystemLibrary::MakeWidgetControllerParams(const UObject* WorldContextObject, FMY_WidgetControllerParams& Params, AMy_AuraHUD*& HUD)
 {
 	if (APlayerController* PC = UGameplayStatics::GetPlayerController(WorldContextObject, 0))
 	{
-		if (AMy_AuraHUD* AuraHUD = Cast<AMy_AuraHUD>(PC->GetHUD()))
+		HUD = Cast<AMy_AuraHUD>(PC->GetHUD());
+		if (HUD)
 		{
 			AMy_AuraPlayerState* PS = PC->GetPlayerState<AMy_AuraPlayerState>();
 			UAbilitySystemComponent* ASC = PS->GetAbilitySystemComponent();
 			UAttributeSet* AS = PS->GetAttributeSet();
 
-			const FMY_WidgetControllerParams WidgetControllerParams(PC, PS, ASC, AS);
-			return AuraHUD->GetOverlayWidgetController(WidgetControllerParams);
+			Params.AttributeSet = AS;
+			Params.PlayerController = PC;
+			Params.PlayerState = PS;
+			Params.AbilitySystemComponent = ASC;
+			return true;
 		}
+	}
+	return false;
+}
+
+UMy_OverlayWidgetController* UMy_AuraAbilitySystemLibrary::My_GetOverlayWidgetController(const UObject* WorldContextObject)
+{
+	FMY_WidgetControllerParams Params;
+	AMy_AuraHUD* HUD = nullptr;
+	if (MakeWidgetControllerParams(WorldContextObject, Params, HUD))
+	{
+		return HUD->GetOverlayWidgetController(Params);
 	}
 	return nullptr;
 }
 
-UMy_AttributeMenuWidgetController* UMy_AuraAbilitySystemLibrary::My_GetMenuWidgetController(
-	const UObject* WorldContextObject)
+UMy_AttributeMenuWidgetController* UMy_AuraAbilitySystemLibrary::My_GetAttributeMenuWidgetController(const UObject* WorldContextObject)
 {
-	if (APlayerController* PC = UGameplayStatics::GetPlayerController(WorldContextObject, 0))
+	FMY_WidgetControllerParams Params;
+	AMy_AuraHUD* HUD = nullptr;
+	if (MakeWidgetControllerParams(WorldContextObject, Params, HUD))
 	{
-		if (AMy_AuraHUD* AuraHUD = Cast<AMy_AuraHUD>(PC->GetHUD()))
-		{
-			AMy_AuraPlayerState* PS = PC->GetPlayerState<AMy_AuraPlayerState>();
-			UAbilitySystemComponent* ASC = PS->GetAbilitySystemComponent();
-			UAttributeSet* AS = PS->GetAttributeSet();
+		return HUD->GetAttributeMenuWidgetController(Params);
+	}
+	return nullptr;
+}
 
-			const FMY_WidgetControllerParams WidgetControllerParams(PC, PS, ASC, AS);
-			return AuraHUD->GetMenuWidgetController(WidgetControllerParams);
-		}
+UMy_SpellMenuWidgetController* UMy_AuraAbilitySystemLibrary::My_GetSpellMenuWidgetController(const UObject* WorldContextObject)
+{
+	FMY_WidgetControllerParams Params;
+	AMy_AuraHUD* HUD = nullptr;
+	if (MakeWidgetControllerParams(WorldContextObject, Params, HUD))
+	{
+		return HUD->GetSpellMenuWidgetController(Params);
 	}
 	return nullptr;
 }
@@ -171,7 +190,6 @@ void UMy_AuraAbilitySystemLibrary::GetLivePlayersWithRadius(const UObject* World
 				}
 
 				UE_LOG(LogTemp, Warning, TEXT("------------2------------"));
-
 			}
 		}
 	}
@@ -184,7 +202,3 @@ bool UMy_AuraAbilitySystemLibrary::IsNotFriend(AActor* FirstActor, AActor* Secon
 	const bool Friends = BothArePlayer || BothAreEnemy;
 	return !Friends;
 }
-
-
-
-
