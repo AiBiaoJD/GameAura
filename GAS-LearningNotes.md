@@ -3112,6 +3112,49 @@ AbilityInfoDelegate.Broadcast(Info);   // 蓝图只收这个，拿到就能渲�
 - 蓝图：`My_DA_AbilityInfo` 配 `LevelUpRequirement`，GameMode 挂 `AbilityInfo`，新增 Electrocute GA、SpellMenu/SpellGlobe UI 资产，Fire 相关蓝图移入 `Ability/Fire/` 子目录
 - 启动能力（`AddCharacterAbilitiesFromASC`）现直接挂 `Status.Equipped`，Overlay 图标正常显示
 
-### 34.5 一句话总结
+### 34.5 升级 → SpellMenu 技能图标：完整数据流（My_ 实现）
+
+一条从"打怪得经验"到"技能树图标解锁"的完整链路，分 6 步，服务器/客户端分工清晰。
+
+**① 触发升级（服务器，AttributeSet）**
+`My_AuraAttributeSet::PostGameplayEffectExecute` 结算 IncomingXP → 算得 `NumLevelUp > 0` → `IMy_PlayerInterface::Execute_AddToPlayerLevel(Props.SourceCharacter, NumLevelUp)`
+
+**② 角色入口（服务器，Character）**
+`AAura_Character::AddToPlayerLevel_Implementation`：
+- `AuraPlayerState->AddToLevel(N)` → `Level += N`，`OnLevelChanged` 广播 → Overlay 等级数字刷新（`Level` 是 `ReplicatedUsing = OnRep_Level`，客户端 OnRep 也刷）
+- `AuraASC->UpdateAbilityStatuses(IMy_CombatInterface::Execute_GetPlayerLevel(this))` — 传**升级后的总等级**（不是差值）
+
+**③ 解锁判断（服务器，ASC）**
+`UMy_AuraAbilitySystemComponent::UpdateAbilityStatuses(Level)`：
+- `UMy_AuraAbilitySystemLibrary::GetAbilityInfo(GetAvatarActor())` 从 GameMode 拿 `AbilityInfo` DataAsset
+- 遍历 `AbilityInformation`：`AbilityTag` 无效 / `AbilityClass` 空 / `Level < LevelUpRequirement` → `continue`
+- `GetSpecFromAbilityTag(AbilityTag)` 为 `nullptr`（还没拥有）→ 进入解锁
+- `GiveAbility(Spec)` 挂 `Status.Eligible` — **这是"解锁"的本体**，不是改显示
+- `ClientUpdateAbilityStatus(AbilityTag, Eligible)` — Client Reliable RPC 跨端
+
+**④ RPC 跨端（客户端）**
+`ClientUpdateAbilityStatus_Implementation` → `OnAbilityStatusChanged.Broadcast(AbilityTag, StatusTag)`
+
+**⑤ WidgetController 组装（客户端）**
+`SpellMenuWidgetController` 在 HUD `GetSpellMenuWidgetController()` 懒加载时 `BindCallbacksToDependencies()` 已绑 lambda：
+- `FindAbilityInfoFromTag(AbilityTags)` → 取完整 info 结构
+- `info.StatusTag = StatusTag` — 用广播来的状态覆盖
+- `OnAbilityInfo.Broadcast(info)` — 广播"成品"，蓝图直接收
+
+**⑥ UI 蓝图渲染（客户端）**
+WBP 技能行绑 `OnAbilityInfo` → 按 `StatusTag` 决定图标显示（锁定 / 可学 / 已装备）
+
+**两条广播路径（为什么蓝图零改动）**：
+- 初始：菜单打开 → `BroadcastInitiaValues` → `BroadcastAbilityInfo` → `ForEachAbility` 逐条组装（含 StatusTag）→ 广播 → 初始状态正确
+- 动态：升级解锁 → ③④⑤ → 只广播变化的那条技能
+- 两条都走 `OnAbilityInfo` 同一个委托，蓝图只需绑一次
+
+**职责划分**：
+| 端 | 角色 | 做的事 |
+|---|---|---|
+| 服务器 | 判断 + 授权 | 算等级、判门槛、`GiveAbility`、挂状态、发 RPC |
+| 客户端 | 接收 + 渲染 | 收 RPC、绑委托、组 info、刷图标 |
+
+### 34.6 一句话总结
 
 **判断在 C++、授权在 C++、状态作为 spec 的一部分广播出去、UI 只负责显示**——逻辑层决定"是什么"，表现层只显示"显示什么"。所有"两个委托先后 / 蓝图 giveAbility / 多端一致"的困惑都源于想把这个职责上移到 UI，教程把它留在 C++ 后一切自然消失。
