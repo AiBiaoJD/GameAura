@@ -35,6 +35,7 @@ void UMy_AuraWidgetController::BroadcastAbilityInfo()
 			check(AbilityDA);
 			FMy_AuraAbilityInfo info = AbilityDA->FindAbilityInfoFromTag(AbilityTag);
 			info.InputTag = GetAuraASC()->GetInputTagFromAbilitySpec(AbilitySpec);
+			info.StatusTag = GetAuraASC()->GetStatusTagFromAbilitySpec(AbilitySpec);
 			OnAbilityInfo.Broadcast(info);
 		}
 	});

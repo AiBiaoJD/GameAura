@@ -10,7 +10,7 @@
 /**
  * 
  */
-
+class UGameplayAbility;
 USTRUCT(BlueprintType)
 struct FMy_AuraAbilityInfo
 {
@@ -21,6 +21,9 @@ struct FMy_AuraAbilityInfo
 	UPROPERTY(BlueprintReadOnly)
 	FGameplayTag InputTag = FGameplayTag();
 
+	UPROPERTY(BlueprintReadOnly)
+	FGameplayTag StatusTag = FGameplayTag();
+
 	UPROPERTY(BlueprintReadOnly, EditDefaultsOnly)
 	FGameplayTag CoolDownTag = FGameplayTag();
 
@@ -29,6 +32,12 @@ struct FMy_AuraAbilityInfo
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	TObjectPtr<UMaterialInterface> Background = nullptr;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	int32 LevelUpRequirement = 1;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	TSubclassOf<UGameplayAbility> AbilityClass = nullptr;
 };
 
 

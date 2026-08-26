@@ -23,7 +23,6 @@ public:
 	FGameplayTag My_Attribute_Primary_Resilience;
 	FGameplayTag My_Attribute_Primary_VIgor;
 
-
 	// Secondary Attributes Tag
 	FGameplayTag My_Attribute_Secondary_Armor;
 	FGameplayTag My_Attribute_Secondary_ArmorPenetration;
@@ -42,7 +41,6 @@ public:
 
 	// Meta Attributes Tag
 	FGameplayTag My_Attribute_Meta_IncomingXP;
-
 	
 	// InputActions Tag
 	FGameplayTag My_InputTag_LMB;
@@ -52,6 +50,9 @@ public:
 	FGameplayTag My_InputTag_3;
 	FGameplayTag My_InputTag_4;
 	FGameplayTag My_InputTag_5;
+	FGameplayTag My_InputTag_Passive_1;
+	FGameplayTag My_InputTag_Passive_2;
+
 
 	// Effect SetbyCaller Tag
 	FGameplayTag My_EffectData_Damage;
@@ -65,11 +66,27 @@ public:
 	FGameplayTag My_DamageType_Arcane;
 	FGameplayTag My_DamageType_Physical;
 
-	// Attack
+	// Attack (General Ability)
 	FGameplayTag My_Abilities_Attack;
 	FGameplayTag My_Abilities_Summon;
-	FGameplayTag My_Abilities_Fire_FireBolt;
+	FGameplayTag My_Abilities_HitReact; //暂时没使用
 
+	// AbilitySpellTree
+	FGameplayTag My_Abilities_Fire_FireBolt;
+	FGameplayTag My_Abilities_Lighting_Electrocute;
+	
+	// AbilityStatue
+	FGameplayTag My_Abilities_Status_Locked;
+	FGameplayTag My_Abilities_Status_Eligible;
+	FGameplayTag My_Abilities_Status_Unlocked;
+	FGameplayTag My_Abilities_Status_Equipped;
+
+	// AbilityType
+	FGameplayTag My_Abilities_Type_Offensive;
+	FGameplayTag My_Abilities_Type_Passive;
+	FGameplayTag My_Abilities_Type_None;
+
+	
 	//CoolDown
 	FGameplayTag My_CoolDown_Fire_FireBolt;
 
@@ -84,9 +101,9 @@ public:
 	FGameplayTag My_Montage_Attack3;
 	FGameplayTag My_Montage_Attack4;
 
-	
+
 	// Map: DamageType To  Resistance
-	TMap<FGameplayTag,FGameplayTag> DamageToResistance;
+	TMap<FGameplayTag, FGameplayTag> DamageToResistance;
 
 private:
 	static FMy_AuraGameplayTags GameplayTagsInstance; // C++：声明，必须在这里

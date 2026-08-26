@@ -3034,3 +3034,84 @@ UE_MVVM_SET_PROPERTY_VALUE(HealthPercent, 0.5f);   // ✅ 血条动
 | 业务操作（如 `UpgradeAttribute`） | ⚠️ 变成 VM 方法（按钮点击 → VM 方法 → 调 ASC） |
 
 **结论**：纯 MVVM 可行，Controller 这个"中间人角色"退场，但活全搬进 VM——省的是"手动 Broadcast"那段，代码总量没少。也可混用（Controller 管业务/取数，VM 只管 UI 属性）。选择依据：**多 Widget 共享数据** → Controller（HUD 缓存）占优；**UI 自动刷新、少样板** → MVVM 占优。
+
+## 三十四、SpellMenu 技能解锁：为什么判断放 C++，而不是把 Level 传蓝图
+
+### 34.1 一句话结论
+
+技能解锁 = **ASC 真正 `GiveAbility`（创建能力 spec）+ 状态标签挂到 spec**，不是"改一下显示"。
+判断和授权都在 C++ 做，状态随 `AbilityInfo` 委托广播成"成品"给 UI；蓝图只读状态渲染，从不参与"能不能解锁"的判断。
+
+### 34.2 教程完整链路
+
+```cpp
+// 升级入口（AuraCharacter::AddToLevel）
+AuraPlayerState->AddToLevel(Level);                  // ① 广播 level → Overlay 显示
+AuraASC->UpdateAbilityStatuses(Level);               // ② 解锁判断（关键）
+```
+
+```cpp
+void UAuraAbilitySystemComponent::UpdateAbilityStatuses(int32 Level)
+{
+    for (const FAuraAbilityInfo& Info : AbilityInfo->AbilityInformation)   // 遍历 DataAsset
+    {
+        if (!Info.AbilityTag.IsValid()) continue;
+        if (Level < Info.LevelRequirement) continue;   // 等级门槛
+        if (GetSpecFromAbilityTag(Info.AbilityTag) == nullptr)  // 前置/已拥有检查
+        {
+            FGameplayAbilitySpec Spec(Info.Ability, 1);
+            Spec.DynamicAbilityTags.AddTag(Abilities_Status_Eligible);  // 状态挂 spec
+            GiveAbility(Spec);                    // 真给能力
+            ClientUpdateAbilityStatus(...);       // RPC 广播状态变化
+        }
+    }
+}
+```
+
+```cpp
+// SpellMenuWidgetController 绑 AbilityStatusChanged → 组装 → 广播成品
+FAuraAbilityInfo Info = AbilityInfo->FindAbilityInfoForTag(AbilityTag);
+Info.StatusTag = StatusTag;
+AbilityInfoDelegate.Broadcast(Info);   // 蓝图只收这个，拿到就能渲染
+```
+
+### 34.3 为什么不把 Level 直接传蓝图（"两个委托方案"为什么不行）
+
+**先给结论**：蓝图上"比较 level vs LevelUpRequirement"完全写得出来，但"解锁"绕不开 C++：
+
+| 关卡 | 为什么必须 C++ |
+|---|---|
+| `GiveAbility` 不是 BlueprintCallable | 蓝图上没有"给技能"节点 |
+| `DynamicAbilityTags` / `MarkAbilitySpecDirty` | 纯 C++，且只有 C++ 能保证状态复制到客户端 |
+| 服务器权威 | 多人下给能力必须走 Server RPC 校验，蓝图无此通道 |
+| 前置技能检查 | 要查 ASC 当前已拥有的 spec（`GetSpecFromAbilityTag`） |
+
+既然授权必须写 C++ 包装函数，那"判断"顺手也放 C++，连包装函数都不用写——这就是教程省掉一切蓝图层样板的原因。
+
+**"两个委托先后"问题的本质与解法**：
+- 蓝图上两个委托（Level、AbilityInfo）各自独立触发，没有"两个都到了再合并"的原生机制。
+- 解法是**存变量 + 幂等刷新**：两个事件各自写入自己的变量，然后都调用同一个 `Refresh` 函数；`Refresh` 永远读两个变量的最新值。缺数据的刷新只是"空转"，最后一次刷新必然数据齐全，结果正确。
+- 但蓝图手搓这个要自己处理：Map 按 tag 去重（`OnAbilityInfo` 会重播）、Level 未到时的中间态（加 `bHasLevel` 守卫）——全是 C++ 里免费的东西。
+
+**更根本的三条原因**：
+1. **状态是共享单一事实源**：`StatusTag` 存在 spec 的 DynamicAbilityTags，被输入绑定、装备/花点逻辑、Overlay 图标、SpellMenu 多处读。蓝图本地算的是"副本"，装备一次就脱节。
+2. **联机一致性**：DynamicAbilityTags 随 ability spec 复制到所有客户端，服务器授权 → 状态复制 → 每端渲染同一真值。蓝图本地算则每端各算一遍，本机可能显示"已解锁"但服务器还没授权。
+3. **UI 是视图不是逻辑层**：WidgetController 模式 = "数据下推、事件上抛"，UI 只渲染 Controller 广播的结果。
+
+### 34.4 我的 My_ 版对应实现（已完成）
+
+`My_` 版照教程补完两块：
+1. `UMy_AuraAbilitySystemComponent` 新增 `UpdateAbilityStatuses(int32 Level)`（遍历 `AbilityInfo` DataAsset，等级达门槛且未拥有的能力 `GiveAbility` 并挂 `Status.Eligible`，再 `ClientUpdateAbilityStatus` RPC 广播）；配套 `GetSpecFromAbilityTag`（查前置/已拥有）、`GetStatusTagFromAbilitySpec`
+2. 升级入口 `AAura_Character::AddToPlayerLevel_Implementation` 在 `AddToLevel` 后调用 `UpdateAbilityStatuses(IMy_CombatInterface::Execute_GetPlayerLevel(this))` 触发解锁
+
+配套改动（一次到位）：
+- `FMy_AuraAbilityInfo` 新增 `StatusTag` / `LevelUpRequirement` / `AbilityClass` 字段
+- `My_AuraWidgetController::BroadcastAbilityInfo` 广播时补上 `StatusTag`，Overlay/SpellMenu 共用同一广播
+- `SpellMenuWidgetController::BindCallbacksToDependencies` 绑 `OnAbilityStatusChanged` → 组装 info → 广播 `OnAbilityInfo`，菜单行自动刷新
+- 新增 `My_Abilities.Status.*`（Locked/Eligible/Unlocked/Equipped）与 `My_Abilities.Type.*`（Offensive/Passive/None）标签组，含 Lighting.Electrocute / HitReact
+- 蓝图：`My_DA_AbilityInfo` 配 `LevelUpRequirement`，GameMode 挂 `AbilityInfo`，新增 Electrocute GA、SpellMenu/SpellGlobe UI 资产，Fire 相关蓝图移入 `Ability/Fire/` 子目录
+- 启动能力（`AddCharacterAbilitiesFromASC`）现直接挂 `Status.Equipped`，Overlay 图标正常显示
+
+### 34.5 一句话总结
+
+**判断在 C++、授权在 C++、状态作为 spec 的一部分广播出去、UI 只负责显示**——逻辑层决定"是什么"，表现层只显示"显示什么"。所有"两个委托先后 / 蓝图 giveAbility / 多端一致"的困惑都源于想把这个职责上移到 UI，教程把它留在 C++ 后一切自然消失。

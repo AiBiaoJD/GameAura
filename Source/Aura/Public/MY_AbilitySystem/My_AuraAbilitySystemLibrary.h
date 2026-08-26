@@ -7,6 +7,7 @@
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "My_AuraAbilitySystemLibrary.generated.h"
 
+class UMy_AbilityInfo;
 class UMy_SpellMenuWidgetController;
 class UMy_OverlayWidgetController;
 class UMy_AttributeMenuWidgetController;
@@ -42,6 +43,9 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "My_AuraAbilitySystemLibrary|My_CharacterClassDefault")
 	static UMy_CharacterClassInfo* GetCharacterClassInfo(const UObject* WorldContextObject);
+
+	UFUNCTION(BlueprintCallable, Category = "My_AuraAbilitySystemLibrary|My_AbilityInfoDefault")
+	static UMy_AbilityInfo* GetAbilityInfo(const UObject* WorldContextObject);
 
 	/*
 	 * Effect Context
