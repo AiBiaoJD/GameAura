@@ -19,3 +19,6 @@ Content/MyBlueprints/Front/*.font.uasset
 
 # 或者更彻底地忽略整个 Front 目录
 # Content/MyBlueprints/Front/
+
+# Claude Code 个人本地配置（不进仓库）
+.claude/settings.local.json

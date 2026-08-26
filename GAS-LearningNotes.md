@@ -1,4 +1,42 @@
 # GAS 架构学习笔记
+## 目录
+
+- [一、GAS 启动流程](#一gas-启动流程)
+- [二、角色生命周期](#二角色生命周期)
+- [三、GAS 核心模块](#三gas-核心模块)
+- [四、一次攻击的完整数据流](#四一次攻击的完整数据流)
+- [五、数据传递方式对比](#五数据传递方式对比)
+- [六、GE 三种计算方式](#六ge-三种计算方式)
+- [七、Source vs Target vs Server vs Client](#七source-vs-target-vs-server-vs-client)
+- [八、C++ 与蓝图的职责分工](#八c-与蓝图的职责分工)
+- [九、BlueprintCallable vs BlueprintPure](#九blueprintcallable-vs-blueprintpure)
+- [十、GameplayCue 注意事项](#十gameplaycue-注意事项)
+- [十一、关键踩坑](#十一关键踩坑)
+- [十二、UI 架构：HUD → WidgetController → Widget（完整版）](#十二ui-架构hud-widgetcontroller-widget完整版)
+- [十三、virtual vs BlueprintNativeEvent vs BlueprintImplementableEvent vs BlueprintCallable](#十三virtual-vs-blueprintnativeevent-vs-blueprintimplementableevent-vs-blueprintcallable)
+- [十四、Live Coding 与 CDO 缓存](#十四live-coding-与-cdo-缓存)
+- [十五、接口在游戏开发中的使用](#十五接口在游戏开发中的使用)
+- [十六、GA 实例化策略（Instancing Policy）](#十六ga-实例化策略instancing-policy)
+- [十七、Lyra 武器射击流程与 GAS 预测机制](#十七lyra-武器射击流程与-gas-预测机制)
+- [十八、Model→Controller→Widget 委托架构深度解析](#十八modelcontrollerwidget-委托架构深度解析)
+- [十九、InputTag → Ability 激活完整链路](#十九inputtag-ability-激活完整链路)
+- [二十、Ability Commit、Cost/Cooldown 与 GE Tag 容器详解](#二十ability-commitcostcooldown-与-ge-tag-容器详解)
+- [二十一、AbilityTask 体系与 AsyncTask 深入](#二十一abilitytask-体系与-asynctask-深入)
+- [二十二、编辑器与工具技巧](#二十二编辑器与工具技巧)
+- [二十三、Attribute 越界防护与异步任务 UI 集成](#二十三attribute-越界防护与异步任务-ui-集成)
+- [二十四、属性复制完整链路：OnRep → REPNOTIFY → Delegate → UI](#二十四属性复制完整链路onrep-repnotify-delegate-ui)
+- [二十五、PlayerState XP/Level 委托 → WidgetController → Widget 完整链路](#二十五playerstate-xplevel-委托-widgetcontroller-widget-完整链路)
+- [二十六、敌人 XP 奖励 & Meta Attribute & Passive Ability 事件监听](#二十六敌人-xp-奖励-meta-attribute-passive-ability-事件监听)
+- [二十七、PlayerInterface 桥接：AttributeSet → Character → PlayerState](#二十七playerinterface-桥接attributeset-character-playerstate)
+- [二十八、接口 BlueprintNativeEvent、网络策略、冷却机制](#二十八接口-blueprintnativeevent网络策略冷却机制)
+- [二十九、UE5 相机系统：SpringArm + Camera 完全指南](#二十九ue5-相机系统springarm-camera-完全指南)
+- [三十、Niagara 粒子面向相机 & 构造函数组件创建细节](#三十niagara-粒子面向相机-构造函数组件创建细节)
+- [三十一、AttributePoint/SpellPoint 点数系统 + 菜单初始广播](#三十一attributepointspellpoint-点数系统-菜单初始广播)
+- [三十二、网络架构：客户端/服务器分工、Ability UI 显示链路、InputTag 一物三用](#三十二网络架构客户端服务器分工ability-ui-显示链路inputtag-一物三用)
+- [三十三、WidgetController 架构深入 + UMG ViewModel（MVVM）对比](#三十三widgetcontroller-架构深入-umg-viewmodelmvvm对比)
+- [三十四、SpellMenu 技能解锁：为什么判断放 C++，而不是把 Level 传蓝图](#三十四spellmenu-技能解锁为什么判断放-c而不是把-level-传蓝图)
+
+---
 
 > 2026-06-20，基于 Aura 项目实战总结
 
@@ -2515,6 +2553,7 @@ LevelUpNiagaraComponent->bAutoActivate = false;
 stat fps       — 显示帧率（再输一次关闭）
 stat unit      — 帧时间详情（Game/Draw/GPU 耗时）
 stat none      — 一次性关闭所有 stat
+```
 
 ---
 
@@ -2882,7 +2921,6 @@ PIE 2 人 + ListenServer 时，编辑器给**每个连接**各建一个"客户�
 **调试要点**：
 - 数 pawn / 看镜像：`My_InitAbilityActorInfo` 里打 `GetLocalRole()`，`Role_Authority`=真 pawn、`Role_SimulatedProxy`=镜像
 - 结论：这两个 bug 是 **PIE 测试工具的产物**，不是游戏逻辑错误，打包多人不受影响（建议打包实测一次确认）
-```
 
 ## 三十三、WidgetController 架构深入 + UMG ViewModel（MVVM）对比
 
