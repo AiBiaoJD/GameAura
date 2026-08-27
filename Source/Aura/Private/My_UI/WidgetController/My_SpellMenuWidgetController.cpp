@@ -6,6 +6,7 @@
 void UMy_SpellMenuWidgetController::BroadcastInitiaValues()
 {
 	BroadcastAbilityInfo();
+	OnPlayerSpellPointChanged.Broadcast(GetAuraPS()->GetSpellPoint());
 }
 
 void UMy_SpellMenuWidgetController::BindCallbacksToDependencies()
@@ -19,4 +20,11 @@ void UMy_SpellMenuWidgetController::BindCallbacksToDependencies()
 			OnAbilityInfo.Broadcast(info);
 		}
 	});
+	if (GetAuraPS())
+	{
+		GetAuraPS()->OnSpellPointChanged.AddLambda([this](int32 NewSpellPoint)
+		{
+			OnPlayerSpellPointChanged.Broadcast(NewSpellPoint);
+		});
+	}
 }
