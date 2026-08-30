@@ -70,6 +70,7 @@ public:
 	FGameplayTag My_Abilities_Attack;
 	FGameplayTag My_Abilities_Summon;
 	FGameplayTag My_Abilities_HitReact; //暂时没使用
+	FGameplayTag My_Abilities_None; //用来给蓝图中每添加AbilityTag的时候使用
 
 	// AbilitySpellTree
 	FGameplayTag My_Abilities_Fire_FireBolt;

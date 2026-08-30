@@ -8,7 +8,7 @@
 #include "GameFramework/PlayerState.h"
 #include "My_AuraPlayerState.generated.h"
 
-DECLARE_MULTICAST_DELEGATE_OneParam(FMy_OnPlayerStateChanged, int32 /*StateValue*/)
+DECLARE_MULTICAST_DELEGATE_OneParam(FMy_PlayerStateChangedSignature, int32 /*StateValue*/)
 
 class UMy_LevelUpInfo;
 /**
@@ -28,10 +28,10 @@ public:
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 	UAttributeSet* GetAttributeSet() const;
 	
-	FMy_OnPlayerStateChanged OnXPChanged;
-	FMy_OnPlayerStateChanged OnLevelChanged;
-	FMy_OnPlayerStateChanged OnAttributePointChanged;
-	FMy_OnPlayerStateChanged OnSpellPointChanged;
+	FMy_PlayerStateChangedSignature OnXPChanged;
+	FMy_PlayerStateChangedSignature OnLevelChanged;
+	FMy_PlayerStateChangedSignature OnAttributePointChanged;
+	FMy_PlayerStateChangedSignature OnSpellPointChanged;
 
 	FORCEINLINE int32 GetPlayerLevel() const { return Level; }
 	FORCEINLINE int32 GetXP() const { return XP; }

@@ -114,7 +114,7 @@ void UMy_AuraAbilitySystemComponent::AbilityInputTagReleased(const FGameplayTag 
 	}
 }
 
-void UMy_AuraAbilitySystemComponent::ForEachAbility(const Fmy_ForEachAbility& Delegate)
+void UMy_AuraAbilitySystemComponent::ForEachAbility(const FMy_ForEachAbilitySignature& Delegate)
 {
 	FScopedAbilityListLock ActiveScopeLock(*this);
 	for (const FGameplayAbilitySpec& AbilitySpec : GetActivatableAbilities())

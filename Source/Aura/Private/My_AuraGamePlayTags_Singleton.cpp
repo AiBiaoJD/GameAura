@@ -155,13 +155,18 @@ void FMy_AuraGameplayTags::InitializeNativeGameplayTags()
 	);
 
 	GameplayTagsInstance.My_Abilities_Lighting_Electrocute = UGameplayTagsManager::Get().AddNativeGameplayTag(
-		FName("My_Abilities.Lighting.Electrocute "),
+		FName("My_Abilities.Lighting.Electrocute"),
 		FString("Electrocute  Ability Tag")
 	);
 
 	GameplayTagsInstance.My_Abilities_HitReact = UGameplayTagsManager::Get().AddNativeGameplayTag(
 		FName("My_Abilities.HitReact"),
 		FString("Hit React Ability Tag")
+	);
+	
+	GameplayTagsInstance.My_Abilities_None = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("My_Abilities.None"),
+		FString("No Ability - like the nullptr for AbilityTag")
 	);
 
 	/*

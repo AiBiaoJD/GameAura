@@ -24,8 +24,8 @@ void UMy_AuraWidgetController::BroadcastAbilityInfo()
 	//获取所有能力的信息，并查找Abilityinfo获取特定info，再传入到widget
 	if (!GetAuraASC()->bStartupAbilityGiven) return;
 
-	//绑定Fmy_ForEachAbility委托的回调函数
-	Fmy_ForEachAbility OnEachAbility;
+	//绑定FMy_ForEachAbilitySignature委托的回调函数
+	FMy_ForEachAbilitySignature OnEachAbility;
 	OnEachAbility.BindLambda([this](const FGameplayAbilitySpec& AbilitySpec)
 	{
 		//跳过被动等没有配 My_Abilities AbilityTag 的能力（查不到对应 AbilityInfo，会报 [None] 错误）
@@ -40,7 +40,7 @@ void UMy_AuraWidgetController::BroadcastAbilityInfo()
 		}
 	});
 
-	//广播Fmy_ForEachAbility
+	//广播FMy_ForEachAbilitySignature
 	GetAuraASC()->ForEachAbility(OnEachAbility);
 }
 

@@ -6,10 +6,10 @@
 #include "AbilitySystemComponent.h"
 #include "My_AuraAbilitySystemComponent.generated.h"
 
-DECLARE_MULTICAST_DELEGATE_OneParam(FMy_EffectAssetTags, const FGameplayTagContainer& /*AssetTags*/)
-DECLARE_MULTICAST_DELEGATE(FMy_AbilityGiven);
-DECLARE_DELEGATE_OneParam(Fmy_ForEachAbility, const FGameplayAbilitySpec&);
-DECLARE_MULTICAST_DELEGATE_TwoParams(FMy_AbilityStatusChanged, const FGameplayTag& /*AbilityTags*/, const FGameplayTag& /*StatusTag*/)
+DECLARE_MULTICAST_DELEGATE_OneParam(FMy_EffectAssetTagsSignature, const FGameplayTagContainer& /*AssetTags*/)
+DECLARE_MULTICAST_DELEGATE(FMy_AbilityGivenSignature);
+DECLARE_DELEGATE_OneParam(FMy_ForEachAbilitySignature, const FGameplayAbilitySpec&);
+DECLARE_MULTICAST_DELEGATE_TwoParams(FMy_AbilityStatusChangedSignature, const FGameplayTag& /*AbilityTags*/, const FGameplayTag& /*StatusTag*/)
 
 /**
  *
@@ -24,9 +24,9 @@ public:
 
 	void AbilityActorInfoSet();
 
-	FMy_EffectAssetTags EffectAssetTags; //处理捡东西MessageUI
-	FMy_AbilityGiven OnAbilityGiven; //处理技能显示UI
-	FMy_AbilityStatusChanged OnAbilityStatusChanged; //处理等级提升技能变为Eligible
+	FMy_EffectAssetTagsSignature EffectAssetTags; //处理捡东西MessageUI
+	FMy_AbilityGivenSignature OnAbilityGiven; //处理技能显示UI
+	FMy_AbilityStatusChangedSignature OnAbilityStatusChanged; //处理等级提升技能变为Eligible
 
 	// Character添加能力
 	void AddCharacterAbilitiesFromASC(const TArray<TSubclassOf<UGameplayAbility>>& StartupAbility);
@@ -39,7 +39,7 @@ public:
 
 	/* Ability */
 	// 一个委托激活所有能力的回调函数,传递Abilityinfo
-	void ForEachAbility(const Fmy_ForEachAbility& Delegate);
+	void ForEachAbility(const FMy_ForEachAbilitySignature& Delegate);
 	static FGameplayTag GetAbilityTagFromAbilitySpec(const FGameplayAbilitySpec& AbilitySpec);
 	static FGameplayTag GetInputTagFromAbilitySpec(const FGameplayAbilitySpec& AbilitySpec);
 	static FGameplayTag GetStatusTagFromAbilitySpec(const FGameplayAbilitySpec& AbilitySpec);
