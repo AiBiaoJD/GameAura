@@ -35,6 +35,8 @@
 - [三十二、网络架构：客户端/服务器分工、Ability UI 显示链路、InputTag 一物三用](#三十二网络架构客户端服务器分工ability-ui-显示链路inputtag-一物三用)
 - [三十三、WidgetController 架构深入 + UMG ViewModel（MVVM）对比](#三十三widgetcontroller-架构深入-umg-viewmodelmvvm对比)
 - [三十四、SpellMenu 技能解锁：为什么判断放 C++，而不是把 Level 传蓝图](#三十四spellmenu-技能解锁为什么判断放-c而不是把-level-传蓝图)
+- [三十五、SpellMenu 点击技能球 → 按钮 Enable：ASC/PS 复制时序与缓存策略](#三十五spellmenu-点击技能球-按钮-enableascps-复制时序与缓存策略)
+- [三十六、代码规范踩坑：委托 Signature / GameplayTag 空格 / 文件编码](#三十六代码规范踩坑委托-signature-gameplaytag-空格-文件编码)
 
 ---
 
@@ -3196,3 +3198,97 @@ WBP 技能行绑 `OnAbilityInfo` → 按 `StatusTag` 决定图标显示（锁定
 ### 34.6 一句话总结
 
 **判断在 C++、授权在 C++、状态作为 spec 的一部分广播出去、UI 只负责显示**——逻辑层决定"是什么"，表现层只显示"显示什么"。所有"两个委托先后 / 蓝图 giveAbility / 多端一致"的困惑都源于想把这个职责上移到 UI，教程把它留在 C++ 后一切自然消失。
+
+---
+
+## 三十五、SpellMenu 点击技能球 → 按钮 Enable：ASC/PS 复制时序与缓存策略
+
+> 2026-08-30，SpellMenu 功能第二阶段：点击技能球后，根据"技能状态 + 法术点数"决定 **花点 / 装备** 两个按钮是否可用。
+
+### 35.1 功能流程
+
+点击技能球 → `SpellGlobeSelected(AbilityTag)`（BlueprintCallable）：
+
+1. 取当前法术点数 `GetAuraPS()->GetSpellPoint()`
+2. 判断技能状态：
+   - `bTagValid = AbilityTag.IsValid()`
+   - `bTagNone = AbilityTag.MatchesTag(My_Abilities_None)` — 占位"空"tag
+   - `Spec = GetSpecFromAbilityTag(AbilityTag)`，`bSpecValid = Spec != nullptr`
+   - 三者任一不成立 → **Locked**（技能没授予 / tag 无效）
+   - 否则 → `GetStatusTagFromAbilitySpec(*Spec)` 从 Spec 动态标签读真实状态
+3. 缓存 `SelectedAbility = { AbilityTag, StatusTag }`
+4. `ShouldEnableButton(状态, 点数)` → 广播 `OnSpellGlobeSelect(bSpend, bEquip)`
+
+### 35.2 按钮规则表
+
+| 状态 | 花点按钮 | 装备按钮 |
+|---|---|---|
+| Locked | ✗ | ✗ |
+| Eligible | ✓（点数 > 0） | ✗ |
+| Equipped | ✓（点数 > 0） | ✓ |
+| Unlocked | ✓（点数 > 0） | ✓ |
+
+### 35.3 ★ 核心：ASC/PS 复制时序问题（为什么缓存状态、现读点数）
+
+**问题**：按钮是否可用 = f(技能状态, 法术点数)，需要**同时**知道两个输入。而这两个值来自**两条独立的网络复制通道**：
+
+- **StatusTag** → ASC（`AbilityStatusChanged` 回调）
+- **SpellPoint** → PlayerState（`OnSpellPointChanged` 回调）
+
+服务器 → 客户端复制时，**两者到达的时间 / 顺序不确定**（可能 Status 先到、点数后到，或反过来）。
+
+**为什么状态必须缓存、点数可以现读**：
+
+| | 能否随时现读 | 原因 |
+|---|---|---|
+| 点数 | ✅ 可以 | `GetAuraPS()->GetSpellPoint()` 是复制属性，客户端随时是最新值 |
+| 状态 | ❌ 不行 | Locked（未授予）时**根本没有 Spec 可读**；已授予的 Spec 复制也有延迟 |
+
+所以策略：
+
+- **状态**：回调（`AbilityStatusChanged`）送来的就是权威值 → 存到 `SelectedAbility.StatusTag`
+- **点数**：直接用 `GetAuraPS()->GetSpellPoint()` 现读，**不缓存**
+
+**双回调重算**（`BindCallbacksToDependencies`）：
+
+```
+状态回调触发 → 更新缓存状态 → 用【新状态 + 现读点数】重算 → 广播
+点数回调触发 → 广播新点数   → 用【缓存状态 + 新点数】重算 → 广播
+```
+
+任一回调触发，手里都有"另一边的最近已知值"→ 无论先后顺序，**最终都正确**（后到的回调会用两边最新值重算覆盖）。
+
+### 35.4 一句话总结
+
+**两个输入不同步到达 → 分别保存"最近一次已知值"，任一变化就用"新值 + 另一边缓存值"重算**。缓存的不是"旧错误值"，而是"当前最完整的信息"。
+
+---
+
+## 三十六、代码规范踩坑：委托 Signature / GameplayTag 空格 / 文件编码
+
+### 36.1 委托类型命名规范（Signature 后缀）
+
+- `DECLARE_DYNAMIC_MULTICAST_DELEGATE_*` 创建的**类型**统一加 `Signature` 后缀：`FMy_OnPlayerStateChangedSignature`
+- 作用：区分**类型**（函数签名形状：参数 + 返回）与**实例**（`OnPlayerSpellPointChanged` 成员变量，真正 `Broadcast` 的事件）
+- `DECLARE_*` 宏必须写全：类型名 + 参数（如 `TwoParams(FMy_XSignature, bool, a, bool, b)`），缺参数会编译报错
+- 纯 C++ 委托（`DECLARE_MULTICAST_DELEGATE`）不暴露蓝图，加不加 Signature 都行，但统一加更整齐
+
+### 36.2 GameplayTag 末尾空格坑
+
+- 原生 tag 名**不能有末尾空格**：`FName("My_Abilities.Lighting.Electrocute ")` 会报
+  `LogGameplayTags: Invalid tag ... Tag ends with space!`
+- UE 会自动去掉空格替换，但会一直打错误日志 → 声明时就要检查结尾
+
+### 36.3 文件编码规则（GBK vs UTF-8）
+
+- 项目 C++ 文件编码**不统一**：`My_Character/` 是 UTF-8，多数其他文件是 GBK，少数是纯 ASCII
+- **改文件前先检测编码**（用 Python 分别按 GBK / UTF-8 解码，看哪种出正常中文）
+- **GBK 文件不能用 Edit / Write 工具**（会强制转 UTF-8 导致中文乱码）→ 必须 Python + `encoding='gbk'` + `newline=''`（保留 CRLF）
+- UTF-8 / 纯 ASCII 文件可以直接用 Edit 工具，无乱码风险
+
+### 36.4 Rider 断点不响排查
+
+- 启动用 **bug 图标（Debug）**，不是绿色三角（Run 不挂调试器，断点永远不响）
+- 断点圆点**实心红** = 已绑定；**空心灰** = 没绑上（Live Coding 热重载后常失效 → 完整 Rebuild + 重新打断点）
+- 断点可能打在**未执行的分支**（如 if/else 里的 else），先放无条件执行的行验证
+- 编译配置必须 **DebugGame Editor**（Development 会开优化 + 去调试符号）
