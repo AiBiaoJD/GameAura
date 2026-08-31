@@ -38,11 +38,15 @@ public:
 
 	// 点击技能球时调用：算出状态并广播按钮可用状态
 	UFUNCTION(BlueprintCallable)
-	void SpellGlobeSelecoted(const FGameplayTag& AbilityTag);
+	void SpellGlobeSelected(const FGameplayTag& AbilityTag);
+
+	UFUNCTION(BlueprintCallable)
+	void SpendPointsButtonPressed();
 
 	virtual void BroadcastInitiaValues() override;
 	virtual void BindCallbacksToDependencies() override;
 
+	
 private:
 	// 根据 技能状态 + 法术点数 决定 花点/装备 按钮是否可用
 	static void My_ShouldEnableButton(FGameplayTag AbilityStatus, const int32 SpellPoint, bool& bSpendPointsButtonEnabled, bool& bEquipButtonEnabled);

@@ -9,7 +9,7 @@
 DECLARE_MULTICAST_DELEGATE_OneParam(FMy_EffectAssetTagsSignature, const FGameplayTagContainer& /*AssetTags*/)
 DECLARE_MULTICAST_DELEGATE(FMy_AbilityGivenSignature);
 DECLARE_DELEGATE_OneParam(FMy_ForEachAbilitySignature, const FGameplayAbilitySpec&);
-DECLARE_MULTICAST_DELEGATE_TwoParams(FMy_AbilityStatusChangedSignature, const FGameplayTag& /*AbilityTags*/, const FGameplayTag& /*StatusTag*/)
+DECLARE_MULTICAST_DELEGATE_ThreeParams(FMy_AbilityStatusChangedSignature, const FGameplayTag& /*AbilityTags*/, const FGameplayTag& /*StatusTag*/, int32 /*AbilityLeve*/)
 
 /**
  *
@@ -53,6 +53,10 @@ public:
 	void UpdateAbilityStatuses(int32 Level);
 	FGameplayAbilitySpec* GetSpecFromAbilityTag(const FGameplayTag& AbilityTag);
 
+	// SpellMenu中Spend按钮触发
+	UFUNCTION(Server, Reliable)
+	void ServerSpendSpellPoints(const FGameplayTag& AbilityTag);
+
 protected:
 	virtual void OnRep_ActivateAbilities() override;
 	/*
@@ -64,5 +68,5 @@ protected:
 	void ClientEffectApplied(UAbilitySystemComponent* AbilitySystemComponent, const FGameplayEffectSpec& EffectSpec, FActiveGameplayEffectHandle ActiveGameplayEffectHandle);
 
 	UFUNCTION(Client, Reliable)
-	void ClientUpdateAbilityStatus(const FGameplayTag& AbilityTags, const FGameplayTag& StatusTag);
+	void ClientUpdateAbilityStatus(const FGameplayTag& AbilityTags, const FGameplayTag& StatusTag, int32 AbilityLevel);
 };

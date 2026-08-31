@@ -23,7 +23,7 @@ void UMy_SpellMenuWidgetController::BindCallbacksToDependencies()
 	// 任一回调触发 → 用"这一边的新值 + 另一边的最新已知值"重算按钮 → 无论先后顺序，最终一定正确。
 
 	// ── 技能状态变化（来自 ASC 复制）──
-	GetAuraASC()->OnAbilityStatusChanged.AddLambda([this](const FGameplayTag& AbilityTags, const FGameplayTag& StatusTag)
+	GetAuraASC()->OnAbilityStatusChanged.AddLambda([this](const FGameplayTag& AbilityTags, const FGameplayTag& StatusTag, int32 AbilityLevel)
 	{
 		// 只有"当前选中的技能"状态变了，才需要重算按钮
 		if (SelectedAbility.AbilityTag.MatchesTagExact(AbilityTags))
@@ -70,7 +70,7 @@ void UMy_SpellMenuWidgetController::BindCallbacksToDependencies()
 	}
 }
 
-void UMy_SpellMenuWidgetController::SpellGlobeSelecoted(const FGameplayTag& AbilityTag)
+void UMy_SpellMenuWidgetController::SpellGlobeSelected(const FGameplayTag& AbilityTag)
 {
 	// 点击技能球：算出这个技能的当前状态，缓存起来，并广播一次按钮状态
 	const int32 SpellPoint = GetAuraPS()->GetSpellPoint();
@@ -142,4 +142,9 @@ void UMy_SpellMenuWidgetController::My_ShouldEnableButton(FGameplayTag AbilitySt
 			bSpendPointsButtonEnabled = true;
 		}
 	}
+}
+
+void UMy_SpellMenuWidgetController::SpendPointsButtonPressed()
+{
+	GetAuraASC()->ServerSpendSpellPoints(SelectedAbility.AbilityTag);
 }

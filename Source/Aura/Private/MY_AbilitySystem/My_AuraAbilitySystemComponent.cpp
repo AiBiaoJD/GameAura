@@ -168,6 +168,26 @@ FGameplayTag UMy_AuraAbilitySystemComponent::GetStatusTagFromAbilitySpec(const F
 	return FGameplayTag();
 }
 
+FGameplayAbilitySpec* UMy_AuraAbilitySystemComponent::GetSpecFromAbilityTag(const FGameplayTag& AbilityTag)
+{
+	FScopedAbilityListLock ActiveScopeLock(*this);
+	for (FGameplayAbilitySpec& Spec : GetActivatableAbilities())
+	{
+		for (const FGameplayTag& Tag : Spec.Ability.Get()->AbilityTags)
+		{
+			if (Tag.MatchesTag(AbilityTag))
+			{
+				return &Spec;
+			}
+		}
+	}
+	return nullptr;
+}
+
+
+/*
+ * AttributeMenu部分
+ */
 void UMy_AuraAbilitySystemComponent::UpgradeAttribute(const FGameplayTag& AttributeTag)
 {
 	if (GetAvatarActor()->Implements<UMy_PlayerInterface>())
@@ -192,10 +212,14 @@ void UMy_AuraAbilitySystemComponent::ServerUpgradeAttribute_Implementation(const
 	IMy_PlayerInterface::Execute_AddToAttributePoint(GetAvatarActor(), -1);
 }
 
+/*
+ * SpellMenu部分
+ */
 void UMy_AuraAbilitySystemComponent::UpdateAbilityStatuses(int32 Level)
 {
 	UMy_AbilityInfo* AbilityInfo = UMy_AuraAbilitySystemLibrary::GetAbilityInfo(GetAvatarActor());
 	if (!AbilityInfo) return;
+	// 等级提升时，更新Abilityinfo中所有能力的Status
 	for (const FMy_AuraAbilityInfo& info : AbilityInfo->AbilityInformation)
 	{
 		if (!info.AbilityTag.IsValid() || !info.AbilityClass || Level < info.LevelUpRequirement) continue;
@@ -204,27 +228,42 @@ void UMy_AuraAbilitySystemComponent::UpdateAbilityStatuses(int32 Level)
 			FGameplayAbilitySpec AbilitySpec = FGameplayAbilitySpec(info.AbilityClass, 1);
 			AbilitySpec.DynamicAbilityTags.AddTag(FMy_AuraGameplayTags::GetInstance().My_Abilities_Status_Eligible);
 			GiveAbility(AbilitySpec);
-			ClientUpdateAbilityStatus(info.AbilityTag, FMy_AuraGameplayTags::GetInstance().My_Abilities_Status_Eligible);
+			ClientUpdateAbilityStatus(info.AbilityTag, FMy_AuraGameplayTags::GetInstance().My_Abilities_Status_Eligible, 1);
 		}
 	}
 }
 
-FGameplayAbilitySpec* UMy_AuraAbilitySystemComponent::GetSpecFromAbilityTag(const FGameplayTag& AbilityTag)
+void UMy_AuraAbilitySystemComponent::ClientUpdateAbilityStatus_Implementation(const FGameplayTag& AbilityTags, const FGameplayTag& StatusTag, int32 AbilityLevel)
 {
-	FScopedAbilityListLock ActiveScopeLock(*this);
-	for (FGameplayAbilitySpec& Spec : GetActivatableAbilities())
-	{
-		for (const FGameplayTag& Tag : Spec.Ability.Get()->AbilityTags)
-		{
-			if (Tag.MatchesTag(AbilityTag))
-			{
-				return &Spec;
-			}
-		}
-	}
-	return nullptr;
+	OnAbilityStatusChanged.Broadcast(AbilityTags, StatusTag, AbilityLevel);
 }
-void UMy_AuraAbilitySystemComponent::ClientUpdateAbilityStatus_Implementation(const FGameplayTag& AbilityTags, const FGameplayTag& StatusTag)
+
+void UMy_AuraAbilitySystemComponent::ServerSpendSpellPoints_Implementation(const FGameplayTag& AbilityTag)
 {
-	OnAbilityStatusChanged.Broadcast(AbilityTags, StatusTag);
+	if (FGameplayAbilitySpec* Spec = GetSpecFromAbilityTag(AbilityTag))
+	{
+		// 减少SpellPoint
+		if (GetAvatarActor()->Implements<UMy_PlayerInterface>())
+		{
+			IMy_PlayerInterface::Execute_AddToSpellPoint(GetAvatarActor(), -1);
+		}
+
+		// 更改Ability状态
+		FGameplayTag StatusTag = GetStatusTagFromAbilitySpec(*Spec);
+		FMy_AuraGameplayTags GameplayTags = FMy_AuraGameplayTags::GetInstance();
+		if (StatusTag.MatchesTagExact(GameplayTags.My_Abilities_Status_Eligible))
+		{
+			Spec->DynamicAbilityTags.RemoveTag(GameplayTags.My_Abilities_Status_Eligible);
+			Spec->DynamicAbilityTags.AddTag(GameplayTags.My_Abilities_Status_Unlocked);
+			StatusTag = GameplayTags.My_Abilities_Status_Unlocked;
+		}
+		else if (StatusTag.MatchesTagExact(GameplayTags.My_Abilities_Status_Equipped) || StatusTag.MatchesTagExact(GameplayTags.My_Abilities_Status_Unlocked))
+		{
+			Spec->Level += 1;
+		}
+
+		// 通知客户端AbilityStatus已经改变
+		ClientUpdateAbilityStatus(AbilityTag, StatusTag, Spec->Level);
+		MarkAbilitySpecDirty(*Spec);
+	}
 }
