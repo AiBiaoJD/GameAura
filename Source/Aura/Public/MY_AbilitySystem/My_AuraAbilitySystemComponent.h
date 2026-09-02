@@ -6,6 +6,8 @@
 #include "AbilitySystemComponent.h"
 #include "My_AuraAbilitySystemComponent.generated.h"
 
+class UMy_AbilityInfo;
+
 DECLARE_MULTICAST_DELEGATE_OneParam(FMy_EffectAssetTagsSignature, const FGameplayTagContainer& /*AssetTags*/)
 DECLARE_MULTICAST_DELEGATE(FMy_AbilityGivenSignature);
 DECLARE_DELEGATE_OneParam(FMy_ForEachAbilitySignature, const FGameplayAbilitySpec&);
@@ -56,6 +58,8 @@ public:
 	// SpellMenu中Spend按钮触发
 	UFUNCTION(Server, Reliable)
 	void ServerSpendSpellPoints(const FGameplayTag& AbilityTag);
+
+	bool GetDescriptionByAbilityTag(const FGameplayTag& AbilityTag, const FGameplayTag& StatusTag, int32 AbilityLevel, UMy_AbilityInfo* AbilityInfo, FString& OutDescription, FString& OutNextLevelDescription);
 
 protected:
 	virtual void OnRep_ActivateAbilities() override;

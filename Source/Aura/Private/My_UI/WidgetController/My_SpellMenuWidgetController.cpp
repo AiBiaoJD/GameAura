@@ -23,28 +23,31 @@ void UMy_SpellMenuWidgetController::BindCallbacksToDependencies()
 	// 任一回调触发 → 用"这一边的新值 + 另一边的最新已知值"重算按钮 → 无论先后顺序，最终一定正确。
 
 	// ── 技能状态变化（来自 ASC 复制）──
-	GetAuraASC()->OnAbilityStatusChanged.AddLambda([this](const FGameplayTag& AbilityTags, const FGameplayTag& StatusTag, int32 AbilityLevel)
+	GetAuraASC()->OnAbilityStatusChanged.AddLambda([this](const FGameplayTag& AbilityTag, const FGameplayTag& StatusTag, int32 AbilityLevel)
 	{
 		// 只有"当前选中的技能"状态变了，才需要重算按钮
-		if (SelectedAbility.AbilityTag.MatchesTagExact(AbilityTags))
+		if (SelectedAbility.AbilityTag.MatchesTagExact(AbilityTag))
 		{
 			// 1. 更新缓存的状态（回调送来的就是权威值）
 			SelectedAbility.StatusTag = StatusTag;
 
 			// 2. 用【新状态 + 现读点数】重算按钮
-			//    （点数此刻可能还是旧值，没关系——点数回调到达后还会再算一次，保证最终正确）
+			//    （点数此刻可能还是旧值，没关系??点数回调到达后还会再算一次，保证最终正确）
 			bool bSpendPointsButtonEnabled = false;
 			bool bEquipButtonEnabled = false;
 			My_ShouldEnableButton(StatusTag, GetAuraPS()->GetSpellPoint(), bSpendPointsButtonEnabled, bEquipButtonEnabled);
 
 			// 3. 广播给 UI 更新按钮状态
-			OnSpellGlobeSelect.Broadcast(bSpendPointsButtonEnabled, bEquipButtonEnabled);
+			FString DescriptionString;
+			FString NexeLevelDescriptionString;
+			GetAuraASC()->GetDescriptionByAbilityTag(AbilityTag, StatusTag, AbilityLevel, AbilityDA, DescriptionString, NexeLevelDescriptionString);
+			OnSpellGlobeSelect.Broadcast(bSpendPointsButtonEnabled, bEquipButtonEnabled, DescriptionString, NexeLevelDescriptionString);
 		}
 
 		// 无论是否选中，都刷新技能描述信息（等级/伤害等）
 		if (AbilityDA)
 		{
-			FMy_AuraAbilityInfo info = AbilityDA->FindAbilityInfoFromTag(AbilityTags);
+			FMy_AuraAbilityInfo info = AbilityDA->FindAbilityInfoFromTag(AbilityTag);
 			info.StatusTag = StatusTag;
 			OnAbilityInfo.Broadcast(info);
 		}
@@ -59,13 +62,16 @@ void UMy_SpellMenuWidgetController::BindCallbacksToDependencies()
 			OnPlayerSpellPointChanged.Broadcast(NewSpellPoint);
 
 			// 2. 用【新点数 + 缓存状态】重算按钮
-			//    （状态此刻可能还没复制到，用缓存值——状态回调到达后还会再算一次，保证最终正确）
+			//    （状态此刻可能还没复制到，用缓存值??状态回调到达后还会再算一次，保证最终正确）
 			bool bSpendPointsButtonEnabled = false;
 			bool bEquipButtonEnabled = false;
 			My_ShouldEnableButton(SelectedAbility.StatusTag, NewSpellPoint, bSpendPointsButtonEnabled, bEquipButtonEnabled);
 
 			// 3. 广播给 UI 更新按钮状态
-			OnSpellGlobeSelect.Broadcast(bSpendPointsButtonEnabled, bEquipButtonEnabled);
+			FString DescriptionString;
+			FString NexeLevelDescriptionString;
+			GetAuraASC()->GetDescriptionByAbilityTag(SelectedAbility.AbilityTag, SelectedAbility.StatusTag, 0, AbilityDA, DescriptionString, NexeLevelDescriptionString);
+			OnSpellGlobeSelect.Broadcast(bSpendPointsButtonEnabled, bEquipButtonEnabled, DescriptionString, NexeLevelDescriptionString);
 		});
 	}
 }
@@ -102,7 +108,10 @@ void UMy_SpellMenuWidgetController::SpellGlobeSelected(const FGameplayTag& Abili
 	bool bSpendPointsButtonEnabled = false;
 	bool bEquipButtonEnabled = false;
 	My_ShouldEnableButton(AbilityStatus, SpellPoint, bSpendPointsButtonEnabled, bEquipButtonEnabled);
-	OnSpellGlobeSelect.Broadcast(bSpendPointsButtonEnabled, bEquipButtonEnabled);
+	FString DescriptionString;
+	FString NexeLevelDescriptionString;
+	GetAuraASC()->GetDescriptionByAbilityTag(AbilityTag, AbilityStatus, 0, AbilityDA, DescriptionString, NexeLevelDescriptionString);
+	OnSpellGlobeSelect.Broadcast(bSpendPointsButtonEnabled, bEquipButtonEnabled, DescriptionString, NexeLevelDescriptionString);
 }
 
 // 核心规则：什么状态下哪个按钮可用

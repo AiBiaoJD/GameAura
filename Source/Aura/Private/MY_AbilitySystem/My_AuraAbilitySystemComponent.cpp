@@ -68,6 +68,7 @@ void UMy_AuraAbilitySystemComponent::AddCharacterPassiveAbilitiesFromASC(const T
 	}
 }
 
+
 //处理客户端不显示Ability的UI问题
 void UMy_AuraAbilitySystemComponent::OnRep_ActivateAbilities()
 {
@@ -266,4 +267,57 @@ void UMy_AuraAbilitySystemComponent::ServerSpendSpellPoints_Implementation(const
 		ClientUpdateAbilityStatus(AbilityTag, StatusTag, Spec->Level);
 		MarkAbilitySpecDirty(*Spec);
 	}
+}
+
+
+bool UMy_AuraAbilitySystemComponent::GetDescriptionByAbilityTag(const FGameplayTag& AbilityTag, const FGameplayTag& StatusTag, int32 AbilityLevel, UMy_AbilityInfo* AbilityInfo, FString& OutDescription, FString& OutNextLevelDescription)
+{
+	// ★ 方案A：描述按 StatusTag 决定，不依赖"spec 此刻是否就位"（host/客户端复制时序都稳）
+	const FMy_AuraGameplayTags GameplayTags = FMy_AuraGameplayTags::GetInstance();
+
+	// 状态不是 Locked → 技能已授予，取真实技能描述
+	if (!StatusTag.MatchesTagExact(GameplayTags.My_Abilities_Status_Locked))
+	{
+		int32 Level = AbilityLevel > 0 ? AbilityLevel : 1;
+
+		// 优先用 spec（已就位时等级最准，例如点击/花点升级后）
+		if (const FGameplayAbilitySpec* AbilitySpec = GetSpecFromAbilityTag(AbilityTag))
+		{
+			Level = AbilitySpec->Level;
+			if (UMy_AuraGameplayAbilityBase* AuraAbility = Cast<UMy_AuraGameplayAbilityBase>(AbilitySpec->Ability))
+			{
+				OutDescription = AuraAbility->GetDescription(Level);
+				OutNextLevelDescription = AuraAbility->GetNextLevelDescription(Level + 1);
+				return true;
+			}
+		}
+
+		// spec 还没就位（host/复制的空窗期）→ 用 AbilityInfo 的 AbilityClass 的 CDO + 传入等级取描述
+		// （AbilitySpec->Ability 本来就是该类的 CDO，所以结果一致）
+		if (AbilityInfo)
+		{
+			const FMy_AuraAbilityInfo& Info = AbilityInfo->FindAbilityInfoFromTag(AbilityTag);
+			if (Info.AbilityClass)
+			{
+				if (UMy_AuraGameplayAbilityBase* AbilityCDO = Info.AbilityClass->GetDefaultObject<UMy_AuraGameplayAbilityBase>())
+				{
+					OutDescription = AbilityCDO->GetDescription(Level);
+					OutNextLevelDescription = AbilityCDO->GetNextLevelDescription(Level + 1);
+					return true;
+				}
+			}
+		}
+
+		OutDescription = FString();
+		OutNextLevelDescription = FString();
+		return false;
+	}
+
+	// Locked：显示"需等级X解锁"
+	if (AbilityInfo)
+	{
+		OutDescription = UMy_AuraGameplayAbilityBase::GetLockDescription(AbilityInfo->FindAbilityInfoFromTag(AbilityTag).LevelUpRequirement);
+	}
+	OutNextLevelDescription = FString();
+	return false;
 }

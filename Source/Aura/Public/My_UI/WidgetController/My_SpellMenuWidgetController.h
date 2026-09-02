@@ -8,7 +8,7 @@
 #include "My_SpellMenuWidgetController.generated.h"
 
 // 选中技能球后的回调：通知 UI 两个按钮（花点/装备）是否可用
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FMy_SpellGlobeSelectSignature, bool, bSpendPointsButtonEnabled, bool, bEquipButtonEnabled);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_FourParams(FMy_SpellGlobeSelectSignature, bool, bSpendPointsButtonEnabled, bool, bEquipButtonEnabled, FString, DescriptionString, FString, NexeLevelDescriptionString);
 
 // 记录"当前选中的技能 + 它最新的状态"
 // 为什么必须缓存 StatusTag：
@@ -46,7 +46,6 @@ public:
 	virtual void BroadcastInitiaValues() override;
 	virtual void BindCallbacksToDependencies() override;
 
-	
 private:
 	// 根据 技能状态 + 法术点数 决定 花点/装备 按钮是否可用
 	static void My_ShouldEnableButton(FGameplayTag AbilityStatus, const int32 SpellPoint, bool& bSpendPointsButtonEnabled, bool& bEquipButtonEnabled);

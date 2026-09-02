@@ -37,6 +37,7 @@
 - [三十四、SpellMenu 技能解锁：为什么判断放 C++，而不是把 Level 传蓝图](#三十四spellmenu-技能解锁为什么判断放-c而不是把-level-传蓝图)
 - [三十五、SpellMenu 点击技能球 → 按钮 Enable：ASC/PS 复制时序与缓存策略](#三十五spellmenu-点击技能球-按钮-enableascps-复制时序与缓存策略)
 - [三十六、代码规范踩坑：委托 Signature / GameplayTag 空格 / 文件编码](#三十六代码规范踩坑委托-signature-gameplaytag-空格-文件编码)
+- [三十七、Spec复制 vs ClientRPC时序：描述不能依赖spec + GameMode只在服务器](#三十七spec复制-vs-clientrpc时序描述不能依赖spec--gamemode只在服务器)
 
 ---
 
@@ -3292,3 +3293,63 @@ WBP 技能行绑 `OnAbilityInfo` → 按 `StatusTag` 决定图标显示（锁定
 - 断点圆点**实心红** = 已绑定；**空心灰** = 没绑上（Live Coding 热重载后常失效 → 完整 Rebuild + 重新打断点）
 - 断点可能打在**未执行的分支**（如 if/else 里的 else），先放无条件执行的行验证
 - 编译配置必须 **DebugGame Editor**（Development 会开优化 + 去调试符号）
+
+---
+
+## 三十七、Spec复制 vs ClientRPC时序：描述不能依赖spec + GameMode只在服务器
+
+> 2026-08-30，SpellMenu 点击 Locked 技能 → 升级变 Eligible 后，host 描述不更新 / 远程客户端崩溃。属于 **GAS / UE 多人开发非常经典的坑**。
+
+### 37.1 现象
+
+| 端 | 现象 |
+|---|---|
+| 服务器 | 一切正常 |
+| 远程客户端 | 点击 Locked 技能 → **崩溃**（`GetAbilityInfo` 返回 null 后解引用） |
+| host（服务器+客户端同进程） | 升级后技能 Locked→Eligible，选中技能的描述**仍显示 Locked**（`OnAbilityStatusChanged` 触发了，但 `GetSpecFromAbilityTag` 为 null） |
+
+### 37.2 两个根因
+
+**根因 A：spec（复制属性）与 ClientRPC 到达次序不定**
+
+升级流程：服务器 `GiveAbility(spec带Eligible)` → `ClientUpdateAbilityStatus(Eligible,1)`（Client RPC）
+- **spec**：走复制属性（`FGameplayAbilitySpecContainer`），要等**下一个复制周期** → 晚到
+- **ClientRPC**：服务器改了**立即发** → 先到
+
+客户端收到 RPC 回调时，**spec 往往还没复制到** → `GetSpecFromAbilityTag` 返回 null。
+旧代码用"spec 在不在"判断"是不是 Locked" → spec 没到就被误判为 Locked → 显示错误描述。
+（host 上同进程也中招：本地 Client RPC 的处理点与 GiveAbility 的 spec"可见"点不同步。）
+
+**根因 B：`GetAbilityInfo` 依赖 GameMode（服务器专属）**
+
+```cpp
+GetAbilityInfo() → UGameplayStatics::GetGameMode()   // GameMode 只在服务器创建
+```
+远程客户端没有 GameMode → 返回 null → 描述函数里 `info->...` **空指针崩溃**。
+（单人 PIE standalone 时 server==client，GameMode 一直在，所以从没暴露——**联机才炸**。）
+
+### 37.3 修复原则（改动点）
+
+1. **判断状态用 StatusTag，不用"spec 是否存在"**：StatusTag 是服务器随 RPC 送来的**权威值**，spec 是"数据库"，慢半拍。
+2. **数据源用 WidgetController 自己的 `AbilityDA`**（EditDefaultsOnly，两端都有），不再走 GameMode。
+3. **取描述不要求 spec 就位**：spec 在 → 用它（等级准）；spec 没到 → `AbilityDA` 的 `AbilityClass` 的 **CDO** + RPC 带来的 `AbilityLevel` 取描述（`AbilitySpec->Ability` 本来就是该类的 CDO，结果一致）。
+
+```cpp
+// 改后 GetDescriptionByAbilityTag(AbilityTag, StatusTag, AbilityLevel, AbilityDA, ...)：
+if (StatusTag != Locked)          // 已授予
+{
+    if (spec 存在) → spec->Level + GetDescription()
+    else           → AbilityDA->AbilityClass CDO + AbilityLevel   // ★ host 空窗期走这里
+}
+else → Locked 描述（AbilityDA 取 LevelUpRequirement）              // 不再用 GameMode
+```
+
+### 37.4 这是 GAS/游戏设计里的常见问题吗？—— 是，经典中的经典
+
+- **"RPC 先到、复制属性后到"**：UE 网络里可靠 RPC 与属性复制是**两条通道**，次序无保证。任何"服务器改状态 → RPC 通知客户端 → 客户端立刻读复制属性"的模式都可能踩。**通用规则：变化通知（RPC 参数）是那一刻的最新真值，持久状态（复制属性）要等同步——回调里用通知带的参数，别读还没同步的属性。**
+- **"GameMode 只在服务器"**：`GetGameMode()` / `GetGameInstance()` 是**服务器/standalone 才有**的经典陷阱，凡是"客户端也要读配置数据"的功能都应把数据放在**两端都有的对象**（WidgetController/PlayerState 的 DataAsset 引用、或复制）。
+- GAS 专属：**Ability 的授予（spec）是复制，不是预测**；预测只针对激活/执行。客户端不能假设"刚 GiveAbility 的 spec 立刻可读"。
+
+### 37.5 一句话总结
+
+**别拿"不稳定的 spec 到没到"去猜"稳定的状态"**——状态判断用 RPC 自带的权威参数，数据用两端都有的 AbilityDA，取描述不依赖 spec（CDO 兜底），问题自然消失。

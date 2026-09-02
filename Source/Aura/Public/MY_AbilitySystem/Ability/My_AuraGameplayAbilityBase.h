@@ -20,4 +20,7 @@ public:
 	UPROPERTY(EditAnywhere, Category = "My_Input")
 	FGameplayTag StartUpInputTag;
 
+	virtual FString GetDescription(int32 Level);
+	virtual FString GetNextLevelDescription(int32 Level);
+	static FString GetLockDescription(int32 LevelRequirement);
 };
