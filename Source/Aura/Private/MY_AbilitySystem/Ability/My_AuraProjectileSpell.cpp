@@ -68,3 +68,13 @@ void UMy_AuraProjectileSpell::SpawnProjectile(const FVector& ProjectileTargetLoc
 		Projectile->FinishSpawning(SpawnTransform);
 	}
 }
+
+FString UMy_AuraProjectileSpell::GetDescription(int32 Level)
+{
+	return Super::GetDescription(Level);
+}
+
+FString UMy_AuraProjectileSpell::GetNextLevelDescription(int32 Level)
+{
+	return Super::GetNextLevelDescription(Level);
+}

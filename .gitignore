@@ -22,3 +22,10 @@ Content/MyBlueprints/Front/*.font.uasset
 
 # Claude Code 个人本地配置（不进仓库）
 .claude/settings.local.json
+
+# AI 临时脚本与本地备份（不进仓库）
+_*.py
+_*.json
+_*.txt
+*.bak-*
+backups/

@@ -22,8 +22,11 @@ protected:
 	UFUNCTION(BlueprintCallable, Category="My_Projectile")
 	void SpawnProjectile(const FVector& ProjectileTargetLocation, const FGameplayTag& SocketTag,bool bOverridePitch = false, float PitchOverride = 0.0f);
 
+	virtual FString GetDescription(int32 Level) override;
+	virtual FString GetNextLevelDescription(int32 Level) override;
+	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	TSubclassOf<AMy_ProjectileActor> ProjectileClass;
 
-
+	
 };
