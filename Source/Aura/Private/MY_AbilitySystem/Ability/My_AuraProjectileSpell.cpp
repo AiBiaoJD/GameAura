@@ -1,4 +1,4 @@
-// Copyright ABiao
+﻿// Copyright ABiao
 
 
 #include "MY_AbilitySystem/Ability/My_AuraProjectileSpell.h"
@@ -71,10 +71,19 @@ void UMy_AuraProjectileSpell::SpawnProjectile(const FVector& ProjectileTargetLoc
 
 FString UMy_AuraProjectileSpell::GetDescription(int32 Level)
 {
-	return Super::GetDescription(Level);
+	const int32 Damage = DamageTypes[FMy_AuraGameplayTags::GetInstance().My_DamageType_Fire].GetValueAtLevel(Level);
+	if (Level == 1)
+	{
+		return FString::Printf(TEXT("<Title>焰矢</>\n\n<Default>发射 </><Level>1</><Default> 枚焰矢，撞击目标时爆炸，造成 </><Damage>%d</><Default> 点火焰伤害，并有几率使目标灼烧</>\n\n<Small>当前等级 </><Level>%d</>"), Damage, Level);
+	}
+	else
+	{
+		return FString::Printf(TEXT("<Title>焰矢</>\n\n<Default>发射 </><Level>%d</><Default> 枚焰矢，撞击目标时爆炸，造成 </><Damage>%d</><Default> 点火焰伤害，并有几率使目标灼烧</>\n\n<Small>当前等级 </><Level>%d</>"), FMath::Min(Level, NumProjectiles), Damage, Level);
+	}
 }
 
 FString UMy_AuraProjectileSpell::GetNextLevelDescription(int32 Level)
 {
-	return Super::GetNextLevelDescription(Level);
+	const int32 Damage = DamageTypes[FMy_AuraGameplayTags::GetInstance().My_DamageType_Fire].GetValueAtLevel(Level);
+	return FString::Printf(TEXT("<Title>下一等级</>\n\n<Default>发射 </><Level>%d</><Default> 枚焰矢，撞击目标时爆炸，造成 </><Damage>%d</><Default> 点火焰伤害，并有几率使目标灼烧</>\n\n<Small>升级后等级 </><Level>%d</>"), FMath::Min(Level, NumProjectiles), Damage, Level);
 }
