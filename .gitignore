@@ -28,4 +28,5 @@ _*.py
 _*.json
 _*.txt
 *.bak-*
+*.bak
 backups/

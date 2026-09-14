@@ -1,0 +1,22 @@
+root = true
+
+# 统一编码与换行 —— 防止 IDE 保存时把中文转坏
+[*]
+charset = utf-8-bom
+end_of_line = crlf
+insert_final_newline = true
+trim_trailing_whitespace = false
+
+# C++ 源码
+[*.{cpp,h,inl}]
+indent_style = tab
+indent_size = 4
+
+# 配置文件
+[*.{cs,json,yml,yaml,md}]
+indent_style = space
+indent_size = 4
+
+# 标记文件保持 UTF-8（无 BOM 亦可）
+[*.md]
+charset = utf-8

@@ -1,4 +1,4 @@
-// Copyright ABiao
+﻿// Copyright ABiao
 
 #pragma once
 
@@ -23,4 +23,8 @@ public:
 	virtual FString GetDescription(int32 Level);
 	virtual FString GetNextLevelDescription(int32 Level);
 	static FString GetLockDescription(int32 LevelRequirement);
+
+protected:
+	float GetManaCost(int32 InLevel = 1) const;
+	float GetCooldown(int32 InLevel = 1) const;
 };

@@ -1,4 +1,4 @@
-// Copyright ABiao
+﻿// Copyright ABiao
 
 #pragma once
 
@@ -17,19 +17,14 @@ class AURA_API UMy_AuraProjectileSpell : public UMy_AuraDamageGameplayAbility
 
 protected:
 	// Ability 被激活后的入口点
-	virtual void  ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData) override;
+	virtual void ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData) override;
 
 	UFUNCTION(BlueprintCallable, Category="My_Projectile")
-	void SpawnProjectile(const FVector& ProjectileTargetLocation, const FGameplayTag& SocketTag,bool bOverridePitch = false, float PitchOverride = 0.0f);
+	void SpawnProjectile(const FVector& ProjectileTargetLocation, const FGameplayTag& SocketTag, bool bOverridePitch = false, float PitchOverride = 0.0f);
 
-	virtual FString GetDescription(int32 Level) override;
-	virtual FString GetNextLevelDescription(int32 Level) override;
-	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	TSubclassOf<AMy_ProjectileActor> ProjectileClass;
 
 	UPROPERTY(EditDefaultsOnly)
 	int32 NumProjectiles = 5;
-
-	
 };

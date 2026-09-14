@@ -88,6 +88,54 @@ open(f, 'wb').write(b'\xef\xbb\xbf' + text.encode('utf-8'))
 - 不要用编辑器的"另存为 UTF-8"来处理 GBK 文件（编辑器可能猜错源编码）；用 Python 显式指定
 - 写入必须 `bytes` 直写或用 `newline=''`，否则 Windows 上会变成 `\r\r\n`，编译报 C4335
 
+### ⚠️ 中文字符串字面量必须写成一个引号，禁止跨行拼接（2026-09-14 实证）
+
+**这是本会话折腾最久的一个坑，结论是二进制层面验证过的。**
+
+C++ 允许把相邻的字符串字面量自动拼接：
+
+```cpp
+// ❌ 这样写的，只有第一段是对的，后面全变成乱码
+return FString::Printf(TEXT(
+    "<Title>焰矢</>\n\n"
+    "<Small>当前等级 </><Level>1</>\n\n"
+    "<Small>消耗蓝量 </><ManaCost>%.1f</>\n\n"
+    ...
+), ManaCost, Cooldown, Damage);
+```
+
+```cpp
+// ✅ 必须写成一对引号、一行到底
+return FString::Printf(TEXT("<Title>焰矢</>\n\n<Small>当前等级 </><Level>1</>\n\n<Small>消耗蓝量 </><ManaCost>%.1f</>\n\n<Small>冷却时间 </><CoolDown>%.1f</>\n\n<Default>发射 </><Level>1</><Default> 枚焰矢，撞击目标时爆炸，造成 </><Damage>%d</><Default> 点火焰伤害，并有几率使目标灼烧。</>\n\n<Small>升级后可同时发射更多焰矢。</>"), ManaCost, Cooldown, Damage);
+```
+
+**现象**：多段拼接时，UI 里第一段中文正常显示，从第二段起变乱码
+（`当前等级` → `褰撳墠绛夌骇`）。
+
+**已验证的边界**：
+
+| 写法 | 结果 |
+|------|------|
+| 一对外引号 · 单行写满 | ✅ 正常 |
+| 多对外引号 · 跨行拼接 | ❌ 第二段起乱码 |
+| `\uXXXX` 全转义（纯 ASCII 源码） | ✅ 正常（可用作兜底方案） |
+
+**判定方法**（改完编译后直接查二进制，不靠肉眼看 UI）：
+
+```python
+data = open(r'Binaries/Win64/UnrealEditor-Aura-Win64-DebugGame.dll', 'rb').read()
+print('正确:', data.count('当前等级'.encode('utf-16-le')))    # 期望 > 0
+print('乱码:', data.count('褰撳墠绛夌骇'.encode('utf-16-le')))  # 期望 == 0
+```
+
+乱码字 = `正确中文.encode('utf-8').decode('gbk')`，例如
+`焰矢`→`鐒扮煝`、`发射`→`鍙戝皠`、`冷却时间`→`鍐峰嵈鏃堕棿`。
+
+**写中文 RichText 描述时的规矩**（`My_AuraFireBolt.cpp` 等）：
+1. 一个 `TEXT("...")` 里放**全部**内容，`\n\n` 也写在里面
+2. 绝不为了「看着整齐」把字符串拆成多行多对引号
+3. 文件仍是 UTF-8 with BOM + CRLF
+
 ### 检查整个项目
 
 ```python
