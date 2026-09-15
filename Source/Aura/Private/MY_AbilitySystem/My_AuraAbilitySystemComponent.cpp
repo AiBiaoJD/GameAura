@@ -1,4 +1,4 @@
-// Copyright ABiao
+﻿// Copyright ABiao
 
 
 #include "MY_AbilitySystem/My_AuraAbilitySystemComponent.h"
@@ -316,7 +316,14 @@ bool UMy_AuraAbilitySystemComponent::GetDescriptionByAbilityTag(const FGameplayT
 	// Locked：显示"需等级X解锁"
 	if (AbilityInfo)
 	{
-		OutDescription = UMy_AuraGameplayAbilityBase::GetLockDescription(AbilityInfo->FindAbilityInfoFromTag(AbilityTag).LevelUpRequirement);
+		if (!AbilityTag.IsValid() || AbilityTag.MatchesTagExact(FMy_AuraGameplayTags::GetInstance().My_Abilities_None))
+		{
+			OutDescription = FString();
+		}
+		else
+		{
+			OutDescription = UMy_AuraGameplayAbilityBase::GetLockDescription(AbilityInfo->FindAbilityInfoFromTag(AbilityTag).LevelUpRequirement);
+		}
 	}
 	OutNextLevelDescription = FString();
 	return false;

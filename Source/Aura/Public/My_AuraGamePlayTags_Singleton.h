@@ -70,7 +70,10 @@ public:
 	FGameplayTag My_Abilities_Attack;
 	FGameplayTag My_Abilities_Summon;
 	FGameplayTag My_Abilities_HitReact; //暂时没使用
-	FGameplayTag My_Abilities_None; //用来给蓝图中每添加AbilityTag的时候使用
+	// ① 【空技能哨兵】用于"技能身份"这一层：表示"这个槽位没有技能"
+	//    等价于 AbilityTag 的 nullptr。取消选中 / 蓝图里没配 AbilityTag 时用它占位。
+	//    判断用：Tag.MatchesTag(My_Abilities_None)
+	FGameplayTag My_Abilities_None;
 
 	// AbilitySpellTree
 	FGameplayTag My_Abilities_Fire_FireBolt;
@@ -85,6 +88,10 @@ public:
 	// AbilityType
 	FGameplayTag My_Abilities_Type_Offensive;
 	FGameplayTag My_Abilities_Type_Passive;
+	// ② 【空类型哨兵】用于"技能分类"这一层：表示"这个技能没有类型"
+	//    等价于 AbilityType 的 nullptr，与 ① 是完全不同的两层（别混用！）
+	//    ① 比的是"是哪个技能"，② 比的是"是哪类技能"。
+	//    用途：技能分 攻击型/被动型 时，未分类的技能填这个。当前项目尚未使用。
 	FGameplayTag My_Abilities_Type_None;
 
 	
