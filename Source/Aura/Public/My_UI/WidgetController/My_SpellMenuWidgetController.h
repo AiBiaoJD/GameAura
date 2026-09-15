@@ -1,4 +1,4 @@
-// Copyright ABiao
+ï»¿// Copyright ABiao
 
 #pragma once
 
@@ -7,14 +7,14 @@
 #include "My_UI/WidgetController/My_AuraWidgetController.h"
 #include "My_SpellMenuWidgetController.generated.h"
 
-// Ñ¡ÖĞ¼¼ÄÜÇòºóµÄ»Øµ÷£ºÍ¨Öª UI Á½¸ö°´Å¥£¨»¨µã/×°±¸£©ÊÇ·ñ¿ÉÓÃ
+// é€‰ä¸­æŠ€èƒ½çƒåçš„å›è°ƒï¼šé€šçŸ¥ UI ä¸¤ä¸ªæŒ‰é’®ï¼ˆèŠ±ç‚¹/è£…å¤‡ï¼‰æ˜¯å¦å¯ç”¨
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_FourParams(FMy_SpellGlobeSelectSignature, bool, bSpendPointsButtonEnabled, bool, bEquipButtonEnabled, FString, DescriptionString, FString, NexeLevelDescriptionString);
 
-// ¼ÇÂ¼"µ±Ç°Ñ¡ÖĞµÄ¼¼ÄÜ + Ëü×îĞÂµÄ×´Ì¬"
-// ÎªÊ²Ã´±ØĞë»º´æ StatusTag£º
-//   - ASC µÄ StatusTag Óë PS µÄ SpellPoint ÊÇÁ½Ìõ¶ÀÁ¢µÄÍøÂç¸´ÖÆÍ¨µÀ£¬µ½´ï¿Í»§¶ËµÄÊ±¼ä/Ë³Ğò²»È·¶¨
-//   - ×´Ì¬ÎŞ·¨ËæÊ±ÏÖ¶Á£ºLocked£¨Î´ÊÚÓè£©Ê±¸ù±¾Ã»ÓĞ Spec ¿É¶Á£¬ÒÑÊÚÓèµÄ Spec ¸´ÖÆÒ²¿ÉÄÜÓĞÑÓ³Ù
-//   - ËùÒÔ°Ñ»Øµ÷ËÍÀ´µÄÈ¨Íş StatusTag ´æÏÂÀ´£¬¹©Á½¸ö»Øµ÷ÖØËã°´Å¥Ê±Ê¹ÓÃ£¨Ïê¼û .cpp µÄ BindCallbacksToDependencies ×¢ÊÍ£©
+// è®°å½•"å½“å‰é€‰ä¸­çš„æŠ€èƒ½ + å®ƒæœ€æ–°çš„çŠ¶æ€"
+// ä¸ºä»€ä¹ˆå¿…é¡»ç¼“å­˜ StatusTagï¼š
+//   - ASC çš„ StatusTag ä¸ PS çš„ SpellPoint æ˜¯ä¸¤æ¡ç‹¬ç«‹çš„ç½‘ç»œå¤åˆ¶é€šé“ï¼Œåˆ°è¾¾å®¢æˆ·ç«¯çš„æ—¶é—´/é¡ºåºä¸ç¡®å®š
+//   - çŠ¶æ€æ— æ³•éšæ—¶ç°è¯»ï¼šLockedï¼ˆæœªæˆäºˆï¼‰æ—¶æ ¹æœ¬æ²¡æœ‰ Spec å¯è¯»ï¼Œå·²æˆäºˆçš„ Spec å¤åˆ¶ä¹Ÿå¯èƒ½æœ‰å»¶è¿Ÿ
+//   - æ‰€ä»¥æŠŠå›è°ƒé€æ¥çš„æƒå¨ StatusTag å­˜ä¸‹æ¥ï¼Œä¾›ä¸¤ä¸ªå›è°ƒé‡ç®—æŒ‰é’®æ—¶ä½¿ç”¨ï¼ˆè¯¦è§ .cpp çš„ BindCallbacksToDependencies æ³¨é‡Šï¼‰
 struct FMy_SelectedAbility
 {
 	FGameplayTag AbilityTag = FGameplayTag();
@@ -36,20 +36,23 @@ public:
 	UPROPERTY(BlueprintAssignable)
 	FMy_SpellGlobeSelectSignature OnSpellGlobeSelect;
 
-	// µã»÷¼¼ÄÜÇòÊ±µ÷ÓÃ£ºËã³ö×´Ì¬²¢¹ã²¥°´Å¥¿ÉÓÃ×´Ì¬
+	// ç‚¹å‡»æŠ€èƒ½çƒæ—¶è°ƒç”¨ï¼šç®—å‡ºçŠ¶æ€å¹¶å¹¿æ’­æŒ‰é’®å¯ç”¨çŠ¶æ€
 	UFUNCTION(BlueprintCallable)
 	void SpellGlobeSelected(const FGameplayTag& AbilityTag);
 
 	UFUNCTION(BlueprintCallable)
 	void SpendPointsButtonPressed();
 
+	UFUNCTION(BlueprintCallable)
+	void GlobeDeselect();
+
 	virtual void BroadcastInitiaValues() override;
 	virtual void BindCallbacksToDependencies() override;
 
 private:
-	// ¸ù¾İ ¼¼ÄÜ×´Ì¬ + ·¨ÊõµãÊı ¾ö¶¨ »¨µã/×°±¸ °´Å¥ÊÇ·ñ¿ÉÓÃ
+	// æ ¹æ® æŠ€èƒ½çŠ¶æ€ + æ³•æœ¯ç‚¹æ•° å†³å®š èŠ±ç‚¹/è£…å¤‡ æŒ‰é’®æ˜¯å¦å¯ç”¨
 	static void My_ShouldEnableButton(FGameplayTag AbilityStatus, const int32 SpellPoint, bool& bSpendPointsButtonEnabled, bool& bEquipButtonEnabled);
 
-	// »º´æµ±Ç°Ñ¡ÖĞ¼¼ÄÜµÄ×´Ì¬£¨ASC ¸´ÖÆ²»¿É¿¿£¬¼û struct ×¢ÊÍ£©
+	// ç¼“å­˜å½“å‰é€‰ä¸­æŠ€èƒ½çš„çŠ¶æ€ï¼ˆASC å¤åˆ¶ä¸å¯é ï¼Œè§ struct æ³¨é‡Šï¼‰
 	FMy_SelectedAbility SelectedAbility = {FMy_AuraGameplayTags::GetInstance().My_Abilities_None, FMy_AuraGameplayTags::GetInstance().My_Abilities_Status_Locked};
 };

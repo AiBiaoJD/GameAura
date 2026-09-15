@@ -1,4 +1,4 @@
-// Copyright ABiao
+﻿// Copyright ABiao
 #pragma once
 #include "CoreMinimal.h"
 #include "AbilitySystemComponent.h"

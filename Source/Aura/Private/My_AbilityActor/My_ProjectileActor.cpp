@@ -1,4 +1,4 @@
-// Copyright ABiao
+ï»¿// Copyright ABiao
 
 
 #include "My_AbilityActor/My_ProjectileActor.h"
@@ -19,7 +19,7 @@ AMy_ProjectileActor::AMy_ProjectileActor()
 	Sphere = CreateDefaultSubobject<USphereComponent>("Sphere");
 	SetRootComponent(Sphere);
 	Sphere->SetCollisionObjectType(ECC_MyProjectile);
-	Sphere->SetCollisionEnabled(ECollisionEnabled::QueryOnly); //½öÆôÓÃ²éÑ¯Åö×²¼ì²â
+	Sphere->SetCollisionEnabled(ECollisionEnabled::QueryOnly); //ä»…å¯ç”¨æŸ¥è¯¢ç¢°æ’žæ£€æµ‹
 	Sphere->SetCollisionResponseToAllChannels(ECR_Ignore);
 	Sphere->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Overlap);
 	Sphere->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Overlap);
@@ -44,36 +44,36 @@ void AMy_ProjectileActor::BeginPlay()
 void AMy_ProjectileActor::OnSphereOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
 	/*
-	 * 1.»ðÇòÔÚPlayasCLientÄ£Ê½ÏÂ,»áÓëÊ©·¨Õß·¢ÉúÅö×²,ÕâÊÇÎÒÃÇÒª±ÜÃâµÄ(¿Í»§¶ËºÍ·þÎñÆ÷¶¼Òª)
+	 * 1.ç«çƒåœ¨PlayasCLientæ¨¡å¼ä¸‹,ä¼šä¸Žæ–½æ³•è€…å‘ç”Ÿç¢°æ’ž,è¿™æ˜¯æˆ‘ä»¬è¦é¿å…çš„(å®¢æˆ·ç«¯å’ŒæœåŠ¡å™¨éƒ½è¦)
 	 * 
-	 *  ·½·¨£º·þÎñÆ÷DamageEffectSpecHandle.DataÓÐÐ§£¬¿Í»§¶ËDamageEffectSpecHandle.DataÎÞÐ§
+	 *  æ–¹æ³•ï¼šæœåŠ¡å™¨DamageEffectSpecHandle.Dataæœ‰æ•ˆï¼Œå®¢æˆ·ç«¯DamageEffectSpecHandle.Dataæ— æ•ˆ
 	 *   
-	 *  ÎÒÃÇÒª´¦Àí¿Í»§¶ËºÍ·þÎñÆ÷»ðÇòÓëÊ©·¨ÕßÅö×²ÎÊÌâ£¬Ê¹ÓÃÏÂÃæµÚ2¸öifÖ»ÄÜ´¦Àí·þÎñÆ÷¡£¿Í»§¶Ë½â¾ö²»ÁË¡£
+	 *  æˆ‘ä»¬è¦å¤„ç†å®¢æˆ·ç«¯å’ŒæœåŠ¡å™¨ç«çƒä¸Žæ–½æ³•è€…ç¢°æ’žé—®é¢˜ï¼Œä½¿ç”¨ä¸‹é¢ç¬¬2ä¸ªifåªèƒ½å¤„ç†æœåŠ¡å™¨ã€‚å®¢æˆ·ç«¯è§£å†³ä¸äº†ã€‚
 	 *
 	 * 
-	 * 2.ÒòÎª¿Í»§¶ËºÍ·þÎñÆ÷¶¼»á´¥·¢MulticastRPC,Èç¹ûÎÒÃÇ²»¼ÓµÚ1¸öif,¿Í»§¶Ë»á´¥·¢MulticastRPC£¬µ¼ÖÂÊÓ¾õÉÏ»ðÇòºÍÊ©·¨Õß·¢ÉúÅö×²
+	 * 2.å› ä¸ºå®¢æˆ·ç«¯å’ŒæœåŠ¡å™¨éƒ½ä¼šè§¦å‘MulticastRPC,å¦‚æžœæˆ‘ä»¬ä¸åŠ ç¬¬1ä¸ªif,å®¢æˆ·ç«¯ä¼šè§¦å‘MulticastRPCï¼Œå¯¼è‡´è§†è§‰ä¸Šç«çƒå’Œæ–½æ³•è€…å‘ç”Ÿç¢°æ’ž
 	 *
-	 * ·½·¨£ºËùÓÐÂß¼­ÔÚ·þÎñÆ÷ÉÏÊµÏÖ£¬¼´Ìí¼ÓµÚ1¸öif¡£
-	 * ÕâÑù»áÊ¹MulticastRPCÔÚServerµ÷ÓÃ,ËùÓÐ¿Í»§¶ËÍ¬²½ÏÔÊ¾ÌØÐ§¡£
-	 * ²¢ÇÒÒ²ÄÜ½â¾ö¿Í»§¶Ë»ðÇòºÍÊ©·¨ÕßÅö×²
+	 * æ–¹æ³•ï¼šæ‰€æœ‰é€»è¾‘åœ¨æœåŠ¡å™¨ä¸Šå®žçŽ°ï¼Œå³æ·»åŠ ç¬¬1ä¸ªifã€‚
+	 * è¿™æ ·ä¼šä½¿MulticastRPCåœ¨Serverè°ƒç”¨,æ‰€æœ‰å®¢æˆ·ç«¯åŒæ­¥æ˜¾ç¤ºç‰¹æ•ˆã€‚
+	 * å¹¶ä¸”ä¹Ÿèƒ½è§£å†³å®¢æˆ·ç«¯ç«çƒå’Œæ–½æ³•è€…ç¢°æ’ž
 	 * 
 	 */
 	if (!HasAuthority()) return;
-	// Åöµ½Ê©·¨Õß
+	// ç¢°åˆ°æ–½æ³•è€…
 	if (DamageEffectSpecHandle.Data.Get()->GetContext().GetEffectCauser() == OtherActor) return;
-	// Åöµ½ÓÑ¾ü£¿
+	// ç¢°åˆ°å‹å†›ï¼Ÿ
 	if (!UMy_AuraAbilitySystemLibrary::IsNotFriend(DamageEffectSpecHandle.Data.Get()->GetContext().GetEffectCauser(), OtherActor)) return;
 
-	// Åöµ½µÐÈË£¡
+	// ç¢°åˆ°æ•Œäººï¼
 	MulticastPlayImpactEffects();
 
-	// ¼¤»îEffect,Ö»ÄÜÔÚ·þÎñÆ÷ÐÞ¸ÄAttribute,Replicate Attributeµ½¿Í»§¶Ë
+	// æ¿€æ´»Effect,åªèƒ½åœ¨æœåŠ¡å™¨ä¿®æ”¹Attribute,Replicate Attributeåˆ°å®¢æˆ·ç«¯
 	if (UAbilitySystemComponent* TargetASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(OtherActor))
 	{
 		TargetASC->ApplyGameplayEffectSpecToSelf(*DamageEffectSpecHandle.Data.Get());
 	}
 
-	// ÏÈ¹ØÅö×²ÔÙÏú»Ù£¬·ÀÖ¹Í¬Ö¡¶à´Î´¥·¢ÉËº¦
+	// å…ˆå…³ç¢°æ’žå†é”€æ¯ï¼Œé˜²æ­¢åŒå¸§å¤šæ¬¡è§¦å‘ä¼¤å®³
 	Sphere->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	Destroy();
 }

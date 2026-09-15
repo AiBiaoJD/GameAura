@@ -1,4 +1,4 @@
-// Copyright ABiao
+ï»¿// Copyright ABiao
 
 
 #include "My_UI/WidgetController/My_AuraWidgetController.h"
@@ -21,14 +21,14 @@ void UMy_AuraWidgetController::BindCallbacksToDependencies()
 
 void UMy_AuraWidgetController::BroadcastAbilityInfo()
 {
-	//»ñÈ¡ËùÓÐÄÜÁ¦µÄÐÅÏ¢£¬²¢²éÕÒAbilityinfo»ñÈ¡ÌØ¶¨info£¬ÔÙ´«Èëµ½widget
+	//èŽ·å–æ‰€æœ‰èƒ½åŠ›çš„ä¿¡æ¯ï¼Œå¹¶æŸ¥æ‰¾AbilityinfoèŽ·å–ç‰¹å®šinfoï¼Œå†ä¼ å…¥åˆ°widget
 	if (!GetAuraASC()->bStartupAbilityGiven) return;
 
-	//°ó¶¨FMy_ForEachAbilitySignatureÎ¯ÍÐµÄ»Øµ÷º¯Êý
+	//ç»‘å®šFMy_ForEachAbilitySignatureå§”æ‰˜çš„å›žè°ƒå‡½æ•°
 	FMy_ForEachAbilitySignature OnEachAbility;
 	OnEachAbility.BindLambda([this](const FGameplayAbilitySpec& AbilitySpec)
 	{
-		//Ìø¹ý±»¶¯µÈÃ»ÓÐÅä My_Abilities AbilityTag µÄÄÜÁ¦£¨²é²»µ½¶ÔÓ¦ AbilityInfo£¬»á±¨ [None] ´íÎó£©
+		//è·³è¿‡è¢«åŠ¨ç­‰æ²¡æœ‰é… My_Abilities AbilityTag çš„èƒ½åŠ›ï¼ˆæŸ¥ä¸åˆ°å¯¹åº” AbilityInfoï¼Œä¼šæŠ¥ [None] é”™è¯¯ï¼‰
 		const FGameplayTag AbilityTag = GetAuraASC()->GetAbilityTagFromAbilitySpec(AbilitySpec);
 		if (AbilityTag.IsValid())
 		{
@@ -40,7 +40,7 @@ void UMy_AuraWidgetController::BroadcastAbilityInfo()
 		}
 	});
 
-	//¹ã²¥FMy_ForEachAbilitySignature
+	//å¹¿æ’­FMy_ForEachAbilitySignature
 	GetAuraASC()->ForEachAbility(OnEachAbility);
 }
 

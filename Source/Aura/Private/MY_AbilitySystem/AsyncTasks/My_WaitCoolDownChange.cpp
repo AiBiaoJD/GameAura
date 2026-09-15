@@ -1,4 +1,4 @@
-// Copyright ABiao
+ï»¿// Copyright ABiao
 
 
 #include "MY_AbilitySystem/AsyncTasks/My_WaitCoolDownChange.h"
@@ -17,10 +17,10 @@ UMy_WaitCoolDownChange* UMy_WaitCoolDownChange::WaitCoolDownChange(UAbilitySyste
         return nullptr;
     }
 
-    // ÀäÈ´½áÊøÌí¼ÓµÄ»Øµ÷º¯Êı
+    // å†·å´ç»“æŸæ·»åŠ çš„å›è°ƒå‡½æ•°
     AbilitySystemComponent->RegisterGameplayTagEvent(InCoolDownTag, EGameplayTagEventType::NewOrRemoved).AddUObject(WaitCoolDownChange, &UMy_WaitCoolDownChange::CoolDownTagChanged);
 
-    // ÀäÈ´¿ªÊ¼Ìí¼ÓµÄ»Øµ÷º¯Êı£¬ÕâÊÇÎªÁË»ñÈ¡Ê±¼ä´ÓASCÉÏ£¬ËùÒÔ²»ÓÃÉÏÃæµÄÎ¯ÍĞ
+    // å†·å´å¼€å§‹æ·»åŠ çš„å›è°ƒå‡½æ•°ï¼Œè¿™æ˜¯ä¸ºäº†è·å–æ—¶é—´ä»ASCä¸Šï¼Œæ‰€ä»¥ä¸ç”¨ä¸Šé¢çš„å§”æ‰˜
     AbilitySystemComponent->OnActiveGameplayEffectAddedDelegateToSelf.AddUObject(WaitCoolDownChange, &UMy_WaitCoolDownChange::OnActiveEffectAdded);
     
     return WaitCoolDownChange;
@@ -37,7 +37,7 @@ void UMy_WaitCoolDownChange::EndTask()
 
 void UMy_WaitCoolDownChange::CoolDownTagChanged(const FGameplayTag InCoolDownTag, int32 NewCount)
 {
-    // TagÒÆ³ıÁË£¬ÀäÈ´½áÊø
+    // Tagç§»é™¤äº†ï¼Œå†·å´ç»“æŸ
     if (NewCount  == 0)
     {
         CoolDownEnd.Broadcast(0.f);
