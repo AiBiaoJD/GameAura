@@ -30,3 +30,9 @@ _*.txt
 *.bak-*
 *.bak
 backups/
+
+# Rider 个人本地设置（形状因机器而异，不进仓库）
+*.DotSettings.user
+
+# 静态分析用编译数据库（构建产物，体积大，可随时重新生成）
+compile_commands.json
