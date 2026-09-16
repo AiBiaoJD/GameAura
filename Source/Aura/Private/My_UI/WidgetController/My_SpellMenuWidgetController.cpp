@@ -76,8 +76,30 @@ void UMy_SpellMenuWidgetController::BindCallbacksToDependencies()
 	}
 }
 
+void UMy_SpellMenuWidgetController::GlobeDeselect()
+{
+	if (bWaitForEquipSelection)
+	{
+		FGameplayTag SelectedAbilityType = AbilityDA->FindAbilityInfoFromTag(SelectedAbility.AbilityTag).AbilityType;
+		OnStopWaitForEquipSelection.Broadcast(SelectedAbilityType);
+		bWaitForEquipSelection = false;
+	}
+
+	SelectedAbility.AbilityTag = FMy_AuraGameplayTags::GetInstance().My_Abilities_None;
+	SelectedAbility.StatusTag = FMy_AuraGameplayTags::GetInstance().My_Abilities_Status_Locked;
+	OnSpellGlobeSelect.Broadcast(false, false, FString(), FString());
+}
+
 void UMy_SpellMenuWidgetController::SpellGlobeSelected(const FGameplayTag& AbilityTag)
 {
+	if (bWaitForEquipSelection)
+	{
+		FGameplayTag SelectedAbilityType = AbilityDA->FindAbilityInfoFromTag(SelectedAbility.AbilityTag).AbilityType;
+		OnStopWaitForEquipSelection.Broadcast(SelectedAbilityType);
+		bWaitForEquipSelection = false;
+	}
+
+
 	// 点击技能球：算出这个技能的当前状态，缓存起来，并广播一次按钮状态
 	const int32 SpellPoint = GetAuraPS()->GetSpellPoint();
 
@@ -158,9 +180,10 @@ void UMy_SpellMenuWidgetController::SpendPointsButtonPressed()
 	GetAuraASC()->ServerSpendSpellPoints(SelectedAbility.AbilityTag);
 }
 
-void UMy_SpellMenuWidgetController::GlobeDeselect()
+
+void UMy_SpellMenuWidgetController::EquippedButtonPressed()
 {
-	SelectedAbility.AbilityTag = FMy_AuraGameplayTags::GetInstance().My_Abilities_None;
-	SelectedAbility.StatusTag = FMy_AuraGameplayTags::GetInstance().My_Abilities_Status_Locked;
-	OnSpellGlobeSelect.Broadcast(false, false, FString(),FString());
+	const FGameplayTag AbilityType = AbilityDA->FindAbilityInfoFromTag(SelectedAbility.AbilityTag).AbilityType;
+	OnWaitForEquipSelection.Broadcast(AbilityType);
+	bWaitForEquipSelection = true;
 }

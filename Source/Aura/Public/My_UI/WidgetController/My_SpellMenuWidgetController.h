@@ -10,6 +10,9 @@
 // 选中技能球后的回调：通知 UI 两个按钮（花点/装备）是否可用
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_FourParams(FMy_SpellGlobeSelectSignature, bool, bSpendPointsButtonEnabled, bool, bEquipButtonEnabled, FString, DescriptionString, FString, NexeLevelDescriptionString);
 
+// EquipButton按下Controller传递给UI的委托
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FMy_WaitForEquipSelectionSignature, const FGameplayTag&, AbilityType);
+
 // 记录"当前选中的技能 + 它最新的状态"
 // 为什么必须缓存 StatusTag：
 //   - ASC 的 StatusTag 与 PS 的 SpellPoint 是两条独立的网络复制通道，到达客户端的时间/顺序不确定
@@ -36,6 +39,12 @@ public:
 	UPROPERTY(BlueprintAssignable)
 	FMy_SpellGlobeSelectSignature OnSpellGlobeSelect;
 
+	UPROPERTY(BlueprintAssignable)
+	FMy_WaitForEquipSelectionSignature OnWaitForEquipSelection;
+
+	UPROPERTY(BlueprintAssignable)
+	FMy_WaitForEquipSelectionSignature OnStopWaitForEquipSelection;
+
 	// 点击技能球时调用：算出状态并广播按钮可用状态
 	UFUNCTION(BlueprintCallable)
 	void SpellGlobeSelected(const FGameplayTag& AbilityTag);
@@ -46,6 +55,9 @@ public:
 	UFUNCTION(BlueprintCallable)
 	void GlobeDeselect();
 
+	UFUNCTION(BlueprintCallable)
+	void EquippedButtonPressed();
+
 	virtual void BroadcastInitiaValues() override;
 	virtual void BindCallbacksToDependencies() override;
 
@@ -55,4 +67,6 @@ private:
 
 	// 缓存当前选中技能的状态（ASC 复制不可靠，见 struct 注释）
 	FMy_SelectedAbility SelectedAbility = {FMy_AuraGameplayTags::GetInstance().My_Abilities_None, FMy_AuraGameplayTags::GetInstance().My_Abilities_Status_Locked};
+
+	bool bWaitForEquipSelection = false;
 };

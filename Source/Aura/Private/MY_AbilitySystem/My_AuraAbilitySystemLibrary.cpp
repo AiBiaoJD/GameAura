@@ -9,6 +9,7 @@
 #include "MY_GameMode/MyGameModeBase.h"
 #include "My_Interraction/My_CombatInterface.h"
 #include "My_UI/HUD/My_AuraHUD.h"
+#include "Engine/Engine.h"          // GEngine / EGetWorldErrorMode
 
 
 bool UMy_AuraAbilitySystemLibrary::MakeWidgetControllerParams(const UObject* WorldContextObject, FMY_WidgetControllerParams& Params, AMy_AuraHUD*& HUD)

@@ -11,12 +11,16 @@
  * 
  */
 class UGameplayAbility;
+
 USTRUCT(BlueprintType)
 struct FMy_AuraAbilityInfo
 {
 	GENERATED_BODY()
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	FGameplayTag AbilityTag = FGameplayTag();
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	FGameplayTag AbilityType = FGameplayTag();
 	
 	UPROPERTY(BlueprintReadOnly)
 	FGameplayTag InputTag = FGameplayTag();
@@ -45,6 +49,7 @@ UCLASS()
 class AURA_API UMy_AbilityInfo : public UDataAsset
 {
 	GENERATED_BODY()
+
 public:
 	FMy_AuraAbilityInfo FindAbilityInfoFromTag(const FGameplayTag& AbilityTag) const;
 
