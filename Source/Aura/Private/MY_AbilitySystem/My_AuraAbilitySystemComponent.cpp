@@ -169,6 +169,24 @@ FGameplayTag UMy_AuraAbilitySystemComponent::GetStatusTagFromAbilitySpec(const F
 	return FGameplayTag();
 }
 
+FGameplayTag UMy_AuraAbilitySystemComponent::GetStatusTagFromAbilityTag(const FGameplayTag& AbilityTag)
+{
+	if (const FGameplayAbilitySpec* Spec = GetSpecFromAbilityTag(AbilityTag))
+	{
+		return GetStatusTagFromAbilitySpec(*Spec);
+	}
+	return FGameplayTag();
+}
+
+FGameplayTag UMy_AuraAbilitySystemComponent::GetInputTagFromAbilityTag(const FGameplayTag& AbilityTag)
+{
+	if (const FGameplayAbilitySpec* Spec = GetSpecFromAbilityTag(AbilityTag))
+	{
+		return GetInputTagFromAbilitySpec(*Spec);
+	}
+	return FGameplayTag();
+}
+
 FGameplayAbilitySpec* UMy_AuraAbilitySystemComponent::GetSpecFromAbilityTag(const FGameplayTag& AbilityTag)
 {
 	FScopedAbilityListLock ActiveScopeLock(*this);
@@ -269,6 +287,119 @@ void UMy_AuraAbilitySystemComponent::ServerSpendSpellPoints_Implementation(const
 	}
 }
 
+
+/* ============================================================
+ * 装备技能（Server RPC）—— 服务器权威端
+ * ------------------------------------------------------------
+ * 调用链：UI 点装备槽 → SpellMenuWidgetController::EquipSpellRowGlobePressed
+ *            → ServerEquipAbility(AbilityTag, Slot)  ← 本函数
+ *            → ClientEquipAbility(...) 回执给触发者
+ *            → SpellMenuWidgetController::OnAbilityEquipped 广播给 UI
+ *
+ * 参数：AbilityTag = 要装备哪个技能；Slot = 装备到哪个槽（= 一个 InputTag）
+ *
+ * ⚠️ 为什么必须走 Server RPC：DynamicAbilityTags 的权威副本在服务器，
+ *    客户端本地改会被下一次属性复制覆盖掉（改了不算数）。
+ * ============================================================ */
+void UMy_AuraAbilitySystemComponent::ServerEquipAbility_Implementation(const FGameplayTag& AbilityTag, const FGameplayTag& Slot)
+{
+	if (FGameplayAbilitySpec* AbilitySpec = GetSpecFromAbilityTag(AbilityTag))
+	{
+		FMy_AuraGameplayTags GameplayTags = FMy_AuraGameplayTags::GetInstance();
+
+		// ① 记下"旧槽位"——后面要原样带回给客户端，UI 靠它清掉旧槽的技能球
+		//    （属性复制给不了这个"变化过程"，所以必须由 RPC 参数携带）
+		const FGameplayTag& PreSlot = GetInputTagFromAbilitySpec(*AbilitySpec);
+
+		// ② 校验状态：只有 Unlocked / Equipped 才允许装备
+		//    Locked（没解锁）、Eligible（能加点但还没解锁）都不给装
+		const FGameplayTag& StatusTag = GetStatusTagFromAbilitySpec(*AbilitySpec);
+		const bool bStatusValid = StatusTag == GameplayTags.My_Abilities_Status_Equipped || StatusTag == GameplayTags.My_Abilities_Status_Unlocked;
+		if (bStatusValid)
+		{
+			// ③ 清掉目标槽原来的占用者（一个槽只能装一个技能）
+			//    注意：这一步也会把 AbilitySpec 自己清掉（如果它本来就占着这个槽）
+			ClearAbilitiesOfSlot(Slot);
+
+			// ④ 清掉这个技能原来的槽（换键 = 先脱离旧槽）
+			//    ClearSlot 内部会 MarkAbilitySpecDirty，这里再调一次是双保险
+			ClearSlot(AbilitySpec);
+
+			// ⑤ 把技能放进新槽（AddTag 就是"装备到某个键位"的本体）
+			AbilitySpec->DynamicAbilityTags.AddTag(Slot);
+
+			// ⑥ 状态推进：Unlocked（已解锁未装备）→ Equipped（已装备）
+			//    已经是 Equipped 的（纯换键）不用改状态
+			if (StatusTag.MatchesTagExact(GameplayTags.My_Abilities_Status_Unlocked))
+			{
+				AbilitySpec->DynamicAbilityTags.RemoveTag(GameplayTags.My_Abilities_Status_Unlocked);
+				AbilitySpec->DynamicAbilityTags.AddTag(GameplayTags.My_Abilities_Status_Equipped);
+			}
+
+			// ⑦ 标脏 → 让 FastArraySerializer 把这次的 DynamicAbilityTags 变化复制给客户端
+			//    （DynamicAbilityTags 本身是复制的，但 Item 的"脏标记"要手动置位才会进增量同步）
+			MarkAbilitySpecDirty(*AbilitySpec);
+		}
+
+		// ⑧ 回执给触发操作的客户端，带上 PreSlot 让 UI 能精确地"清旧槽 + 填新槽"
+		ClientEquipAbility(AbilityTag, GameplayTags.My_Abilities_Status_Equipped, Slot, PreSlot);
+	}
+}
+
+/* 装备回执（服务器 → 触发操作的客户端）
+ * 这里只做一个中转广播：把"谁、变成什么状态、进了哪个槽、离开哪个槽"交给 WidgetController 去分发给 UI。
+ * 分层意义：ASC 不认识 UI，只广播数据；WidgetController 才决定怎么更新界面。 */
+void UMy_AuraAbilitySystemComponent::ClientEquipAbility_Implementation(const FGameplayTag& AbilityTag, const FGameplayTag& Status, const FGameplayTag& Slot, const FGameplayTag& PreSlot)
+{
+	OnAbilityEquipped.Broadcast(AbilityTag, Status, Slot, PreSlot);
+}
+
+/* 【针对 Ability】清掉这一个技能占的槽
+ * 做法：先读出它当前的 InputTag，再把这个 Tag 删掉。
+ * 结果：技能变成"没有槽位"（未装备状态）。
+ * ⚠️ FGameplayAbilitySpec 是 FFastArraySerializerItem，改了里面的数据必须 MarkItemDirty，
+ *    否则增量复制不会带上这次变化。 */
+void UMy_AuraAbilitySystemComponent::ClearSlot(FGameplayAbilitySpec* AbilitySpec)
+{
+	const FGameplayTag& SlotTag = GetInputTagFromAbilitySpec(*AbilitySpec);
+	AbilitySpec->DynamicAbilityTags.RemoveTag(SlotTag);
+	MarkAbilitySpecDirty(*AbilitySpec);
+}
+
+/* 【针对槽位】清掉占着这个槽的所有技能
+ * 与 ClearSlot 的区别（一个以"技能"为出发点，一个以"槽"为出发点）：
+ *   ClearSlot(Spec)       : 清"这个技能"的槽
+ *   ClearAbilitiesOfSlot  : 遍历所有技能，谁占着这个槽就清谁（内部还是调 ClearSlot）
+ * 用途：装备时清掉目标槽的原占用者。
+ * FScopedAbilityListLock 是遍历 ActivatableAbilities 时必须加的锁（防止遍历期间列表被改）。 */
+void UMy_AuraAbilitySystemComponent::ClearAbilitiesOfSlot(const FGameplayTag& Slot)
+{
+	FScopedAbilityListLock ActiveScopedLock(*this);
+	for (FGameplayAbilitySpec& AbilitySpec : GetActivatableAbilities())
+	{
+		if (AbilityHasSlot(&AbilitySpec, Slot))
+		{
+			ClearSlot(&AbilitySpec);
+		}
+	}
+}
+
+/* 【精确判断】这个技能占着【指定的这个 Slot】吗
+ * 语义 = "它现在装备在你问的这个键位上吗"（HasTagExact 精确匹配）。
+ * 与"这个技能装备了没"不是一回事：
+ *   - 本函数问"占着某个具体槽吗"   → 需要传入具体 SlotTag
+ *   - "装备了没"应该判断"有没有任意 InputTag 前缀的 Tag"（教程里叫 AbilityHasAnySlot） */
+bool UMy_AuraAbilitySystemComponent::AbilityHasSlot(const FGameplayAbilitySpec* AbilitySpec, const FGameplayTag& Slot)
+{
+	for (FGameplayTag Tag : AbilitySpec->DynamicAbilityTags)
+	{
+		if (Tag.MatchesTagExact(Slot))
+		{
+			return true;
+		}
+	}
+	return false;
+}
 
 bool UMy_AuraAbilitySystemComponent::GetDescriptionByAbilityTag(const FGameplayTag& AbilityTag, const FGameplayTag& StatusTag, int32 AbilityLevel, UMy_AbilityInfo* AbilityInfo, FString& OutDescription, FString& OutNextLevelDescription)
 {

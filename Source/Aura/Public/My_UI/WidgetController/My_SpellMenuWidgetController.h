@@ -45,6 +45,10 @@ public:
 	UPROPERTY(BlueprintAssignable)
 	FMy_WaitForEquipSelectionSignature OnStopWaitForEquipSelection;
 
+
+	virtual void BroadcastInitiaValues() override;
+	virtual void BindCallbacksToDependencies() override;
+
 	// 点击技能球时调用：算出状态并广播按钮可用状态
 	UFUNCTION(BlueprintCallable)
 	void SpellGlobeSelected(const FGameplayTag& AbilityTag);
@@ -58,8 +62,11 @@ public:
 	UFUNCTION(BlueprintCallable)
 	void EquippedButtonPressed();
 
-	virtual void BroadcastInitiaValues() override;
-	virtual void BindCallbacksToDependencies() override;
+	UFUNCTION(BlueprintCallable)
+	void EquipSpellRowGlobePressed(const FGameplayTag& SlotTag, const FGameplayTag& AbilityType);
+
+	//OnAbilityEquipped委托的回调函数
+	void OnAbilityEquipped(const FGameplayTag& AbilityTag, const FGameplayTag& Status, const FGameplayTag& Slot, const FGameplayTag& PreSlot);
 
 private:
 	// 根据 技能状态 + 法术点数 决定 花点/装备 按钮是否可用
@@ -69,4 +76,6 @@ private:
 	FMy_SelectedAbility SelectedAbility = {FMy_AuraGameplayTags::GetInstance().My_Abilities_None, FMy_AuraGameplayTags::GetInstance().My_Abilities_Status_Locked};
 
 	bool bWaitForEquipSelection = false;
+
+	FGameplayTag SelectedSlot; // 槽位
 };

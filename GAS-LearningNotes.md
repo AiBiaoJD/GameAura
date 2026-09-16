@@ -39,6 +39,8 @@
 - [三十六、代码规范踩坑：委托 Signature / GameplayTag 空格 / 文件编码](#三十六代码规范踩坑委托-signature-gameplaytag-空格-文件编码)
 - [三十七、Spec复制 vs ClientRPC时序：描述不能依赖spec + GameMode只在服务器](#三十七spec复制-vs-clientrpc时序描述不能依赖spec--gamemode只在服务器)
 - [三十八、C++ 中文字面量的多引号拼接坑（RichText 描述乱码终极定位）](#三十八c-中文字面量的多引号拼接坑richtext-描述乱码终极定位)
+- [三十九、RPC 判断框架 + 复制机制 + 装备功能完整拆解](#三十九rpc-判断框架--复制机制--装备功能完整拆解)
+- [四十、装备功能 My_ 版实现 + 缓存策略 + 代码复查](#四十装备功能-my_-版实现--缓存策略--代码复查)
 
 ---
 
@@ -3488,3 +3490,610 @@ FString/TEXT 在 Windows 上是 **UTF-16LE**，所以要按 `utf-16-le` 编码�
 
 **中文 RichText 字符串必须写成一对外引号、一行到底；"第一行正常、后面乱码"就是多引号拼接的指纹，
 用 DLL 里的 UTF-16LE 字节比对即可一秒定案。**
+
+## 三十九、RPC 判断框架 + 复制机制 + 装备功能完整拆解
+
+> 2026-09-16。起因：学 Equip 功能时被教程一堆函数绕晕，且不知道"什么时候该用 RPC"。
+> 本章给出**可自己推导的判断框架**，而不是背模式。
+
+### 39.1 最底层心智模型：权威副本 vs 本地副本
+
+```
+┌──────────────────────────────┐
+│  服务器（Server）             │  ← 唯一可以改数据的地方（Authority）
+│  【权威副本】                 │
+└───────────┬──────────────────┘
+            │ 复制（单向：服务器 → 客户端）
+            ▼
+┌──────────────────────────────┐
+│  客户端（Client）             │  ← 数据只是【只读副本】
+│  【本地副本】                 │
+└──────────────────────────────┘
+```
+
+**唯一规则**：
+
+> 客户端改自己的副本 = **白改**。下一次复制到达时会被服务器覆盖。
+> 所以**任何要"留下来"的改动，都必须让服务器去做**。
+
+**银行类比**：手机 App 显示余额 = 只读副本；要改余额必须发**请求**给银行（Server RPC），
+银行改完再推送结果（复制 / 通知 RPC）。
+
+**⚠️ 准确表述**：不是"客户端改不了"，而是"**客户端改了不算数**"。
+技术上你可以在客户端本地改 `DynamicAbilityTags`（能编译、能跑、当时看起来生效），但：
+不上传服务器、下次复制被覆盖、别的玩家看不到。
+
+### 39.2 判断框架：四个问题，按顺序问
+
+#### Q1：这个数据有"权威副本"吗？谁是 Authority？
+
+| 数据在哪 | Authority |
+|---|---|
+| `AttributeSet`（血、蓝） | 服务器 |
+| `ASC` 的 `AbilitySpec`（技能列表、DynamicTags） | 服务器 |
+| `PlayerState` / `GameState` 上的东西 | 服务器 |
+| 纯本地 UI 状态（菜单开没开） | **客户端自己** → 不需要 RPC |
+| 音效音量、画质设置 | **客户端自己** → 不需要 RPC |
+
+> 本项目事实：`My_AuraPlayerState.cpp:13-14` —— ASC 建在 **PlayerState** 上，且 `SetIsReplicated(true)`。
+
+#### Q2：我是"改"还是"看"？
+
+```
+只读（显示、计算、判断）→ 直接读本地副本，不需要 RPC
+要改                    → 必须走 Server RPC
+```
+
+**客户端可以放心"读"本地副本**（例：`EquipButtonPressed` 里读 `GetSlotFromAbilityTag`）。
+**只有"写"需要 RPC。**
+
+#### Q3：改完之后，谁需要【立刻】知道？
+
+| 谁需要知道 | 用什么 |
+|---|---|
+| **没人急**（下次复制自然同步） | **什么都不用** ← 最常见 |
+| **只有自己** | `Client` RPC |
+| **所有人（含服务器）** | `NetMulticast` RPC |
+| **需要"旧值/变化过程"** | 在通知里把旧值也带上（如 `PreviousSlot`） |
+
+#### Q4：后进玩家 / 掉线重连也要正确吗？
+
+```
+要 → 数据必须走【复制】，不能只靠 RPC
+```
+
+**RPC 是"一次性事件"，复制是"持续状态"。**
+
+经典坑：玩家 A 装备完（RPC 只发给 A）→ 玩家 B 中途加入 → B 收不到那个 RPC，
+**只能靠属性复制同步到正确状态**。
+
+### 39.3 Server RPC 的两种用途（很多人只知道第一种）
+
+| 用途 | 含义 | 例子 |
+|---|---|---|
+| **① 请求改数据** | "帮我改" | `ServerEquipAbility`、`ServerUpgradeAttribute` |
+| **② 上报信息** | "我这边发生了这个，你（服务器）不知道" | 开火请求、`ServerSetReplicatedTargetData` |
+
+**服务器"看不到"客户端独有的东西**：
+
+```
+客户端独有：鼠标点击、按键输入、相机朝向、屏幕中心射线命中点、UI 点了哪个球
+服务器知道：Pawn 位置/旋转（复制来的）、血量、已释放的技能
+```
+
+### 39.4 最实用的判断口诀
+
+> ## 问：**服务器能自己算出来吗？**
+> ```
+> 能  → 不需要 RPC
+> 不能 → 需要上报（Server RPC）
+> ```
+
+| 情况 | 服务器能自己算吗 | 需要 RPC 吗 |
+|---|---|---|
+| 陷阱踩到扣血 | ✅ 能 | ❌ 不要 |
+| 敌人 AI 攻击玩家 | ✅ 能 | ❌ 不要 |
+| 持续伤害（DOT） | ✅ 能 | ❌ 不要 |
+| **Hitscan 打中谁 / 打在哪** | ❌ 不能 | ✅ 要上报 |
+| **点击了哪个技能球** | ❌ 不能 | ✅ 要上报 |
+| **按了什么键放技能** | ❌ 不能 | ✅ 要上报（**GAS 框架代劳**） |
+| **敌人掉血结算** | ✅ 能（服务器端发生） | ❌ **完全不需要** |
+
+### 39.5 ⚠️ 不是所有联机功能都要 RPC
+
+| 功能 | 需要 Server RPC？ | 为什么 |
+|---|---|---|
+| 陷阱 / DOT / AI 攻击掉血 | ❌ | 服务器自己算 + 复制属性 |
+| 敌人血条更新 | ❌ | `OnRep_Health` 自动触发 |
+| 经验值增加 | ❌ | 复制属性 |
+| 打开菜单 | ❌ | 纯本地 UI |
+| 改技能槽 | ✅ | 信息在客户端（点了哪个球） |
+| 加属性点 | ✅ | 要改复制数据（但**不需要 Client RPC**） |
+
+### 39.6 通知机制的四种组合（Server RPC 的搭档）
+
+| 模式 | 形式 | 适用 |
+|---|---|---|
+| **1. 只有 Server RPC** | 改复制属性，无人急 | `ServerUpgradeAttribute` |
+| **2. Server + Client RPC** | 只自己要知道 + 要旧值 + 要立刻 | **装备技能**、切武器、拖背包 |
+| **3. Server + Multicast** | 所有人要看 | 开门、开箱、范围特效、被动特效 |
+| **4. 纯复制（无 RPC 通知）** | 血条、蓝条、经验 | — |
+
+> 本项目里 `MulticastActivatePassiveEffect` 就是模式 3（`NetMulticast, Unreliable`），
+> 因为**被动的粒子特效别人也该看到**。
+
+### 39.7 自检清单："会不会被冲掉？"
+
+写代码时问自己：
+
+> **「如果我在这行后面直接改，服务器会不会把它冲掉？」**
+> `会冲掉` → 必须 Server RPC；`不会` → 本地改就行
+
+| 要改的东西 | 会被冲掉吗 | 怎么办 |
+|---|---|---|
+| `Health` / `Mana`（Replicated 属性） | ✅ 会 | Server RPC |
+| `AbilitySpec.DynamicAbilityTags` | ✅ 会 | Server RPC + **MarkDirty** |
+| `PlayerState` 上的复制变量 | ✅ 会 | Server RPC |
+| 本地 UI 变量 / WidgetController 缓存 | ❌ 不会 | 直接改 |
+| GA 内部状态（技能执行中） | ❌ 通常不会 | 直接改（GAS 预测管） |
+
+### 39.8 为什么不能让客户端直接扣血（服务器权威的意义）
+
+```
+❌ 客户端算命中 → 客户端调扣血   → 改内存就能秒杀全场（作弊）
+✅ 客户端上报 → 服务器【验证】→ 服务器结算
+     服务器可检查：距离合理吗？在视野里吗？冷却好了吗？蓝够吗？目标能被伤害吗？
+```
+
+**CommitAbility 就是验证入口**：不够蓝 / 冷却没好 → 服务器取消执行，客户端预测被回滚。
+
+### 39.9 一次开火的完整链路（标出每个 RPC 谁发的）
+
+```
+【客户端】                        【服务器】
+    │ ① 左键按下 AbilityInputTagHeld   │
+    │ ② TryActivateAbility ──────────▶ │ ★ RPC-1 激活请求（GAS 自动发）
+    │    (本地也跑一遍 = 预测)          │ ③ CommitAbility 检查冷却/蓝量
+    │ ④ 算屏幕中心射线 → 命中敌人       │
+    │ ⑤ ServerSetReplicatedTargetData ▶│ ★ RPC-2 上报命中（GAS 提供接口）
+    │                                  │ ⑥ 验证命中合法性
+    │                                  │ ⑦ 施放 GE_Damage → Health -= 50
+    │                                  │    ★ 这步【不需要 RPC】，直接改
+    │◀──────── 属性复制 ───────────────┤ ⑧ Health 复制给所有客户端
+    │ ⑨ OnRep_Health → 血条更新         │
+```
+
+**结论**：扣血不需要 RPC（服务器自己算的）；需要 RPC 的是"**我要开火**"和"**打中了谁**"。
+
+> 本项目火球是**投射物**（服务器 SpawnActor + 复制），所以连"上报命中"都不需要 ——
+> 投射物在两台机器上各自飞，服务器上碰撞到敌人就地结算。
+> 项目里唯一的 TargetData RPC 是给"鼠标点击选目标"用的（`My_TargetDateFromMouse`），
+> 因为"鼠标点在哪"只有客户端知道。
+
+### 39.10 FastArray 复制 vs 普通复制属性（关键区别）
+
+#### 真实源码事实（**曾一度搞错，特此更正**）
+
+```cpp
+// GameplayAbilitySpec.h:223-225
+/** Optional ability tags that are replicated. */
+UPROPERTY()                                    // ← 没有 NotReplicated！
+FGameplayTagContainer DynamicAbilityTags;
+```
+
+**`DynamicAbilityTags` 是【复制】的。** 但 `FGameplayAbilitySpec` 继承自：
+
+```cpp
+// GameplayAbilitySpec.h:162
+struct GAMEPLAYABILITIES_API FGameplayAbilitySpec : public FFastArraySerializerItem
+```
+
+#### FastArray 靠"脏标记"做增量复制
+
+```cpp
+struct FGameplayAbilitySpecContainer : public FFastArraySerializer
+{
+    UPROPERTY()
+    TArray<FGameplayAbilitySpec> Items;      // 整个数组，FastArrayDeltaSerialize 复制
+};
+```
+
+```
+FastArray 增量复制：只发送【被标记为脏】的 Item，没标的跳过（省带宽）
+你改了字段的【值】→ 脏标记【不会自动置位】
+   因为引擎不比对内容，只认那个标记
+```
+
+#### 引擎实现
+
+```cpp
+void UAbilitySystemComponent::MarkAbilitySpecDirty(FGameplayAbilitySpec& Spec, bool WasAddOrRemove)
+{
+    if (IsOwnerActorAuthoritative())
+    {
+        // ServerOnly 的技能改动不需要同步（除非是添加/移除）
+        if (!(Spec.Ability && Spec.Ability->NetExecutionPolicy == EGameplayAbilityNetExecutionPolicy::ServerOnly && !WasAddOrRemove))
+        {
+            bIsNetDirty = true;                        // ① 整个 ASC 需要网络更新
+            ActivatableAbilities.MarkItemDirty(Spec);  // ② ★ 标记这个 Item 脏
+        }
+        AbilitySpecDirtiedCallbacks.Broadcast(Spec);
+    }
+}
+```
+
+**引擎文档注释直接写明**（`AbilitySystemComponent.h` 多处）：
+
+```cpp
+/** Returns an ability spec from a handle. If modifying call MarkAbilitySpecDirty */
+FGameplayAbilitySpec* FindAbilitySpecFromHandle(FGameplayAbilitySpecHandle Handle);
+```
+
+#### 两者对比
+
+| | 改 `DynamicAbilityTags` | 改 `Health` |
+|---|---|---|
+| 数据在哪 | `AbilitySpec`（ASC / PlayerState） | `AttributeSet` |
+| 是复制数据吗 | ✅ 是 | ✅ 是 |
+| 服务器改要 RPC 吗 | ❌ 不要（Authority 直接写） | ❌ 不要 |
+| **要手动标脏吗** | ✅ **要**（`MarkAbilitySpecDirty`） | ❌ **不要**（自动比对） |
+| 客户端要通知吗 | ✅ 要（"只有自己关心"的事件） | ❌ 不要（绑 `OnRep` 就够） |
+
+**一句话**：
+
+```
+普通复制属性    → 引擎【自动】比对前后值，变了就发      → 不用管
+FastArray Item  → 引擎【不比对】，要你【手动标脏】才发  → 必须管
+```
+
+#### 验证方法（以后自己查）
+
+```
+1. 找结构体定义（如 GameplayAbilitySpec.h）
+2. 看字段 UPROPERTY 有没有 NotReplicated
+3. 看结构体是否继承 FFastArraySerializerItem
+   → 是 → 改完要 MarkItemDirty
+
+路径：D:\UE Engine\UE_5.2\Engine\Plugins\Runtime\GameplayAbilities\Source\
+        GameplayAbilities\Public\GameplayAbilitySpec.h
+```
+
+### 39.11 装备（Equip）功能完整拆解
+
+#### 为什么要两个 RPC
+
+| 通道 | 职责 |
+|---|---|
+| `ServerEquipAbility`（Server RPC） | **请求改数据** —— 客户端没有 Authority |
+| `MarkAbilitySpecDirty` | **保证数据最终一致** —— 后进玩家也正确 |
+| `ClientEquipAbility`（Client RPC） | **让 UI 立刻知道 + 携带旧槽位信息** |
+
+**为什么必须有 Client RPC**（三件事属性复制给不了）：
+
+1. **`PreviousSlot` 拿不到** ← 最硬的理由。复制只给"最终状态"，不给"变化过程"。
+   UI 要清掉旧槽的球，必须知道旧槽是哪个；否则得自己缓存旧状态 + 算 diff。
+2. **时序**：RPC 当帧/下一帧到；属性复制要等 `NetUpdateFrequency` 周期（几十~上百 ms），UI 会"顿"一下。
+3. **广播精确度**：RPC 只广播 2 条（旧槽清空 + 新槽装备）；靠复制只能全量重播。
+
+**⚠️ 但 `ServerEquipAbility` 是绝对省不掉的**（客户端没 Authority，本地改会被覆盖）。
+**能省的只有 `ClientEquipAbility`**，且仅在"纯单机 / 你是 Listen Server Host"时。
+
+> 工业替代方案（Lyra）：不写 Client RPC，改为在 `OnRep_ActivateAbilities` 里 diff 新旧数组。
+> 更健壮（丢包/重连/后进全对），但要写 diff 逻辑，对学习项目太重。
+
+#### 函数按层分组
+
+**第 1 组：ASC 查询辅助（纯读取）**
+
+| 函数 | 作用 | 关键点 |
+|---|---|---|
+| `GetInputTagFromSpec(Spec)` | 读 Spec 的 InputTag | 遍历 `DynamicAbilityTags` 找 `InputTag` 前缀 |
+| `GetSlotFromAbilityTag(Tag)` | 按技能查槽位 | **= `GetInputTagFromSpec`** |
+| `GetStatusFromSpec(Spec)` | 读状态 Tag | 找 `Abilities.Status` 前缀 |
+| `GetStatusFromAbilityTag(Tag)` | 按技能查状态 | = `GetStatusFromSpec` |
+| `SlotIsEmpty(Slot)` | 这个槽有人占吗 | 遍历所有 Spec |
+| `AbilityHasSlot(Spec, Slot)` | 这个技能占着**这个**槽吗 | `HasTagExact(Slot)` |
+| `AbilityHasAnySlot(Spec)` | 这个技能**装备了**吗 | `HasTag("InputTag")` |
+| `GetSpecWithSlot(Slot)` | 谁占着这个槽 | 返回 Spec 指针 |
+| `IsPassiveAbility(Spec)` | 是被动技能吗 | 查 `AbilityInfo.AbilityType` |
+
+**第 2 组：ASC 修改辅助**
+
+| 函数 | 作用 | 实现要点 |
+|---|---|---|
+| `ClearSlot(Spec)` | 清掉**这个技能**的槽 | 读 InputTag → `RemoveTag` |
+| `AssignSlotToAbility(Spec, Slot)` | 换键核心 | **`ClearSlot` 然后 `AddTag(Slot)`** |
+| `ClearAbilitiesOfSlot(Slot)` | 清掉**这个槽**上的所有技能 | 遍历 → 调 `ClearSlot`（教程中未调用，预留） |
+
+**第 3 组：ASC 装备主流程（RPC）**
+
+| 函数 | 位置 | 作用 |
+|---|---|---|
+| `ServerEquipAbility(AbilityTag, Slot)` | `AuraASC.cpp:336` | 服务器权威：冲突处理 + 改 Tag + 标脏 |
+| `ClientEquipAbility(Tag, Status, Slot, PrevSlot)` | `AuraASC.cpp:389` | 回客户端：广播 `AbilityEquipped` |
+
+**第 4 组：SpellMenu UI**
+
+| 函数 | 位置 | 触发 | 作用 |
+|---|---|---|---|
+| `EquipButtonPressed()` | `:117` | 点「装备」 | 进选槽模式 + 记录当前槽到 `SelectedSlot` |
+| `SpellRowGlobePressed(SlotTag, AbilityType)` | `:131` | 点装备行槽位 | 类型校验 → `ServerEquipAbility` |
+| `OnAbilityEquipped(...)` | `:142` | 收到装备完成 | **广播 AbilityInfo 给 UI** |
+| `GlobeDeselect()` / `SpellGlobeSelected()` | `:102` / `:57` | 取消 / 点球 | 退出选槽模式 |
+
+#### Slot 和 InputTag 是同一个东西
+
+```cpp
+// 教程：名字叫 Slot，实际就是拿 InputTag
+FGameplayTag GetSlotFromAbilityTag(const FGameplayTag& AbilityTag)
+{
+    if (const FGameplayAbilitySpec* Spec = GetSpecFromAbilityTag(AbilityTag))
+        return GetInputTagFromSpec(*Spec);   // ★ 直接转调
+    return FGameplayTag();
+}
+```
+
+**只是两个语境的命名约定**：
+
+| 领域 | 用词 | 场景 |
+|---|---|---|
+| 输入绑定 | `InputTag` | "按哪个键" → `AbilityInputTagHeld` |
+| UI 槽位 | `Slot` | "显示在哪个格子 / 能不能塞进去" → `SlotIsEmpty` |
+
+**为什么分开命名**：读 `AbilityHasSlot` / `AbilityHasAnySlot` 比
+`AbilityHasInputTag` / `AbilityHasAnyInputTag` 更能表达"装备了没"这个语义。
+
+#### 装备完整时序
+
+```
+① 点「装备」按钮
+   EquipButtonPressed()
+     ├─ AbilityType = AbilityInfo[火球].AbilityType
+     ├─ WaitForEquipDelegate.Broadcast(AbilityType)   → UI 高亮那一排
+     ├─ bWaitingForEquipSelection = true
+     └─ 若已装备 → SelectedSlot = GetSlotFromAbilityTag(火球)
+
+② 点装备行的「按键3」格
+   SpellRowGlobePressed(SlotTag=InputTag.3, AbilityType=Offensive)
+     ├─ if (!bWaitingForEquipSelection) return;        ← 不在选槽模式就忽略
+     ├─ if (技能类型 != 槽的类型) return;               ← 主动不能装被动槽
+     └─ ServerEquipAbility(火球, InputTag.3)           ← Server RPC
+
+③ 服务器 ServerEquipAbility_Implementation(火球, InputTag.3)
+     ├─ PrevSlot = InputTag.1                          ← 记下旧槽
+     ├─ 校验 Status 是 Equipped / Unlocked
+     ├─ SlotIsEmpty(InputTag.3)?
+     │     └─ 若被占：同一技能？→ 直接返回；否则 ClearSlot(占位者)
+     ├─ if (!AbilityHasAnySlot(火球)) → Unlocked 改成 Equipped
+     ├─ AssignSlotToAbility(火球, InputTag.3)           ← ★ 真正换键
+     │     └─ ClearSlot(火球) → AddTag(InputTag.3)
+     ├─ MarkAbilitySpecDirty(火球)                      ← 触发属性复制
+     └─ ClientEquipAbility(火球, Equipped, InputTag.3, InputTag.1)
+
+④ 客户端 ClientEquipAbility_Implementation
+     └─ AbilityEquipped.Broadcast(火球, Equipped, InputTag.3, InputTag.1)
+
+⑤ SpellMenu 的 OnAbilityEquipped 收到          ← ★★ 广播给 UI 在这里
+     ├─ Broadcast(旧槽 = 空: AbilityTag=None, InputTag=InputTag.1)
+     │      → UI 把「按键1」的球拿走
+     ├─ Broadcast(新槽: AbilityTag=火球, InputTag=InputTag.3, Status=Equipped)
+     │      → UI 在「按键3」放上火球的球
+     ├─ StopWaitingForEquipDelegate.Broadcast(Offensive)  → 播放取消选择动画
+     ├─ SpellGlobeReassignedDelegate.Broadcast(火球)      → 通知球重排
+     └─ GlobeDeselect()                                   → 清空选中
+```
+
+#### "为什么改了 InputTag，球的显示位置就变了"
+
+> **不是 UI 主动挪球，而是：服务器改了数据 → 通知客户端 → 客户端广播新的 AbilityInfo → UI 用新数据重画。**
+
+**两个可能的触发路径**：
+
+| 路径 | 谁触发 | 特点 |
+|---|---|---|
+| **A. 精确广播**（教程采用） | `OnAbilityEquipped` 手动广播 2 条 | 立刻、带旧槽信息 |
+| **B. 全量重播** | 属性复制 → `OnRep_ActivateAbilities` → `BroadcastAbilityInfo()` | 有延迟、拿不到旧槽 |
+
+教程选 A：**`ClientEquipAbility` 的四个参数里直接带着 `Slot` 和 `PreviousSlot`**，
+所以客户端立刻就能广播，不用等属性复制。
+
+### 39.12 一句话总结
+
+**判断要不要 RPC，只问一句："服务器能自己算出来吗？"**
+能算 → 直接改复制属性（不用 RPC）；不能算 → Server RPC 上报/请求。
+改完要不要额外通知，看"谁需要立刻知道"：没人/自己/所有人 ⇒ 无 / Client / Multicast。
+**而改 FastArray 里的东西（如 `DynamicAbilityTags`），无论走哪条路，都必须 `MarkAbilitySpecDirty`。**
+
+## 四十、装备功能 My_ 版实现 + 缓存策略 + 代码复查
+
+> 2026-09-16。第三十九章讲的是"教程为什么这么设计"，本章记**自己动手实现时踩到的具体问题**。
+
+### 40.1 我的实现与教程的对应关系
+
+| 教程 | 我的实现 | 位置 |
+|---|---|---|
+| `EquipButtonPressed` | `EquippedButtonPressed` | `My_SpellMenuWidgetController.cpp:187` |
+| `SpellRowGlobePressed` | `EquipSpellRowGlobePressed` | `:201` |
+| `OnAbilityEquipped` | `OnAbilityEquipped` | `:210` |
+| `ServerEquipAbility` | `ServerEquipAbility_Implementation` | `My_AuraAbilitySystemComponent.cpp:291` |
+| `ClientEquipAbility` | `ClientEquipAbility_Implementation` | `:315` |
+| `ClearSlot` / `ClearAbilitiesOfSlot` / `AbilityHasSlot` | 同名 | `:320` / `:327` / `:339` |
+
+**术语对照**：我用 `AbilityDA->FindAbilityInfoFromTag(Tag)`，教程用 `AbilityInfo->FindAbilityInfoForTag(Tag)`
+（只是 DataAsset 成员名不同）。
+
+### 40.2 缓存 vs 现读：判断标准
+
+#### 结论
+
+```
+缓存什么？ → 【稳定标识】：AbilityTag、InputTag（选中的是谁、绑在哪个键）
+现读什么？ → 【易变状态】：StatusTag（Locked/Eligible/Unlocked/Equipped）
+```
+
+#### 怎么判断"会不会变"
+
+```cpp
+SelectedAbility.Ability                                   // 缓存（选中后不会变）
+SelectedAbility.Status                                    // 缓存 + 关键处现读（会变）
+GetAuraASC()->GetStatusTagFromAbilityTag(SelectedAbility.AbilityTag)   // 现读
+GetAuraASC()->GetInputTagFromAbilityTag(SelectedAbility.AbilityTag)    // 现读
+```
+
+#### ⚠️ 一个容易讲错的点
+
+`SelectedAbility.Status` **不是"随时可能过期"的危险缓存** —— 它有维护机制：
+
+```cpp
+// SpellMenuWidgetController.cpp:20-22
+if (SelectedAbility.Ability.MatchesTagExact(AbilityTag))
+{
+    SelectedAbility.Status = StatusTag;      // 状态一变就同步
+}
+```
+
+**正常流程下（点球→花点→点装备），缓存是跟得上的。**
+
+**所以现读的真正理由是**：
+
+1. **不依赖任何约定** —— 不用追"缓存在哪被改、有没有漏改"
+2. **收益大于成本** —— 缓存易变值只省一次 O(n) 遍历（技能就十几个），但增加维护心智负担
+3. **一致性** —— "它装备了吗"和"它占哪个槽"这两句应该从**同一份来源**读
+
+> **准确表述**：不是"缓存会坏"，而是"易变数据现读更省心、更自洽"。
+
+### 40.3 发现：`SelectedSlot` 是死变量
+
+#### 证据
+
+```
+SpellMenuWidgetController.h:70      声明
+SpellMenuWidgetController.cpp:127   唯一的赋值
+                                     → 全项目再无任何读取
+```
+
+**教程和我自己的实现都是"只赋值、从不读"。** 全项目 grep（`Source` + `Content`）确认无第二处引用。
+
+#### 为什么教程会写它
+
+排查了 `ServerEquipAbility` 每条分支，**确认它完全不依赖 `SelectedSlot`**：
+
+```cpp
+const FGameplayTag& PrevSlot = GetInputTagFromSpec(*AbilitySpec);   // 服务器自己查旧槽
+```
+
+**服务器自己就能查出旧槽，不需要 UI 告诉它。**
+
+而"点同一槽取消装备"这个功能，**服务器端逻辑已经覆盖**（`SlotIsEmpty` + 同技能判断），
+也不需要 UI 传 `SelectedSlot`。
+
+> **推测**：教程作者早期版本想做 UI 层的同槽处理，后来服务器逻辑覆盖了，变量忘删。
+
+#### 什么情况下它才有用
+
+| 用途 | 说明 |
+|---|---|
+| **点当前槽 = 真正卸下技能** | 需要新增 `ServerUnequipAbility`，并在 `EquipSpellRowGlobePressed` 里判断 `SlotTag == SelectedSlot` |
+| **UI 高亮"当前装备的槽"** | 其实也不需要 —— `OnAbilityInfo` 广播的 `InputTag` 里已经有这个信息 |
+
+**决定**：先保留（加注释说明是预留），不删。
+
+### 40.4 代码复查发现的 5 个问题
+
+#### 🔴 问题 1：少了「同槽同技能 → 提前返回」
+
+教程有这段（`AuraAbilitySystemComponent.cpp:355-360`），我的实现没有：
+
+```cpp
+if (SpecWithSlot)
+{
+    if (AbilityTag.MatchesTagExact(GetAbilityTagFromSpec(*SpecWithSlot)))
+    {
+        ClientEquipAbility(AbilityTag, Equipped, Slot, PrevSlot);
+        return;                        // 占着这个槽的就是同一个技能 → 什么都不做
+    }
+    ...
+}
+```
+
+**后果**：火球已在槽1，再点一次槽1 → 会 `ClearSlot` + 重新 `AddTag`，
+**白折腾一遍并重播动画**。
+
+#### 🟠 问题 2：清槽顺序导致"自己清自己"
+
+```cpp
+ClearAbilitiesOfSlot(Slot);   // ← 槽里如果是火球自己，这里已经把它清了
+ClearSlot(AbilitySpec);       // ← 再清一次（空操作，冗余）
+AbilitySpec->DynamicAbilityTags.AddTag(Slot);
+```
+
+**且这个顺序让"同技能判断"没法插入**（要判断时 `AbilitySpec` 已经没槽了）。
+
+**教程的写法**：先判断同技能 → 再处理占位者 → 最后 `AssignSlotToAbility`（内部 `ClearSlot` + `AddTag`）。
+
+#### 🟡 问题 3：`bStatusValid` 为 false 时仍然广播
+
+```cpp
+if (bStatusValid) { ...改数据... }
+ClientEquipAbility(..., Equipped, ...);   // ← 没改成功也通知"已装备"
+```
+
+教程也有这个毛病。更稳的写法是把 `ClientEquipAbility` 放进 `if (bStatusValid)`。
+
+#### 🟡 问题 4：`AbilityHasSlot` 的注释写错了
+
+```cpp
+// 装备了没（任意槽）        ← 错
+bool AbilityHasSlot(const FGameplayAbilitySpec* AbilitySpec, const FGameplayTag& Slot);
+```
+
+实现是 `Tag.MatchesTagExact(Slot)` —— **"占着【指定的这个】槽吗"**。
+
+**"装备了没"是另一个函数**（教程 `AbilityHasAnySlot`，判断有没有任意 `InputTag` 前缀的 Tag）。
+
+#### 🟡 问题 5：`OnAbilityEquipped` 少了 `GlobeDeselect()`
+
+教程末尾有 `GlobeDeselect()`（`SpellMenuWidgetController.cpp:162`），作用是
+**清空 `SelectedAbility` + 广播"取消选中"（右侧描述面板清空）**。
+
+缺了这一步 → 装备完成后菜单可能仍显示上一个技能的选中态。
+
+### 40.5 踩坑：`edit` 工具会吞掉 UTF-8 BOM
+
+**现象**：用 `edit` 工具改完 3 个 UTF-8+BOM 的 C++ 文件后，BOM 消失了：
+
+```
+HEAD 版本  前3字节 = 239,187,191  (有 BOM)
+改后       前3字节 =  47, 47, 32  (//)  ← BOM 没了
+```
+
+**影响**：内容本身没坏（中文注释是合法 UTF-8，能编译），
+但**无 BOM 的 UTF-8 文件在中文 Windows 上被编辑器保存时可能回退成 GBK** → 又掉进编码坑。
+
+**教训**：
+
+> **用 `edit` 类工具改 UTF-8+BOM 文件后，必须验证前 3 字节。**
+
+**验证命令**（只读）：
+
+```powershell
+$b = [IO.File]::ReadAllBytes('文件路径')
+if ($b[0] -eq 239 -and $b[1] -eq 187 -and $b[2] -eq 191) { '有 BOM' } else { '无 BOM' }
+```
+
+**修复**（只加 3 字节，内容不动）：
+
+```powershell
+$b = [IO.File]::ReadAllBytes($f)
+[IO.File]::WriteAllBytes($f, [byte[]](239,187,191) + $b)
+```
+
+**为什么是"有时候会"**：同样用 `edit` 改过的 `My_AuraAbilitySystemLibrary.cpp` BOM 没丢 ——
+所以**不能靠运气，每次改完都要查**。
+
+### 40.6 本章一句话总结
+
+**装备功能实现本身不难（服务器改 Tag + 两个 RPC + 广播两条 Info），
+难的是"为什么这么设计"和"缓存/现读怎么选"。
+而 `SelectedSlot` 这种"只写不读"的教程遗留物，提醒我们：
+读教程代码时要主动验证每个变量的真实用途，不要假设它有用。****
