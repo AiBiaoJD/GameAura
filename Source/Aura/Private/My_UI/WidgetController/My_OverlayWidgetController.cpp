@@ -2,6 +2,8 @@
 
 
 #include "My_UI/WidgetController/My_OverlayWidgetController.h"
+
+#include "My_AuraGamePlayTags_Singleton.h"
 #include "MY_AbilitySystem/My_AuraAbilitySystemComponent.h"
 #include "MY_AbilitySystem/My_AuraAttributeSet.h"
 #include "MY_AbilitySystem/Data/My_LevelUpInfo.h"
@@ -91,6 +93,9 @@ void UMy_OverlayWidgetController::BindCallbacksToDependencies()
 			/*还没进行广播绑定回调函数*/
 			GetAuraASC()->OnAbilityGiven.AddUObject(this, &UMy_OverlayWidgetController::BroadcastAbilityInfo);
 		}
+
+		//EquippedButton按下触发的回调函数
+		GetAuraASC()->OnAbilityEquipped.AddUObject(this, &UMy_OverlayWidgetController::OnAbilityEquipped);
 	}
 }
 
@@ -112,4 +117,18 @@ void UMy_OverlayWidgetController::OnXPChangedFunc(int32 NewXP)
 		const float XPBarPercent = static_cast<float>(NewXP - PrevLevelUpReq) / static_cast<float>(LevelUpReq - PrevLevelUpReq);
 		OnXPPercentChanged.Broadcast(XPBarPercent);
 	}
+}
+
+void UMy_OverlayWidgetController::OnAbilityEquipped(const FGameplayTag& AbilityTag, const FGameplayTag& Status, const FGameplayTag& Slot, const FGameplayTag& PreSlot)
+{
+	FMy_AuraAbilityInfo LastSlotInfo;
+	LastSlotInfo.StatusTag = FMy_AuraGameplayTags::GetInstance().My_Abilities_Status_Unlocked;
+	LastSlotInfo.InputTag = PreSlot;
+	LastSlotInfo.AbilityTag = FMy_AuraGameplayTags::GetInstance().My_Abilities_None;
+	OnAbilityInfo.Broadcast(LastSlotInfo);
+
+	FMy_AuraAbilityInfo Info = AbilityDA->FindAbilityInfoFromTag(AbilityTag);
+	Info.InputTag = Slot;
+	Info.StatusTag = Status;
+	OnAbilityInfo.Broadcast(Info);
 }

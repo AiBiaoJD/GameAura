@@ -85,8 +85,10 @@ protected:
 	template <typename T>
 	T* GetDataTableRowByTag(UDataTable* DataTable, const FGameplayTag& Tag);
 
-
 	void OnXPChangedFunc(int32 NewXP);
+
+	//OnAbilityEquipped委托的回调函数
+	void OnAbilityEquipped(const FGameplayTag& AbilityTag, const FGameplayTag& Status, const FGameplayTag& Slot, const FGameplayTag& PreSlot);
 };
 
 

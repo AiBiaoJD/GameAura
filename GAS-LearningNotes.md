@@ -41,6 +41,7 @@
 - [三十八、C++ 中文字面量的多引号拼接坑（RichText 描述乱码终极定位）](#三十八c-中文字面量的多引号拼接坑richtext-描述乱码终极定位)
 - [三十九、RPC 判断框架 + 复制机制 + 装备功能完整拆解](#三十九rpc-判断框架--复制机制--装备功能完整拆解)
 - [四十、装备功能 My_ 版实现 + 缓存策略 + 代码复查](#四十装备功能-my_-版实现--缓存策略--代码复查)
+- [四十一、异步节点与委托：C++ 怎么通知蓝图（深度版）](#四十一异步节点与委托c-怎么通知蓝图深度版)
 
 ---
 
@@ -4285,3 +4286,459 @@ void AMy_Aura_Controller::AbilityInputTagHeld(FGameplayTag InputTag)
 难的是"为什么这么设计"和"缓存/现读怎么选"。
 而 `SelectedSlot` 这种"只写不读"的教程遗留物，提醒我们：
 读教程代码时要主动验证每个变量的真实用途，不要假设它有用。**
+
+---
+
+## 四十一、异步节点与委托：C++ 怎么通知蓝图（深度版）
+
+> 第二十一章讲了「怎么用」，本章讲「**为什么长这样**」。
+> 看完本章，任何 `UBlueprintAsyncActionBase` 节点（包括引擎自带的 `UAbilityAsync_*` 系列）都能一眼看懂。
+
+### 41.1 一个类比：异步节点 = 雇了一个临时工
+
+把整个 `UMy_WaitCoolDownChange` 想象成**一个临时工**：
+
+| 代码 | 类比 |
+|---|---|
+| `UMy_WaitCoolDownChange` 这个类 | 一个**临时工** |
+| 工厂函数 `WaitCoolDownChange` | **雇佣手续**（造出这个临时工） |
+| 成员 `ASC` / `CoolDownTag` | 交代他「盯谁的、盯哪个冷却」 |
+| 白箭头 `Cool Down Start` / `Cool Down End` | 你留下的**电话号码** |
+| `CoolDownStart.Broadcast(...)` | 临时工**打电话通知你** |
+| 蓝色 `Async Task` 脚 + `EndTask()` | **解雇**他（`Async Task` 脚就是"他本人"） |
+
+**整个类只干一件事：替你去听一个"蓝图绑不到"的事件，有情况再通知蓝图。**
+
+### 41.2 为什么要雇这个临时工 —— 蓝图有两道墙翻不过去
+
+待监听的两件事（冷却 GE 被加上 / 冷却 Tag 数归零）都发生在 **ASC** 里，而 ASC 的委托是**原生委托**：
+
+```cpp
+// GameplayEffectTypes.h:940
+DECLARE_MULTICAST_DELEGATE_TwoParams(FOnGameplayEffectTagCountChanged, const FGameplayTag, int32);
+//      ^^^^^^^^^^^^^^^^^^^^^^ 没有 DYNAMIC
+
+// AbilitySystemComponent.h:104
+DECLARE_MULTICAST_DELEGATE_ThreeParams(FOnGameplayEffectAppliedDelegate, UAbilitySystemComponent*, const FGameplayEffectSpec&, FActiveGameplayEffectHandle);
+//      ^^^^^^^^^^^^^^^^^^^^^^ 同样没有 DYNAMIC
+```
+
+| 墙 | 内容 |
+|---|---|
+| **墙 1** | **原生委托对蓝图完全不可见** —— 它不是 `UPROPERTY`、没有对应 UFunction、不是 `BlueprintAssignable` |
+| **墙 2** | **就算是 dynamic 也没用** —— 蓝图只能绑「对象身上的委托**属性**」，绑不了「某个函数的**返回值**」。而 `RegisterGameplayTagEvent` 返回的恰恰是 `FOnGameplayEffectTagCountChanged&` |
+
+> ⚠️ **措辞要准确**：不是「不写异步节点不行」，而是「**蓝图没法直接绑 ASC 的委托**」。
+> 你也可以在自己能改的类上写一个「转发委托」绕过去 —— 见 41.10 路线 B。
+
+**另一个容易搞错的点**：不要以为「技能触发」就等于「冷却开始」。这两件事根本不是一回事 ——
+
+- 技能可能**释放失败**（蓝不够、被打断）
+- 技能放成功，但冷却 GE 被**抵抗/免疫**
+- 冷却会**叠加**（多个来源加同一个 Tag）
+- 冷却会被**驱散**提前结束
+- **剩余时间**只有 ASC 算得出来，技能不知道
+
+所以 UI 要盯的是 **ASC**，不是技能。
+
+### 41.3 工厂函数是什么 —— 它是门票，不是可选项
+
+**一句话：造这个对象、并把它交出去的那个 `static` 函数。**
+
+```cpp
+//        返回值就是本类 → 所以叫"工厂"（生产者）
+UMy_WaitCoolDownChange* UMy_WaitCoolDownChange::WaitCoolDownChange(UAbilitySystemComponent* AbilitySystemComponent, const FGameplayTag& InCoolDownTag)
+{
+    UMy_WaitCoolDownChange* Obj = NewObject<UMy_WaitCoolDownChange>();   // ① 造
+    Obj->ASC = AbilitySystemComponent;                                   // ② 记下盯谁
+    Obj->CoolDownTag = InCoolDownTag;                                    // ③ 记下盯哪个 Tag
+
+    if (!IsValid(AbilitySystemComponent) || !InCoolDownTag.IsValid())    // ④ 参数不对就别雇了
+    {
+        Obj->EndTask();
+        return nullptr;        // 返回空 → 节点展开后有一层 IsValid 判断，会直接走 Then，不崩
+    }
+
+    // ⑤ 临时工自己去 ASC 那里登记监听（★ 翻译发生在这一刻）
+    AbilitySystemComponent->RegisterGameplayTagEvent(InCoolDownTag, EGameplayTagEventType::NewOrRemoved)
+        .AddUObject(Obj, &UMy_WaitCoolDownChange::CoolDownTagChanged);
+    AbilitySystemComponent->OnActiveGameplayEffectAddedDelegateToSelf
+        .AddUObject(Obj, &UMy_WaitCoolDownChange::OnActiveEffectAdded);
+
+    return Obj;                // ⑥ 交货：引擎把他存进蓝图节点的局部变量
+}
+```
+
+**为什么必须有它？因为它是这个节点类型的门票。**
+
+引擎规定：想让一个 `UBlueprintAsyncActionBase` 子类变成蓝图节点，必须有一个
+**「`static` + 返回值是本类指针 + `UFUNCTION(BlueprintCallable)`」** 的函数。
+原因是节点运行时得**凭空造出一个对象**，而蓝图中唯一能「带参数调 C++ 造对象」的方式，就是调 `static` 函数。
+
+> 类比：工厂函数 = **雇佣手续**。没有它，蓝图节点不知道该找谁去要人。
+
+### 41.4 引脚从哪来：**引擎定结构，你定名字**
+
+节点不是普通函数节点，它的每一个脚都由 UE 的 `UK2Node_AsyncAction`（继承 `UK2Node_BaseAsyncTask`）按固定规则生成，规则在 `K2Node_BaseAsyncTask.cpp` 的 `AllocateDefaultPins()`。
+
+| 引脚 | 谁定 | 依据 |
+|---|---|---|
+| 左 `Execute` / 右 `Then` | **引擎**写死 | `K2Node_BaseAsyncTask.cpp:99 / 116` |
+| 蓝色 `Async Task` 脚**存不存在** | **引擎** | 有 `ExposedAsyncProxy` 元数据才生成（line 119） |
+| 蓝色脚**叫什么名字** | **你** | `UCLASS(meta=(ExposedAsyncProxy = "AsyncTask"))` |
+| 左侧有哪些输入脚 | **你** | 工厂函数的参数表（line 179 起遍历） |
+| 输入脚的名字 | **你** | 参数变量名（`AbilitySystemComponent` → 显示成 `Ability System Component`） |
+| 右侧有几颗白箭头 | **你** | 有几个多播委托属性（line 147 遍历） |
+| 白箭头的名字 | **你** | 委托属性名（`CoolDownStart` → `Cool Down Start`） |
+| 绿色参数脚 | **你（间接）** | 委托宏里写的参数名（line 162，只取**第一个**委托的签名） |
+| 引脚的排列顺序 | **引擎** | 代码里 `CreatePin` 的调用顺序 = 从上到下 |
+
+**三条补充规则**：
+
+1. **返回值不生成脚** —— 工厂函数的 `ReturnParm` 被 line 187-191 跳过，改头换面成了蓝色的 `Async Task` 脚
+2. **`const FGameplayTag&` 生成"引用脚"** —— line 194 `PinParams.bIsReference = true`，不能手填字面量，必须喂变量
+3. **所有委托必须有相同签名** —— line 155-158 只取第一个委托的签名函数；line 334 注释原话：*"each delegate must have the same signature"*
+
+**硬限制**：这种节点**只能放在 Event Graph / 宏里**，不能放进函数里（line 81-91）。标题右边的小闹钟图标就是标记。
+
+### 41.5 节点展开图（编译期）
+
+这个节点在编译时会被展开成一张小图（`K2Node_BaseAsyncTask.cpp:415-514`）：
+
+```
+Execute ─► [ WaitCoolDownChange ] ─► IsValid(Proxy)? ─┬─ True ─► AddDelegate(Proxy->CoolDownStart, 事件A)
+            工厂函数                                   │         │
+            │ 返回值 ──────────────► 蓝色 Async Task    ├─► AddDelegate(Proxy->CoolDownEnd, 事件B)
+            │                                          │         │
+            │                                          │         └─► Activate() ─► Then
+            │                                          │
+            │                                          └─ False ─► Then   （Proxy 为 null 时直接跳过去）
+            └─ 参数 → 输入脚
+```
+
+| 从图里能看出的结论 | 说明 |
+|---|---|
+| **绑监听在工厂函数之后**，外面包了 `IsValid` | 这就是返回 `nullptr` 安全的原因 |
+| **`Activate()` 排在最后** | line 485-504；它是引擎留给你的「绑定齐了、可以开始干活了」的钩子（你这里没重写，是空的） |
+| **一个委托都没有 → 编译报错** | line 478-482：`"BaseAsyncTask: Proxy has no delegates defined"` |
+| 你连在 `Then` 后面的东西 | 实际接在 `Activate` 之后 |
+| `HideThen` 元数据 | 可以干掉 `Then` 脚（line 107） |
+
+### 41.6 `BlueprintInternalUseOnly` = 菜单护栏
+
+```cpp
+UFUNCTION(BlueprintCallable, meta=(BlueprintInternalUseOnly = "true"))
+static UMy_WaitCoolDownChange* WaitCoolDownChange(...);
+```
+
+**一句话：让这个函数「编译期合法、用户菜单里搜不到」。**
+
+```cpp
+// EdGraphSchema_K2.cpp:950-954
+bool UEdGraphSchema_K2::CanUserKismetCallFunction(const UFunction* Function)
+{
+	return Function && 
+		(Function->HasAllFunctionFlags(FUNC_BlueprintCallable) 
+		 && !Function->GetBoolMetaData(FBlueprintMetadata::MD_BlueprintInternalUseOnly)   // ← 就是这里
+		 && ...);
+}
+```
+
+| | 加了 meta | 不加 meta |
+|---|---|---|
+| 蓝图右键菜单能搜到 `Wait Cool Down Change` | ❌ 搜不到 | ✅ 搜得到 |
+| 能画出**普通函数节点** | ❌ 不能 | ✅ **能** |
+| 异步节点（白箭头那个）能用 | ✅ 照常能用 | ✅ 也能用 |
+
+> **不加 meta 的后果不是「少个功能」，而是同一个函数在蓝图里出现了两个入口。**
+
+**错图长这样**（不加 meta 时能画出来，能编译、能保存、运行不报错，但全错）：
+
+```
+Event BeginPlay ──► [ Wait Cool Down Change ]        ← 普通函数节点（没有白箭头！）
+                        ├─ Ability System Component ● ← OverlayWidgetController.ASC
+                        ├─ In Cool Down Tag        ● ← Cooldown.Fire.FireBolt
+                        └─ Return Value            ○ ← 空着
+```
+
+这时代码里的 ⑤ 已经把**两条监听登记到 ASC 上**了，但：
+
+| 时刻 | 引擎干了什么 | 结果 |
+|---|---|---|
+| BeginPlay | 工厂函数跑了，监听挂上了 | 对象活了 |
+| 放火球 | `CoolDownStart.Broadcast(HighestTime)` | **广播给 0 个听众** |
+| 冷却结束 | `CoolDownEnd.Broadcast(0.f)` | 同样没人听 |
+| 之后 | 没人调 `EndTask()` | ⚠️ 对象**永不回收** |
+
+**表面现象**：UI 冷却倒计时永远不动。你去查原因时会以为是 `WaitCoolDownChange` 写错了，**其实 C++ 一行都没错，是连线错了。**
+
+加了 meta 之后，你**根本没有机会**画出那张错图 —— 白箭头天生就在节点上，没接就是没接，一眼看得出来。
+
+**旁证**：引擎自己也这么用。`UBlueprintAsyncActionBase::Activate` 的声明就是：
+
+```cpp
+/** Called to trigger the action once the delegates have been bound */
+UFUNCTION(BlueprintCallable, meta=(BlueprintInternalUseOnly="true"))
+virtual void Activate();
+```
+
+注释和 meta 是配套的：**「这个函数只给专用节点用，不给你手动用。」**
+
+### 41.7 `BlueprintAssignable` 是「权限」，不是「外观」
+
+常见误解：「`BlueprintAssignable` 就是让委托能在蓝图用，那为什么它变成了输出引脚？」
+
+> **`BlueprintAssignable` 回答的是「蓝图有没有权限对这个委托 Add/Remove/Assign」，它不规定 UI 画成什么样。**
+
+引擎其实是**两步把关**：
+
+| 步骤 | 代码 | 检查条件 |
+|---|---|---|
+| ① 生成白箭头 | `K2Node_BaseAsyncTask.cpp:149` | 只看是不是 `FMulticastDelegateProperty` —— **连 `BlueprintAssignable` 都没查** |
+| ② 点白箭头去绑 / 编译展开 | `K2Node_MCDelegate.cpp:64-66` | 检查 `CPF_BlueprintAssignable`，否则报 `Event Dispatcher is not 'BlueprintAssignable'` |
+
+**真正决定「形态」的是：委托的宿主对象什么时候存在。**
+
+| | 普通变量上的委托（Actor / Widget 上的） | 异步节点上的委托 |
+|---|---|---|
+| 对象**编辑期**存在吗 | ✅ 存在 | ❌ **不存在**，运行期才 `NewObject` |
+| 蓝图怎么绑 | 拖变量 → 右键 → `Assign / Bind Event to XXX` | 节点**自己画一颗脚**给你拖 |
+| 引擎的绑定入口 | `UK2Node_DelegateSet` 的菜单项 | `K2Node_BaseAsyncTask` 里写死的输出脚 |
+| 展开后的结果 | `AddDelegate(对象->委托, 自定义事件)` | **一模一样** |
+
+**同一个 `BlueprintAssignable` 属性，两种宿主 → 两种呈现。** 变量有「实例」可以指，所以给你一颗 Bind 节点；异步节点的对象还不存在，唯一能指的「靶子」就是节点自己，于是 UE 干脆把绑定入口画在节点上。
+
+**再强调：白箭头「长得像 exec」是假象**（源码 line 151 写死的就是 `PC_Exec`）：
+
+| | `Then`（真 exec） | `Cool Down Start`（假 exec） |
+|---|---|---|
+| 语义 | 这行做完了，继续往下 | **在这里注册一个回调** |
+| 接上后立刻执行吗 | 立刻 | **不立刻**，等 `Broadcast` |
+| 能接几个 | 多个 | 多个（多播） |
+
+### 41.8 两种委托：原生 vs dynamic（本项目里同时用了这两种）
+
+| | `CoolDownStart` / `CoolDownEnd` | ASC 的那两个 |
+|---|---|---|
+| 宏 | `DECLARE_**DYNAMIC**_MULTICAST_...` | `DECLARE_MULTICAST_...` |
+| 类型 | **dynamic 委托** | **原生委托** |
+| 内部存什么 | **函数名字符串**（靠反射找） | **C++ 函数指针**（直接调） |
+| 绑什么 | 必须是 UFunction | 普通成员函数即可 |
+| 蓝图能绑吗 | ✅ 能 | ❌ 不能 |
+| 需要 `UFUNCTION()` 吗 | 绑它的蓝图事件天生是 UFunction | **不需要** |
+
+这正好解释了你代码里的一个「不对称」：
+
+```cpp
+// 你绑 ASC 的两个：AddUObject + 普通成员函数（没有 UFUNCTION）
+AbilitySystemComponent->RegisterGameplayTagEvent(...).AddUObject(this, &UMy_WaitCoolDownChange::CoolDownTagChanged);
+AbilitySystemComponent->OnActiveGameplayEffectAddedDelegateToSelf.AddUObject(this, &UMy_WaitCoolDownChange::OnActiveEffectAdded);
+
+// 蓝图绑你的两个：必须是 UFunction（蓝图自定义事件天生满足）
+CoolDownStart.Broadcast(HighestTime);
+```
+
+> **一句话**：原生委托走「函数指针」，dynamic 委托走「函数名 + 反射」。
+> 前者蓝图看不见，后者蓝图能绑。**异步节点的全部工作，就是把左边翻译成右边。**
+
+### 41.9 `Broadcast` 的完整链路（含 UHT 生成的证据）
+
+**证据就在自己项目里**：
+
+```
+Intermediate/Build/Win64/UnrealEditor/Inc/Aura/UHT/
+├── My_WaitCoolDownChange.generated.h    ← 声明
+└── My_WaitCoolDownChange.gen.cpp        ← 实现（关键都在这）
+```
+
+**① 宏做的事**（`DelegateCombinations.h:53`）—— 你写的 `OneParam` 展开后：
+
+```cpp
+FUNC_DECLARE_DYNAMIC_MULTICAST_DELEGATE( FWeakObjectPtr, DelegateName,
+    DelegateName##_DelegateWrapper,          // ← wrapper 函数名
+    FUNC_CONCAT( Param1Type InParam1 ),      // ← wrapper 的参数表
+    FUNC_CONCAT( *this, InParam1 ),          // ← 广播时怎么调 wrapper
+    void, Param1Type )
+```
+
+两件事同时发生：**生成一个类型**（内部 = 回调列表 + `Broadcast`），**并把 wrapper 的名字交给引擎**。
+
+**② UHT 生成的 wrapper 函数**（`My_WaitCoolDownChange.gen.cpp:55-62`，本项目真实代码）：
+
+```cpp
+void FMy_CoolDownChangeSignature_DelegateWrapper(const FMulticastScriptDelegate& My_CoolDownChangeSignature, float TimeRemaining)
+{
+	struct _Script_Aura_eventMy_CoolDownChangeSignature_Parms
+	{
+		float TimeRemaining;
+	};
+	_Script_Aura_eventMy_CoolDownChangeSignature_Parms Parms;
+	Parms.TimeRemaining = TimeRemaining;                                  // ① 装进"参数包"
+	My_CoolDownChangeSignature.ProcessMulticastDelegate<UObject>(&Parms); // ② 遍历所有回调，逐个调用
+}
+```
+
+**这就是「为什么不是立刻执行、要等 Broadcast」的全部秘密。**
+
+**③ UHT 还生成了一个 UFunction**（`gen.cpp:34 / 43`）：
+
+```cpp
+NewProp_TimeRemaining = { "TimeRemaining", ..., EPropertyGenFlags::Float, ... };   // 参数属性
+FuncParams = { ..., "My_CoolDownChangeSignature__DelegateSignature", ... };        // 签名函数
+```
+
+**④ `CoolDownStart` 登记时指向它**（`gen.cpp:213`）：
+
+```cpp
+FMulticastDelegatePropertyParams NewProp_CoolDownStart =
+{ "CoolDownStart", ..., EPropertyGenFlags::InlineMulticastDelegate, ...,
+  STRUCT_OFFSET(UMy_WaitCoolDownChange, CoolDownStart),                              // 变量偏移
+  Z_Construct_UDelegateFunction_..._My_CoolDownChangeSignature__DelegateSignature,   // ★ SignatureFunction
+  ... };
+```
+
+**闭环了** —— 蓝图那颗绿色 `Time Remaining` 脚的来源：
+
+```
+gen.cpp:34/43   生成属性 TimeRemaining(float) + UFunction 签名
+gen.cpp:213     CoolDownStart 属性指向该 UFunction
+        ↓
+K2Node_BaseAsyncTask.cpp:157   DelegateSignatureFunction = Property->SignatureFunction;
+        ↓
+K2Node_BaseAsyncTask.cpp:170   CreatePin(EGPD_Output, ..., Param->GetFName());
+        ↓
+   蓝图上的 "Time Remaining"
+```
+
+**⑤ 完整的三次调用链**（★ 中间那次是**你自己**发起的，别漏）：
+
+```
+【第1次】ASC 的原生委托 ──► 你的 C++ 函数 OnActiveEffectAdded(...)
+                                  │
+                                  │  ← 这里是你自己的代码！可以判断、计算、过滤
+                                  ▼
+【第2次】你 ──► CoolDownStart.Broadcast(HighestTime)
+                    │
+                    │  → DelegateWrapper(*this, HighestTime)
+                    │  → Parms.TimeRemaining = HighestTime
+                    │  → ProcessMulticastDelegate(&Parms)
+                    │     → 遍历 { 对象, 函数名 }
+                    ▼
+【第3次】引擎 ──► 蓝图里你绑的自定义事件，收到 TimeRemaining = 8.0
+```
+
+**⑥ 参数是你定的，不是 UE 给的**：
+
+| 你写 | 蓝图上出现 |
+|---|---|
+| `_OneParam(..., float, TimeRemaining)` | 绿色脚 `Time Remaining`（float） |
+| `_TwoParams(..., float, Remaining, bool, bStarted)` | 绿色脚**两颗** |
+| `DECLARE_DYNAMIC_MULTICAST_DELEGATE()`（无参） | **一颗都没有**，只有白箭头 |
+
+**注意参数个数不一样**：
+
+```
+ASC 原生委托给 OnActiveEffectAdded 的参数（3 个）：
+    UAbilitySystemComponent* TargetASC / const FGameplayEffectSpec& Spec / FActiveGameplayEffectHandle Handle
+                    │
+                    │  ← 你的代码从这 3 个里"挑重点"，算出 1 个数
+                    ▼
+你给 UI 的参数（1 个）：
+    float TimeRemaining
+```
+
+**这就是「翻译官」的价值** —— 原始信息又杂又多（`Spec`、`Handle` 蓝图根本用不了），翻译成 UI 真正想要的那一个数。
+
+> 绿色脚是**节点上的输出脚**，它把值送出来；**不是**自动塞进事件体，你得自己拖线过去用。
+
+### 41.10 什么时候需要异步节点 —— 两条路线对比
+
+**判据一句话**：
+
+> ## **你能不能改到「发信号的那一行」？**
+> - **能** → 用普通 dynamic 委托 + 蓝图 `Bind Event`（路线 B，最省事）
+> - **不能**（引擎内部、原生委托）→ 要么写转发委托，要么写异步节点
+> - 再看**是不是「一次性任务」**：是 → 异步节点更合适（自带结束）
+
+**路线 A：异步节点**（教程选的）—— 包一个临时工替你去听。
+
+**路线 B：转发委托** —— 在自己能改的类上开一个 dynamic 委托，把 ASC 的原生事件转发出去：
+
+```cpp
+// 在 UMy_AuraAbilitySystemComponent 里（自己的类，能改）
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCooldownChanged, float, TimeRemaining);
+
+UPROPERTY(BlueprintAssignable)
+FOnCooldownChanged OnCooldownStarted;      // ← 蓝图能 Bind Event
+
+void UMy_AuraAbilitySystemComponent::OnGEEffectAdded(...)
+{
+    OnCooldownStarted.Broadcast(剩余时间);   // 转发
+}
+```
+
+蓝图：`Get Aura ASC → Bind Event to On Cooldown Started`。
+
+| | 路线 B：转发委托 | 路线 A：异步节点 |
+|---|---|---|
+| 额外类 | 不加新类 | 加一个 `UBlueprintAsyncActionBase` 子类 |
+| 委托放哪 | **必须找宿主对象**（ASC / Character） | **不用宿主**，节点自己造 |
+| 蓝图怎么用 | 先拿到对象，再 Bind Event | 在 Event Graph 里直接拖白箭头 |
+| 生命周期 | 委托**常驻**，永远挂着 | `EndTask()` 明确结束，用完就扔 |
+| 换监听对象 | 得换宿主或重写 | 参数传不同 ASC 即可，同一节点通用 |
+| 适合 | **长期存在、多人多地都要听的广播** | **一次性的、有始有终的任务** |
+
+> **不是「必须用异步节点」，而是「蓝图没法直接绑 ASC 的委托」。** 两条路都通，教程选 A 是风格偏好。
+> 另外：GAS 引擎自带一批异步节点（`UAbilityAsync_WaitGameplayTagAdded` / `WaitAttributeChanged` / `WaitGameplayEffectApplied`…），**先翻引擎有没有现成的，再决定自己写。**
+
+### 41.11 生命周期：为什么 `EndTask` 必须调
+
+`UBlueprintAsyncActionBase` 的构造函数（`BlueprintAsyncActionBase.cpp:13-20`）：
+
+```cpp
+if (!HasAnyFlags(RF_ClassDefaultObject))
+{
+    SetFlags(RF_StrongRefOnFrame);   // ← 盖章："GC 别收我"
+}
+```
+
+`RF_StrongRefOnFrame` 的定义（`ObjectMacros.h:543`）：
+
+```
+///< References to this object from persistent function frame are handled as strong ones.
+```
+
+蓝图 ubergraph 的**持久帧**（存局部变量的地方）在 GC 时的处理（`BlueprintGeneratedClass.cpp:1909-1926`）：
+
+```cpp
+if (!Object->HasAnyFlags(RF_StrongRefOnFrame))
+{
+    // 没有这个标记 → 按弱引用处理，GC 时会被清成 nullptr
+    if (InnerCollector.MarkWeakObjectReferenceForClearing(&Object)) return;
+}
+InnerCollector.AddReferencedObject(Object, ...);   // 有这个标记 → 强引用，GC 不收
+```
+
+翻译成人话：
+
+> 蓝图节点之间的连线（局部变量）默认是**弱引用** —— 这是故意的，否则一个 Latent 节点会把对象钉死一辈子。
+> 但异步节点需要「活到任务结束」，所以基类在构造时给自己盖了个章：**「我这个持久帧里的引用，当强引用算。」**
+
+```
+EndTask() → SetReadyToDestroy() → ClearFlags(RF_StrongRefOnFrame) → 下次 GC 回收
+                ↑
+         没人调 → 章一直在 → 对象一直在 → 泄漏
+```
+
+**为什么平时察觉不到**：PIE 结束整个 World 被销毁，什么都回收了。打包后反复进出关卡才会看到内存曲线不对，而且**不报错、不崩、日志干净**。
+
+### 41.12 本章一句话总结
+
+**异步节点不是「C++ 主动通知蓝图」的唯一方式，而是「当发信号的那一行你改不到时」的翻译官。
+工厂函数是它的门票（引擎规定必须有），白箭头是它替你造的绑定入口，
+`Broadcast` 是你自己主动发起的那一次调用 —— 中间隔着你的 C++ 代码，参数也是你重新挑过的。**
+
+**记忆口诀**：
+
+> **能改到发信号那一行 → 普通委托就够了。**
+> **改不到（引擎内部的事）→ 要么自己转发，要么雇个临时工（异步节点）。**
