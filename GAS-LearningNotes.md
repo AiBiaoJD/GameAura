@@ -4091,9 +4091,197 @@ $b = [IO.File]::ReadAllBytes($f)
 **为什么是"有时候会"**：同样用 `edit` 改过的 `My_AuraAbilitySystemLibrary.cpp` BOM 没丢 ——
 所以**不能靠运气，每次改完都要查**。
 
-### 40.6 本章一句话总结
+### 40.6 输入链路：DataAsset → 委托 → ASC 匹配
+
+> 起因：改完 InputTag 后，发现这个 GA 的**触发按键真的换了**。这里把机制讲透。
+
+#### 核心认知：`InputTag` 是"按键"和"技能"之间的唯一纽带
+
+```
+物理按键  ──[输入配置表，固定]──▶  InputTag  ──[DynamicAbilityTags 匹配]──▶  技能
+   ↑                                 ↑                                  ↑
+固定不变                    装备系统在这里做文章                  谁带着这个标签谁响应
+```
+
+**改 `InputTag` = 把纽带的另一端从旧槽解开、接到新槽上。**
+
+#### 三段式链路（绑定阶段 / 触发阶段 / 匹配阶段）
+
+**① 绑定阶段**（`SetupInputComponent` 时执行一次）
+
+```cpp
+// My_AuraEnhancedInputComponent.h:26-48
+for (auto& Temp : InputConfig->InputActionToTags)
+{
+    if (Temp.InputAction && Temp.InputTag.IsValid())
+    {
+        BindAction(Temp.InputAction, ETriggerEvent::Started,   Object, PressedFunc, Temp.InputTag);
+        BindAction(Temp.InputAction, ETriggerEvent::Completed, Object, ReleaseFunc, Temp.InputTag);
+        BindAction(Temp.InputAction, ETriggerEvent::Triggered, Object, HeldFunc,    Temp.InputTag);
+    }
+}
+```
+
+**关键点**：`BindAction` 的**最后一个参数 `Temp.InputTag` 是"预绑定"到回调上的值（Payload）**。
+
+```
+键盘 IA_3 ──绑定──▶ 委托（把 "InputTag.3" 固化在里面）──▶ 你的函数
+```
+
+**⚠️ 精确表述**：Tag 不是"装在键盘上"，也不是"装在函数上"，而是**装在委托上、随调用一起传进去**。
+
+**为什么这个区别重要**：`AbilityInputTagHeld` **只有一个实例**，所有按键绑的都是它：
+
+```
+IA_1 ─┐
+IA_2 ─┤
+IA_3 ─┼─▶ 全部指向同一个 AbilityInputTagHeld，只是各自携带不同的 Tag
+IA_4 ─┤
+IA_5 ─┘
+```
+
+**② 触发阶段**
+
+```
+按下数字键 3 → IA_3 触发 ETriggerEvent::Started
+            → 委托执行 → AbilityInputTagPressed( "InputTag.3" )
+```
+
+三种 `ETriggerEvent` 的区别：
+
+| ETriggerEvent | 何时触发 | 绑给谁 |
+|---|---|---|
+| `Started` | 刚按下（**一次**） | `AbilityInputTagPressed` |
+| `Triggered` | 按住期间（**每帧**） | `AbilityInputTagHeld` |
+| `Completed` | 松开（**一次**） | `AbilityInputTagReleased` |
+
+```
+按下 ──── Started（一次）
+  │
+  │  ← 按住期间 Triggered 每帧都调（按住 1 秒 ≈ 60 次）
+  │
+松开 ──── Completed（一次）
+```
+
+> **不是"一次按键触发 3 个函数"**，而是**三个不同时机各自触发各自那个函数**。
+> 且三个都是**可选**的（`if (PressedFunc)` 才绑），纯瞬发技能不需要 `Held`。
+
+**③ 匹配阶段**（GAS 找技能）
+
+```cpp
+// My_AuraAbilitySystemComponent.cpp:88-103
+void UMy_AuraAbilitySystemComponent::AbilityInputTagHeld(const FGameplayTag InputTag)
+{
+    if (!InputTag.IsValid()) return;
+
+    for (FGameplayAbilitySpec& AbilitySpec : GetActivatableAbilities())
+    {
+        if (AbilitySpec.DynamicAbilityTags.HasTagExact(InputTag))   // ★ 精确等号匹配
+        {
+            AbilitySpecInputPressed(AbilitySpec);
+            if (!AbilitySpec.IsActive())
+            {
+                TryActivateAbility(AbilitySpec.Handle);
+            }
+        }
+    }
+}
+```
+
+**语义**：**"谁的 `DynamicAbilityTags` 里正好有这个 Tag，就激活谁。"**
+
+`HasTagExact` 是**完全相等**，不是前缀匹配。
+理论上两个技能带同一个 Tag 会一起激活，但装备系统保证"一个槽只有一个技能"，所以实际一对一。
+
+#### 匹配之前还有一道"路由门禁"（在 Controller 里）
+
+```cpp
+// My_Aura_Controller.cpp:153-159
+void AMy_Aura_Controller::AbilityInputTagHeld(FGameplayTag InputTag)
+{
+    if (!InputTag.MatchesTagExact(...My_InputTag_LMB))   // 不是左键
+    {
+        GetAuraASC()->AbilityInputTagHeld(InputTag);     // 直接转发给 ASC
+        return;
+    }
+    // 是左键 → 还要判断"在瞄准 / 按着 Shift"，否则走点击移动
+    if (bTargeting || bShiftKeyDown) { ...激活... }
+    else { ...点击移动... }
+}
+```
+
+**所以完整顺序是**：
+
+```
+按键 → Tag
+   ↓
+① Controller 路由：是不是 LMB？要不要走移动逻辑？        ← 业务分流
+   ↓
+② ASC 匹配：谁的 DynamicAbilityTags 精确等于这个 Tag？   ← GAS 技能查找
+   ↓
+③ 激活
+```
+
+#### 实战推演：装备前后按键行为的变化
+
+```
+【装备前】火球带 My_InputTag.1
+    按【数字键1】→ IA_1 → 参数 = InputTag.1
+        → ASC 遍历：谁有 InputTag.1？→ 火球有 → 激活 ✅
+    按【数字键3】→ 参数 = InputTag.3 → 没人有 → 什么也不发生 ❌
+
+【装备后】火球带 My_InputTag.3（旧的 InputTag.1 被 ClearSlot 清掉了）
+    按【数字键1】→ 参数 = InputTag.1 → 没人有 → 什么也不发生 ❌
+    按【数字键3】→ 参数 = InputTag.3 → 火球有 → 激活 ✅
+```
+
+**这就是"改 InputTag 后触发按键跟着变"的完整解释。**
+
+#### 为什么同一个 `InputTag` 是"一物三用"
+
+| 用途 | 体现在哪 |
+|---|---|
+| **执行**：按哪个键触发 | `AbilityInputTagHeld` 的 `HasTagExact` 匹配 |
+| **存储**：技能绑在哪个键 | `AbilitySpec.DynamicAbilityTags` |
+| **显示**：UI 上球放哪个格子 | `AbilityInfo.InputTag` → `OnAbilityInfo` 广播 |
+
+**三者共用同一个 Tag，所以改一处 → 三处同步变化。**
+这就是"改了 InputTag，UI 位置和按键**同时**变了"的原因。
+
+#### 为什么客户端也必须 `MarkAbilitySpecDirty`
+
+`AbilityInputTagHeld` **在客户端本地执行**（客户端要能立刻响应按键）
+
+```
+服务器上：火球在槽3
+客户端本地（复制没到）：火球还在槽1
+→ 按数字键1，客户端本地匹配上了 → 错误地激活火球（预测）
+→ 服务器："你槽1没技能" → 拒绝 → 回滚 → 手感抽搐
+```
+
+**所以 `MarkAbilitySpecDirty` 保证的"数据同步"，直接决定按键匹配是否与服务器一致。**
+
+#### 两张表配合，决定"哪个键触发哪个技能"
+
+| 表 | 在哪 | 决定什么 |
+|---|---|---|
+| **输入配置表** | `My_AuraInputConfig` DataAsset（{InputAction, InputTag} 数组） | 物理键 ↔ InputTag |
+| **StartUpInputTag** | 每个技能的 GA 蓝图里 | 技能初始绑哪个 InputTag |
+
+```
+技能蓝图 StartUpInputTag = My_InputTag.1     ← 决定初始装在哪（装备系统可改）
+输入配置表  键盘3 ←→ My_InputTag.3           ← 决定哪个键触发哪个 Tag
+```
+
+**自己验证的三步**：
+
+1. 打开 `My_AuraInputConfig` DataAsset → 看清键 ↔ Tag 的表
+2. 打开火球的 GA 蓝图 → 看 `StartUpInputTag`
+3. 进游戏：装备火球到槽3 → 按 1（无效）→ 按 3（触发）
+
+### 40.7 本章一句话总结
 
 **装备功能实现本身不难（服务器改 Tag + 两个 RPC + 广播两条 Info），
 难的是"为什么这么设计"和"缓存/现读怎么选"。
 而 `SelectedSlot` 这种"只写不读"的教程遗留物，提醒我们：
-读教程代码时要主动验证每个变量的真实用途，不要假设它有用。****
+读教程代码时要主动验证每个变量的真实用途，不要假设它有用。**
