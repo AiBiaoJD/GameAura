@@ -283,9 +283,6 @@ void UMy_SpellMenuWidgetController::OnAbilityEquipped(const FGameplayTag& Abilit
 
 	// ③ 结束"选槽模式"的视觉表现：播取消选择动画（高亮变回常态）
 	OnStopWaitForEquipSelection.Broadcast(AbilityDA->FindAbilityInfoFromTag(AbilityTag).AbilityType);
+	OnSpellGlobeReassign.Broadcast(AbilityTag);
 
-	// ⚠️ 对比教程：教程在这里还多调了一次 GlobeDeselect()，作用是
-	//    清空 SelectedAbility 并广播"取消选中"（右侧描述面板清空）。
-	//    当前实现缺这一步 —— 装备完成后，菜单里可能仍显示着上一个技能的选中态。
-	//    如需对齐教程行为，在下面加上：GlobeDeselect();
 }

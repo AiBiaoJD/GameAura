@@ -42,6 +42,8 @@
 - [三十九、RPC 判断框架 + 复制机制 + 装备功能完整拆解](#三十九rpc-判断框架--复制机制--装备功能完整拆解)
 - [四十、装备功能 My_ 版实现 + 缓存策略 + 代码复查](#四十装备功能-my_-版实现--缓存策略--代码复查)
 - [四十一、异步节点与委托：C++ 怎么通知蓝图（深度版）](#四十一异步节点与委托c-怎么通知蓝图深度版)
+- [四十二、SpellMenu 功能收尾（完成）](#四十二spellmenu-功能收尾完成)
+- [四十三、构建速度排查：磁盘、UBT 并行、.uproject vs .sln](#四十三构建速度排查磁盘ubt-并行uproject-vs-sln)
 
 ---
 
@@ -4742,3 +4744,178 @@ EndTask() → SetReadyToDestroy() → ClearFlags(RF_StrongRefOnFrame) → 下次
 
 > **能改到发信号那一行 → 普通委托就够了。**
 > **改不到（引擎内部的事）→ 要么自己转发，要么雇个临时工（异步节点）。**
+
+---
+
+## 四十二、SpellMenu 功能收尾（完成）
+
+### 42.1 本次改动：新增 `OnSpellGlobeReassign` 委托
+
+```cpp
+// My_SpellMenuWidgetController.h —— 新增
+// 转配技能后取消 SelectImage 的显示委托
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FMy_SpellGlobeReassignSignature, const FGameplayTag&, Abilitytag);
+
+UPROPERTY(BlueprintAssignable)
+FMy_SpellGlobeReassignSignature OnSpellGlobeReassign;
+```
+
+```cpp
+// My_SpellMenuWidgetController.cpp —— OnAbilityEquipped() 末尾
+OnStopWaitForEquipSelection.Broadcast(AbilityDA->FindAbilityInfoFromTag(AbilityTag).AbilityType);
+OnSpellGlobeReassign.Broadcast(AbilityTag);      // ← 新增：通知球体刷新，取消"选中态"显示
+```
+
+### 42.2 为什么不用教程的 `GlobeDeselect()`
+
+这正是第 40.4 节复查问题 #5（`OnAbilityEquipped` 缺少收尾）的**另一种解法**：
+
+| 做法 | 机制 | 特点 |
+|---|---|---|
+| **教程**：`GlobeDeselect()` | 清空 `SelectedAbility` 并广播「取消选中」 | 描述面板**整个清空**，用户刚看到的技能信息没了 |
+| **本实现**：`OnSpellGlobeReassign.Broadcast(AbilityTag)` | 只广播「这个技能变了」，怎么做交给蓝图 | 描述面板可以**保留**，只刷新球体上的槽位显示 |
+
+> **设计取舍**：教程是「一刀切清空」，本实现是「广播事实，让 UI 自己决定」——后者更灵活，也更符合"Controller 只负责通知，不负责决定 UI 长什么样"的分层原则。
+
+### 42.3 SpellMenu 功能清单（收尾核对）
+
+| 功能 | 入口 | 数据流 |
+|---|---|---|
+| 开关菜单 | 按 Tab | `My_AuraPlayerController` → HUD 切 UI 模式 |
+| 点击技能球 → 显示描述 | `My_WBP_SpellGlobe_Button` | `SpellGlobeSelected` → `OnAbilityInfo` |
+| 升级按钮（Enable 判定） | `EquippedButtonPressed` | StatusTag + SpellPoint 决定（见第 35 章） |
+| 装备按钮 → 进入选槽模式 | `EquippedButtonPressed` | `OnWaitForEquipSelection` 广播 |
+| 点槽位 → 装备 | `My_WBP_Equipted_Button` | `EquipSpellRowGlobePressed` → ASC `ServerEquipAbility`（见第 39 章） |
+| 装备后刷新 HUD 图标 | — | ASC `OnAbilityEquipped` → `My_OverlayWidgetController`（两次 `OnAbilityInfo` 广播：清旧槽 + 填新槽） |
+| 装备后刷新球体 | — | `OnStopWaitForEquipSelection` + **`OnSpellGlobeReassign`**（本次新增） |
+
+### 42.4 一句话总结
+
+**装备功能的最后一块拼图不是"多调一个函数"，而是"用广播替代清空"——
+Controller 只广播事实（哪个技能变了），把"UI 该长什么样"留给蓝图决定。
+这也是整个 SpellMenu 从头到尾一直遵循的分层原则。**
+
+---
+
+## 四十三、构建速度排查：磁盘、UBT 并行、.uproject vs .sln
+
+### 43.1 真正的瓶颈：项目在机械硬盘上
+
+| 盘符 | 物理盘（注册表 `disk\Enum`） | 介质 | 容量 | 可用 |
+|---|---|---|---|---|
+| **C:** | `NVMe KINGSTON SNVS500` | ✅ **NVMe SSD** | 465 GB | 只剩 53 GB |
+| **D:** | `WDC WD10EZEX-00BBHA0` | ❌ **7200 转机械硬盘** | 932 GB | 512 GB |
+
+而**所有关键路径都在 D 盘**：
+
+```
+D:\UE Engine\UE_5.2                  ← 引擎源码 + 链接时要读的 .lib
+D:\UE5 Project\...\Source            ← 你的源码
+D:\UE5 Project\...\Intermediate      ← 2.35 GB，obj / 响应文件 / PCH
+      └─ Build\Win64\x64\AuraEditor\DebugGame\Engine\
+             SharedPCH.Engine.NonOptimized.ShadowErrors.InclOrderUnreal5_0.h.pch   ← 1.7 GB
+D:\UE5 Project\...\Binaries          ← 0.17 GB，DLL / PDB
+```
+
+| | 7200 转机械 | 入门 NVMe | 倍数 |
+|---|---|---|---|
+| 顺序读 | ~150 MB/s | ~1500~2000 MB/s | 10~13× |
+| **4K 随机读 IOPS** | ~100~150 | ~40,000+ | **约 300×** |
+| 访问延迟 | ~8~12 ms | ~0.1 ms | ~100× |
+
+**编译/链接恰好是「大量小文件 + 随机读写」** —— 机械盘最怕的场景。
+再加上内存被 Rider 占了 10.5 GB（可用只剩 7~11 GB），那个 1.7 GB 的 PCH **缓存不住，每个 `cl.exe` 都要从机械盘重读**。
+
+> ⚠️ **注意**：慢的原因**不是「盘符叫 D」**，而是「D 那块盘是机械硬盘」。
+> 页面文件（`c:\pagefile.sys`）和 Rider 缓存（`%LOCALAPPDATA%\JetBrains`）都已经在 SSD 上，**这两处是对的**。
+
+**可行的改善**（按性价比）：
+
+| 方案 | 成本 | 收益 |
+|---|---|---|
+| 把 `Intermediate` + `Binaries`（共 2.5 GB）用 **junction** 挪到 C 盘 | 0 | PCH 读取 + obj/PDB 写入全上 SSD |
+| 加一块 SSD（1TB SATA 即可），引擎+项目整体搬过去 | 一块盘 | 根本解（连引擎头文件、`.lib` 都上 SSD） |
+| 日常用 Live Coding（跳过链接 = 跳过最大一笔磁盘写入） | 0 | 在机械盘上尤其明显 |
+
+> ⚠️ 删 junction 必须用 `cmd /c rmdir`；**不要用 `Remove-Item -Recurse`**（某些 PowerShell 版本会穿透联接删掉真实内容）。
+
+### 43.2 UBT 的并行数是怎么算的
+
+```
+最大并行数 = Min( 物理核数 , 可用物理内存 ÷ 每动作内存 )
+```
+
+源码 `UnrealBuildTool\System\Utils.cs:1310-1322`：
+
+```csharp
+if (MemoryPerActionBytes > 0)
+{
+    long FreeMemoryBytes = GetFreeMemoryBytes();          // = GC 看到的「总内存 − 已用」
+    int TotalMemoryActions = Convert.ToInt32(FreeMemoryBytes / MemoryPerActionBytes);
+    if (TotalMemoryActions < MaxActionsToExecuteInParallel)
+        MaxActionsToExecuteInParallel = Math.Max(1, Math.Min(MaxActionsToExecuteInParallel, TotalMemoryActions));
+}
+```
+
+**关键坑：`Target.cs` 里的 `MemoryPerActionGB` 只能调大，不能调小。**
+`ParallelExecutor.cs:44 / 98`：
+
+```csharp
+private static double MemoryPerActionBytes = 1.5 * 1024 * 1024 * 1024;   // 硬编码默认 1.5 GB
+
+double MemoryPerActionBytesComputed = Math.Max(MemoryPerActionBytes, MemoryPerActionBytesOverride);
+//                                            ↑ 1.5 GB 是地板，填 0.9 被直接吃掉
+```
+
+所以：
+
+| 写什么 | 结果 |
+|---|---|
+| `MemoryPerActionGB = 0.9` | ❌ **无效** —— `Max(1.5, 0.9) = 1.5` |
+| `MemoryPerActionGB = 3.0` | ✅ 生效，但**更保守**（并行数变少） |
+| 想真正放开 | 只能改 `%APPDATA%\Unreal Engine\UnrealBuildTool\BuildConfiguration.xml` 里的 `MemoryPerActionBytes`（源码注释：*Set to 0 to disable free memory checking*） |
+
+> **而且就算放开了收益也很小**：`Building 8 actions with 7 processes` —— 8 个动作只差 1 个并行位；
+> 而**链接必须等所有编译完成**，关键路径几乎不变。
+
+### 43.3 `.uproject` vs `.sln`
+
+| | `Aura.uproject`（0.7 KB） | `Aura.sln`（3.3 KB） |
+|---|---|---|
+| 是什么 | **项目的源头**（JSON） | **给 IDE 看的工程索引** |
+| 谁生成 | 你 / UE 编辑器 | **UBT 自动生成** |
+| 谁认它 | UE 编辑器、UBT、打包 | 只有 IDE（VS / Rider） |
+| 删了会怎样 | ❌ 项目没了 | ✅ 重新生成即可 |
+
+```
+Aura.uproject  +  Aura.Build.cs  +  AuraEditor.Target.cs   ← 源头（你维护）
+        │  UBT -Mode=GenerateProjectFiles
+        ▼
+Aura.sln  +  Intermediate\ProjectFiles\{UE5,Aura}.vcxproj  ← 生成物
+        │
+        ▼
+Rider / Visual Studio
+```
+
+**一个很有说明力的细节**：`Aura.sln` 被 git 跟踪，但它引用的两个 `.vcxproj` 在 `Intermediate\` 下、被 `.gitignore` 排除。
+→ 别人克隆仓库后，`Aura.sln` 是个**空壳**，必须先 `GenerateProjectFiles`。
+→ **这就证明了 `.sln` 是派生物。**
+
+**为什么 Rider 两个都能打开**：它装了两套集成。
+
+| 打开 | 机制 | 能力 |
+|---|---|---|
+| **`.uproject`** | **Rider for Unreal Engine** 插件 | 全功能（蓝图索引、`.uasset` 跳转、Target/Config 下拉、Live Coding） |
+| `.sln` | 通用 C++ / MSBuild | 能编译能跳转，缺 UE 专属功能 |
+
+JetBrains [官方文档](https://www.jetbrains.com/help/rider/2022.3/Unreal_Engine__Before_You_Start.html)原话：
+
+> *"You can work with the `.uproject` directly in JetBrains Rider, **without generating a Visual Studio solution**… On Windows, you can alternatively open your `.sln` files."*
+
+**结论：日常用 `.uproject` 打开**（JetBrains 主推路径）。注意这跟"引擎索引"无关 —— 换打开方式**不影响** F12 跳引擎代码。
+
+### 43.4 一句话总结
+
+**慢的不是"哪个盘符"，是"哪块盘"。D 盘是机械硬盘，而引擎 + 项目 + 所有编译产物都在上面 —— 这才是"改 2 行也慢"的头号原因；
+`MemoryPerActionGB` 调小无效（被 1.5 GB 地板吃掉），因为瓶颈根本不是并行度；
+`.uproject` 是源、`.sln` 是 UBT 生成的派生物，日常开 `.uproject`。**

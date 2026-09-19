@@ -13,6 +13,9 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_FourParams(FMy_SpellGlobeSelectSignature, boo
 // EquipButton按下Controller传递给UI的委托
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FMy_WaitForEquipSelectionSignature, const FGameplayTag&, AbilityType);
 
+// 转配技能后取消Selectimage的显示委托
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FMy_SpellGlobeReassignSignature, const FGameplayTag&, Abilitytag);
+
 // 记录"当前选中的技能 + 它最新的状态"
 // 为什么必须缓存 StatusTag：
 //   - ASC 的 StatusTag 与 PS 的 SpellPoint 是两条独立的网络复制通道，到达客户端的时间/顺序不确定
@@ -45,7 +48,9 @@ public:
 	UPROPERTY(BlueprintAssignable)
 	FMy_WaitForEquipSelectionSignature OnStopWaitForEquipSelection;
 
-
+	UPROPERTY(BlueprintAssignable)
+	FMy_SpellGlobeReassignSignature OnSpellGlobeReassign;
+	
 	virtual void BroadcastInitiaValues() override;
 	virtual void BindCallbacksToDependencies() override;
 
