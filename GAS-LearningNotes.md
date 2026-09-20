@@ -44,6 +44,7 @@
 - [四十一、异步节点与委托：C++ 怎么通知蓝图（深度版）](#四十一异步节点与委托c-怎么通知蓝图深度版)
 - [四十二、SpellMenu 功能收尾（完成）](#四十二spellmenu-功能收尾完成)
 - [四十三、构建速度排查：磁盘、UBT 并行、.uproject vs .sln](#四十三构建速度排查磁盘ubt-并行uproject-vs-sln)
+- [四十四、伤害全链路 + 两套属性回调](#四十四伤害全链路--两套属性回调)
 
 ---
 
@@ -4919,3 +4920,391 @@ JetBrains [官方文档](https://www.jetbrains.com/help/rider/2022.3/Unreal_Engi
 **慢的不是"哪个盘符"，是"哪块盘"。D 盘是机械硬盘，而引擎 + 项目 + 所有编译产物都在上面 —— 这才是"改 2 行也慢"的头号原因；
 `MemoryPerActionGB` 调小无效（被 1.5 GB 地板吃掉），因为瓶颈根本不是并行度；
 `.uproject` 是源、`.sln` 是 UBT 生成的派生物，日常开 `.uproject`。**
+
+---
+
+## 四十四、伤害全链路 + 两套属性回调
+
+> 本章把「一次火球从按键到落血」完整串一遍，并回答三个最容易混的问题：
+> ① `SetByCaller` 和 `EffectContext` 谁管什么；② `ExecCalc` 什么时候被调用；
+> ③ `PostGameplayEffectExecute` 和 `PostAttributeChange` 有什么区别。
+
+### 44.1 核心认知：伤害是「两段式」的
+
+**「写配方」和「算伤害」是两个时间点，中间隔着火球的飞行时间。**
+
+| 阶段 | 时刻 | 谁在跑 | 干了什么 |
+|---|---|---|---|
+| **写配方** | 技能激活时 | `SpawnProjectile` | 造 Spec + 填伤害数字（**不算**） |
+| 飞行 | 中间几秒 | `AMy_ProjectileActor` | GAS 完全不参与 |
+| **算伤害** | **火球撞到人** | `My_ExeCalc_Damage` | 这才是计算 |
+| 落血 | 紧接着 | `PostGameplayEffectExecute` | 扣血 / 飘字 / 死亡 |
+
+**类比**：`MakeOutgoingSpec` = 拿空白处方笺；`SetSetByCallerMagnitude` = 在处方上写「火焰 20」；
+火球 = 快递员；`ApplyGameplayEffectSpecToSelf` = 把处方交给药房；`ExecCalc` = **药房按处方配药**。
+
+### 44.2 完整链路（16 步，含行号）
+
+| # | 时刻 | 位置 | 关键代码 |
+|---|---|---|---|
+| 1 | 按 1 | PlayerController → ASC | `AbilityInputTagHeld` → `TryActivateAbility` |
+| 2 | GA 激活 | `GA_FireBolt`（**蓝图**） | `ActivateAbility` |
+| 3 | 等鼠标 | WaitTargetData Task | 异步 |
+| 4 | 生成火球 | `My_AuraProjectileSpell.cpp` | `SpawnProjectile` |
+| 5 | **写配方** | 同上 `:60` | `MakeOutgoingSpec` ← **不计算** |
+| 6 | **填数字** | 同上 `:65` | `SetSetByCallerMagnitude` |
+| 7 | 交出 Spec | 同上 `:67` | `Projectile->DamageEffectSpecHandle = ...` |
+| 8 | **火球飞行** | `AMy_ProjectileActor` | GAS 不参与 |
+| 9 | 命中 | `My_ProjectileActor.cpp:44` | `OnSphereOverlap` |
+| 10 | **执行 GE** | 同上 `:73` | `ApplyGameplayEffectSpecToSelf` |
+| 11 | **算伤害** | `My_ExeCalc_Damage.cpp:64` | `Execute_Implementation` |
+| 12 | 抓属性 | 同上 `:110-119` | `AttemptCalculateCapturedAttributeMagnitude` |
+| 13 | **读回伤害** | 同上 `:150` | `GetSetByCallerMagnitude` |
+| 14 | 输出 | 同上 `:219` | `AddOutputModifier(IncomingDamage)` |
+| 15 | **扣血** | `My_AuraAttributeSet.cpp:126` | `PostGameplayEffectExecute` |
+| 16 | 飘字/死亡 | 同上 `:161 / :174` | `Die()` / `ShowDamageText` |
+
+> ⚠️ **`My_AuraFireBolt.cpp` 里只有两个描述函数**，`SpawnProjectile` 在 C++ 里**没有任何调用点**
+> —— 说明"生成火球"的逻辑在**蓝图 `GA_FireBolt`** 的 Event Graph 里。
+
+### 44.3 ★ 两条数据通道（最容易混的地方）
+
+| | **SetByCaller** | **EffectContext** |
+|---|---|---|
+| 方向 | **进去** ⬇ | **出来** ⬆ |
+| 路径 | 技能 → Spec → ExecCalc | ExecCalc → Context → 外部 |
+| 写入时机 | **创建 Spec 时**（`:65`） | **ExecCalc 执行中**（`:178 / :207`） |
+| 读出时机 | **ExecCalc 中**（`:150`） | **GE 执行完之后**（`AttributeSet:172-173`） |
+| 装什么 | `TMap<FGameplayTag, float>` | 你自定义的字段 |
+| 用途 | 把技能配好的数值**送进去算** | 把算出来的结果**带出来** |
+
+**一句话**：
+
+```
+SetByCaller  = 【进去】的通道   （技能 → 计算）
+EffectContext = 【出来】的通道   （计算 → 结果使用方 / 客户端）
+```
+
+**为什么 Debuff 必须用 Context？** 因为"这次到底有没有触发 debuff"是 ExecCalc 执行时**随机**出来的
+（`ExecCalc_Damage.cpp:87` `FMath::RandRange(1,100) < 几率`）——创建 Spec 时根本不存在，SetByCaller 帮不上忙。
+
+**为什么不能塞进属性里？** 因为 `IncomingDamage` 用完立刻被清零（`My_AuraAttributeSet.cpp:149` `SetIncomingDamage(0.f)`），装不住。
+
+### 44.4 ★ ExecCalc 有**两个出口**（不是"所有东西都放 Context"）
+
+| | **出口 A：改属性** | **出口 B：带元数据** |
+|---|---|---|
+| API | `OutExecutionOutput.AddOutputModifier(...)` | 往 `Spec.GetContext()` 写字段 |
+| 放什么 | **数值本身** | **关于这次事件的描述** |
+| 你的代码 | `My_ExeCalc_Damage.cpp:219-223` → `IncomingDamage` | `:178 / :207` → 暴击、格挡（将来 Debuff） |
+| 谁读 | 引擎（GE 系统自动改属性） | **你自己** |
+| 为什么走这条 | 属性是 GE 系统的本职 | "是不是暴击"**没有对应属性**，装不住 |
+
+```cpp
+// 出口 A
+OutExecutionOutput.AddOutputModifier(FGameplayModifierEvaluatedData(
+    UMy_AuraAttributeSet::GetIncomingDamageAttribute(), EGameplayModOp::Additive, Damage));   // :219
+
+// 出口 B
+UMy_AuraAbilitySystemLibrary::SetIsCriticalHit(EffectContextHandle, bIsCritical);             // :207
+```
+
+### 44.5 自定义 EffectContext：为什么必须是 Struct、为什么单独一个文件
+
+**它是什么**：跟着 GE 走的「随身包裹」。每次施法 `MakeEffectContext()` 造一个，
+跟着 Spec 走完「ExecCalc → GE 执行结束 → PostGameplayEffectExecute → 复制到客户端」。
+
+**为什么必须是 USTRUCT**：
+
+| 原因 | 说明 |
+|---|---|
+| 基类就是 USTRUCT | `FGameplayEffectContext` 本身就是，你只能跟着 |
+| 网络复制 | 需要 `NetSerialize` + `TStructOpsTypeTraits<WithNetSerializer=true>` |
+| 反射 | `GetScriptStruct()` 让引擎知道反序列化用哪个类型 |
+| 会被复制多次 | 所以必须实现 `Duplicate()`（含 HitResult 深拷贝） |
+
+**为什么单独一个文件（不放进 `My_AuraDamageGameplayAbility.h`）**：
+
+```
+        Ability（逻辑层）        My_AuraDamageGameplayAbility
+              ↑ 应该向下依赖
+        ExecCalc（计算层）        My_ExeCalc_Damage
+              ↑
+        AttributeSet（数据层）    My_AuraAttributeSet
+              ↑
+        Types（纯数据类型）  ← 放这里才对 ✅
+```
+
+- 它被 **Ability / ExecCalc / AttributeSet / Globals 四个层共享**
+- 放进 GA 的头文件 → **数据层反过来依赖技能层**（层次颠倒）+ 拉进一堆 GAS 依赖
+- **老实说这不是编译器硬性规定**：技术上可以在任何头文件里（类外面）声明 `USTRUCT`，共享同一个 `.generated.h`
+  —— 真正的原因是「分层」和「共享」，**不是 UHT 不允许**
+
+**5 个使用触点**（少一个机制就不生效）：
+
+| # | 位置 | 作用 |
+|---|---|---|
+| 1 | `Config/DefaultGame.ini:8`<br>`+AbilitySystemGlobalsClassName="/Script/Aura.MyAbilitySystemGlobals"` | ★ **全局注册** |
+| 2 | `MyAbilitySystemGlobals.cpp:9` | ★ **工厂**：`return new FMY_AuraGamePlayEffectContext();` |
+| 3 | `My_AuraAbilityTypes.cpp` | `NetSerialize` 实现 |
+| 4 | `My_AuraAbilitySystemLibrary.cpp:139-169` | **收口**：`Get/Set` 辅助，内部 `static_cast` |
+| 5 | `My_ExeCalc_Damage.cpp:178/207`（写）<br>`My_AuraAttributeSet.cpp:172-173`（读） | 写入端 / 读取端 |
+
+**⚠️ `NetSerialize` 的位掩码坑**：
+
+```cpp
+if (bIsBlockedHit)  RepBits |= 1 << 7;
+if (bIsCriticalHit) RepBits |= 1 << 8;
+Ar.SerializeBits(&RepBits, 9);      // ★ 9 = 最大位号 + 1
+```
+
+**加字段必须同时改这个数字，否则新字段静默丢失、不报错。**
+（`FBitReader::SerializeBits` 是精确按位：`BitReader.h:74` `Pos += LengthBits`，不取整到字节）
+
+> 🔍 顺手发现：教程的 `AuraAbilityTypes.cpp` 用了 **0~19 共 20 位**，但写的是 `SerializeBits(&RepBits, 19)`
+> —— bit 19（`RadialDamageOrigin`）在网络复制时会丢。以后抄这段记得「位数 = 最大位号 + 1」。
+
+### 44.6 `FGameplayEffectModCallbackData Data` 里有什么
+
+引擎定义得非常小（`GameplayEffectExtension.h:17-30`）：
+
+```cpp
+struct FGameplayEffectModCallbackData
+{
+    const struct FGameplayEffectSpec&       EffectSpec;      // ← ★ Context 装在这里面
+    struct FGameplayModifierEvaluatedData&  EvaluatedData;   // 这次改哪个属性、改成什么
+    class UAbilitySystemComponent&          Target;          // ★ 目标 ASC（现成的）
+};
+```
+
+**所以**：`Data.EffectSpec.GetContext()` 就是"这一次 GE"的 Context。
+
+**为什么很多 GE 都在调却不会串台？** 因为 `Data` 是引擎**为这一次执行现场构造**的（看那个构造函数），
+每个 `Data` 都牢牢绑着它自己那一个 Spec。
+
+**`SetEffectProperty` 做的事 = 把 `Data` 里 3 个字段，补全成一个好用的 `Props`**：
+
+| `Props` 字段 | 从哪来 | 代码行 |
+|---|---|---|
+| `EffectContextHandle` | `Data.EffectSpec.GetContext()` | `:255` |
+| **`SourceASC`** | **`Context.GetOriginalInstigatorAbilitySystemComponent()`** | `:256` |
+| `SourceAvatarActor` | `SourceASC->AbilityActorInfo->AvatarActor` | `:260` |
+| `SourceController` | `PlayerController`，空则用 `Pawn->GetController()` 兜底 | `:262-270` |
+| `SourceCharacter` | `Cast<ACharacter>(SourceController->GetPawn())` | `:273` |
+| `TargetAvatarActor` | `Data.Target.AbilityActorInfo->AvatarActor` | `:280` |
+| `TargetCharacter` | `Cast<ACharacter>(TargetAvatarActor)` | `:283` |
+| **`TargetASC`** | `Data.Target` **本身** | `:284` |
+
+**★ 注意 Source / Target 的不对称**：
+
+- **Target 是现成的** —— `PostGameplayEffectExecute` 本来就是 target 的 AttributeSet 在跑，"我是谁"当然知道
+- **Source 要绕一圈** —— 只能从 Context 里翻 `GetOriginalInstigatorAbilitySystemComponent()`
+  （拿的是**原始发起者**的 ASC，玩家的 ASC 挂在 PlayerState 上，不是 AuraCharacter）
+
+### 44.7 ★ `PostGameplayEffectExecute` 的真实触发条件
+
+**不是「GE 执行完就一定调」，而是「有一个 Modifier 真的要写属性才调」。**
+
+整个 GAS 插件里**只有一个调用点**（`GameplayEffect.cpp:2933`，在 `InternalExecuteMod` 里）：
+
+```cpp
+// GameplayEffect.cpp:2894
+bool FActiveGameplayEffectsContainer::InternalExecuteMod(FGameplayEffectSpec& Spec, FGameplayModifierEvaluatedData& ModEvalData)
+{
+    UAttributeSet* AttributeSet = ... Owner->GetAttributeSubobject(AttributeSetClass);   // :2906
+
+    if (AttributeSet)                                        // ★ 门槛 1：AttributeSet 必须存在
+    {
+        FGameplayEffectModCallbackData ExecuteData(Spec, ModEvalData, *Owner);   // ★ 构造 Data
+        if (AttributeSet->PreGameplayEffectExecute(ExecuteData))                 // ★ 门槛 2：可以拒绝
+        {
+            ApplyModToAttribute(...);                                            // :2920 真正写值
+            AttributeSet->PostGameplayEffectExecute(ExecuteData);                // :2933 ★★ 就是这里
+        }
+    }
+    else
+    {
+        ABILITY_LOG(Log, TEXT("%s does not have attribute %s. Skipping modifier"), ...);   // :2954 不调用
+    }
+}
+```
+
+**它是「按 Modifier」调用的，不是「按 GE」**（`GameplayEffect.cpp:2140-2146`）：
+
+```cpp
+for (int32 ModIdx = 0; ModIdx < SpecToUse.Modifiers.Num(); ++ModIdx)     // 遍历所有 Modifier
+{
+    ModifierSuccessfullyExecuted |= InternalExecuteMod(SpecToUse, EvalData);   // 每个一次
+}
+```
+
+| GE 配置 | 会调吗 | 原因 |
+|---|---|---|
+| Instant + **Modifiers** | ✅ 每个 Modifier 一次 | 有东西要写 |
+| Instant + **ExecCalc 有输出** | ✅ | `AddOutputModifier` 也算 Modifier |
+| Instant + **ExecCalc 无输出** | ❌ | 循环里没东西 |
+| Duration GE **刚被加上** | ❌ | 挂上去 ≠ 执行 Modifier |
+| Duration GE **周期到点** | ✅（若有 Modifier） | `GameplayEffect.cpp:3506` |
+| Duration GE **过期移除** | ❌ | 移除不走 Modifier |
+| **只加 GrantedTags 的 GE** | ❌ | 没有 Modifier |
+| **只播 GameplayCue 的 GE** | ❌ | 没有 Modifier |
+| `PreGameplayEffectExecute` 返回 `false` | ❌ | 这次修改被丢弃 |
+| 目标 ASC 上**没有这个 AttributeSet** | ❌ | 打 log 跳过 |
+
+> ⚠️ **重要例子修正**：**冷却 GE 不会调用它！**
+> 冷却 GE（`GE_FireBolt_Cooldown`）是「**Tag 型 GE**」—— 只有一个 `GrantedTags`，**没有任何 Modifier**，
+> 它根本不碰属性。**这就是"Tag 型 GE"和"数值型 GE"的根本区别。**
+
+**还有两条"改属性但不调用它"的路**（`AbilitySystemComponent.h:213-220` 注释明说）：
+
+```cpp
+/**
+ *	This does not invoke Pre/PostGameplayEffectExecute calls on the attribute set.
+ *	No GameplayEffectSpec is created or is applied!
+ */
+void ApplyModToAttribute(const FGameplayAttribute &Attribute, ...);
+```
+
+| API | 会调 Post 吗 |
+|---|---|
+| `ApplyGameplayEffectSpecToSelf(Spec)` | ✅（走 Modifier 时） |
+| `ASC->ApplyModToAttribute(...)` | ❌ **明确不会** |
+| `ASC->ApplyModToAttributeUnsafe(...)` | ❌ 不会 |
+| `ASC->SetNumericAttributeBase(...)` | ❌ 不走这条通道 |
+
+### 44.8 ★ `PostAttributeChange` vs `PostGameplayEffectExecute`
+
+**一句话：一个是「属性层」，一个是「GE 层」。**
+
+| | `Pre/PostAttributeChange` | `Pre/PostGameplayEffectExecute` |
+|---|---|---|
+| **层级** | **属性层**（AttributeSet 自己的事） | **GE 层**（GameplayEffect 系统的事） |
+| **谁触发** | **任何**属性赋值 | **只有 GE Modifier** 写属性 |
+| **签名** | `(Attribute, float& NewValue)` / `(Attribute, Old, New)` | `(const FGameplayEffectModCallbackData& Data)` |
+| **知道是谁改的吗** | ❌ **不知道** | ✅ 知道（`Data.EffectSpec` 有完整上下文） |
+| **能改值 / 拒绝吗** | ✅ Pre 能改值，不能拒 | ✅ Pre 能返回 `false` 拒绝 |
+| **典型用途** | 钳制数值、**依赖属性联动** | **伤害落血 / 飘字 / 死亡 / Debuff** |
+
+#### 源码：属性层的唯一入口
+
+```cpp
+// AttributeSet.cpp:77 —— 整个 GAS 里只有 AbilitySystemComponent.cpp:342 调它
+void FGameplayAttribute::SetNumericValueChecked(float& NewValue, class UAttributeSet* Dest) const
+{
+    OldValue = DataPtr->GetCurrentValue();
+    Dest->PreAttributeChange(*this, NewValue);              // :100
+    DataPtr->SetCurrentValue(NewValue);                     // 写内存
+    Dest->PostAttributeChange(*this, OldValue, NewValue);   // :102
+    MARK_PROPERTY_DIRTY(Dest, StructProperty);              // 标记网络脏 → 触发复制
+}
+```
+
+而 `SetHealth(x)` 这个宏最终也走这里（`AttributeSet.h:438-446`）：
+
+```cpp
+#define GAMEPLAYATTRIBUTE_VALUE_SETTER(PropertyName) \
+    FORCEINLINE void Set##PropertyName(float NewVal) \
+    { \
+        AbilityComp->SetNumericAttributeBase(Get##PropertyName##Attribute(), NewVal); \
+    }
+```
+
+→ `SetHealth(50)` → `SetNumericAttributeBase` → `SetNumericAttribute_Internal`(:342) → `SetNumericValueChecked`
+→ **`PreAttributeChange` / `PostAttributeChange`** ✅
+
+#### ★ GE 改属性时，**两套都会走**（洋葱式嵌套）
+
+```
+【GE Modifier 改属性】
+├─ PreGameplayEffectExecute            GameplayEffect.cpp:2917   ← GE 层（可拒绝）
+│   └─ ApplyModToAttribute                                     :2920
+│        └─ SetNumericAttribute_Internal                       :2758
+│             └─ SetNumericValueChecked
+│                  ├─ PreAttributeChange        AttributeSet.cpp:100   ← 属性层（可改值）
+│                  ├─ 写内存
+│                  ├─ PostAttributeChange       AttributeSet.cpp:102   ← 属性层
+│                  └─ MARK_PROPERTY_DIRTY（触发复制）
+│   └─ PostGameplayEffectExecute        GameplayEffect.cpp:2933  ← GE 层
+└─ 完成
+
+【直接 SetHealth(x)】
+SetHealth(x) → SetNumericAttributeBase → SetNumericValueChecked
+     ├─ PreAttributeChange
+     ├─ 写内存
+     └─ PostAttributeChange
+✗ 没有 Pre/PostGameplayEffectExecute！
+```
+
+> **结论**：`PostAttributeChange` 覆盖面**更大**（所有属性变化），
+> `PostGameplayEffectExecute` 覆盖面**更小**（只有 GE Modifier），但**信息更丰富**。
+
+#### 为什么"升级补满血"必须放 `PostAttributeChange`
+
+你的代码（`My_AuraAttributeSet.cpp:110-121`、`:199-202`）：
+
+```cpp
+// PostGameplayEffectExecute 里（处理 IncomingXP）
+bTopOffHealthOnLevelUp = true;    // ★ 只置标记，不动血
+
+// PostAttributeChange 里
+if (bTopOffHealthOnLevelUp && Attribute == GetMaxHealthAttribute())
+{
+    SetHealth(GetMaxHealth());     // ★ 此刻才是新 Max
+    bTopOffHealthOnLevelUp = false;
+}
+```
+
+时序：
+
+```
+升级（GE 执行 IncomingXP）
+   ├─ 加属性点、技能点
+   ├─ 标记 bTopOffHealthOnLevelUp = true
+   └─ 想在这里 SetHealth(GetMaxHealth())
+         ⚠️ 读到的是【旧 Max】—— MaxHealth 的 MMC 聚合器还没重算
+   ▼ GE 执行结束
+   MMC 重新计算 MaxHealth（因为 Strength 变了）
+         └─ SetNumericAttribute_Internal(MaxHealth, 新值)
+               └─ ★ PostAttributeChange(MaxHealth, 旧, 新)   ← 只有这里抓得到
+                     └─ 此刻 GetMaxHealth() = 新 Max ✅
+```
+
+> **核心原因：MMC 刷新走的是「属性层」通道，不是「GE 层」。**
+> 所以 `PostGameplayEffectExecute` 里抓不到 MMC 的刷新结果 —— **只能在 `PostAttributeChange` 里抓。**
+
+#### 决策表：该放哪个
+
+| 你想做的事 | 放哪 |
+|---|---|
+| 钳制数值（血量不超过上限） | **`PreAttributeChange`**（能改值，任何来源都拦得住） |
+| Max 变了 → Current 跟着调 | `PreAttributeChange`（教程做法）/ `PostAttributeChange` |
+| 处理伤害（落血 / 死亡 / 飘字） | **`PostGameplayEffectExecute`**（需要来源信息） |
+| 读 ExecCalc 写的 Context 字段 | **`PostGameplayEffectExecute`**（只有这里有 `Data.EffectSpec`） |
+| 升级后补满血（依赖 MMC 刷新） | **`PostAttributeChange`** |
+| 给 UI 推数据 | **`GetGameplayAttributeValueChangeDelegate`**（第三条通道） |
+
+#### 附：`PreAttributeChange` 里的重入
+
+```cpp
+// My_AuraAttributeSet.cpp:100-103
+if (Attribute == GetMaxHealthAttribute())
+{
+    SetHealth(FMath::Min(GetHealth(), NewValue));   // ← 在 Pre 里又 Set 另一个属性
+}
+```
+
+会造成重入（`PreAttributeChange(MaxHealth)` 还没结束时，`Health` 已经被改了），
+**不会无限递归**（`Health` 的 Pre 不碰 `MaxHealth`），教程也这么做 —— 但记住有这回事。
+
+### 44.9 本章一句话总结
+
+**伤害是两段式的：「写配方」（技能激活）和「算伤害」（火球撞到人）隔着几秒，`ExecCalc` 只在后一段被调用。**
+
+**ExecCalc 有两条出口：数值走 `AddOutputModifier`（改属性），描述数据走 `EffectContext`（带出来）。
+`SetByCaller` 是「进去」的通道，`EffectContext` 是「出来」的通道 —— 方向相反，别混。**
+
+**`PostGameplayEffectExecute` 不是「GE 执行完就调」，而是「有 Modifier 真的写属性才调」——
+所以冷却 GE（纯 Tag 型）永远走不到它。**
+
+**`PostAttributeChange` 是属性层的门卫（任何写入都过），`PostGameplayEffectExecute` 是 GE 层的门卫（只有 GE 引发，但带完整上下文）。
+GE 改属性时两套按「GE 层 → 属性层 → 写 → 属性层 → GE 层」嵌套执行。**
