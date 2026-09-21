@@ -6,7 +6,7 @@
 
 FString UMy_AuraFireBolt::GetDescription(int32 Level)
 {
-	const int32 ScaledDamage = Damage.GetValueAtLevel(GetAbilityLevel());
+	const int32 ScaledDamage = Damage.GetValueAtLevel(Level);
 	const float ManaCost = FMath::Abs(GetManaCost(Level));
 	const float Cooldown = GetCooldown(Level);
 	if (Level == 1)
@@ -22,7 +22,7 @@ FString UMy_AuraFireBolt::GetDescription(int32 Level)
 
 FString UMy_AuraFireBolt::GetNextLevelDescription(int32 Level)
 {
-	const int32 ScaledDamage = Damage.GetValueAtLevel(GetAbilityLevel());
+	const int32 ScaledDamage = Damage.GetValueAtLevel(Level);
 	const int32 NumProj = FMath::Min(Level, NumProjectiles);
 	const float ManaCost = FMath::Abs(GetManaCost(Level));
 	const float Cooldown = GetCooldown(Level);
