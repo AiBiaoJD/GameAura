@@ -3,6 +3,7 @@
 
 #include "MY_AbilitySystem/My_AuraAbilitySystemLibrary.h"
 
+#include "AbilitySystemBlueprintLibrary.h"
 #include "My_AuraAbilityTypes.h"
 #include "Kismet/GameplayStatics.h"
 #include "My_Controler/My_AuraPlayerState.h"
@@ -121,6 +122,26 @@ int32 UMy_AuraAbilitySystemLibrary::GetXPRewardForClassAndLevel(const UObject* W
 	float Xp = ClassDefaultInfo.XPReward.GetValueAtLevel(level);
 	return static_cast<int32>(Xp);
 }
+
+FGameplayEffectContextHandle UMy_AuraAbilitySystemLibrary::ApplyDamageEffect(const FMy_DamageEffectParams& Params)
+{
+	const AActor* SourceAvatarActor = Params.SourceASC->GetAvatarActor();
+	const FMy_AuraGameplayTags GameplayTags = FMy_AuraGameplayTags::GetInstance();
+	
+	FGameplayEffectContextHandle EffectContextHandle = Params.SourceASC->MakeEffectContext();
+	EffectContextHandle.AddSourceObject(SourceAvatarActor);
+
+	FGameplayEffectSpecHandle EffectSpecHandle = Params.SourceASC->MakeOutgoingSpec(Params.DamageGameplayEffectClass, Params.AbilityLevel, EffectContextHandle);
+	UAbilitySystemBlueprintLibrary::AssignTagSetByCallerMagnitude(EffectSpecHandle, Params.DamageType, Params.BaseDamage);
+	UAbilitySystemBlueprintLibrary::AssignTagSetByCallerMagnitude(EffectSpecHandle, GameplayTags.My_Debuff_Chance, Params.DebuffChance);
+	UAbilitySystemBlueprintLibrary::AssignTagSetByCallerMagnitude(EffectSpecHandle, GameplayTags.My_Debuff_Damage, Params.DebuffDamage);
+	UAbilitySystemBlueprintLibrary::AssignTagSetByCallerMagnitude(EffectSpecHandle, GameplayTags.My_Debuff_Duration, Params.DebuffDuration);
+	UAbilitySystemBlueprintLibrary::AssignTagSetByCallerMagnitude(EffectSpecHandle, GameplayTags.My_Debuff_Frequency, Params.DebuffFrequency);
+	Params.TargetASC->ApplyGameplayEffectSpecToSelf(*EffectSpecHandle.Data);
+	
+	return EffectContextHandle;
+}
+
 
 UMy_CharacterClassInfo* UMy_AuraAbilitySystemLibrary::GetCharacterClassInfo(const UObject* WorldContextObject)
 {

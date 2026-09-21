@@ -66,6 +66,18 @@ public:
 	FGameplayTag My_DamageType_Arcane;
 	FGameplayTag My_DamageType_Physical;
 
+	// Debuff Tag
+	FGameplayTag My_Debuff_Burn;
+	FGameplayTag My_Debuff_Stun;
+	FGameplayTag My_Debuff_Arcane;
+	FGameplayTag My_Debuff_Physical;
+
+	// Debuff Param Tag
+	FGameplayTag My_Debuff_Chance;
+	FGameplayTag My_Debuff_Damage;
+	FGameplayTag My_Debuff_Frequency;
+	FGameplayTag My_Debuff_Duration;
+	
 	// Attack (General Ability)
 	FGameplayTag My_Abilities_Attack;
 	FGameplayTag My_Abilities_Summon;
@@ -110,8 +122,9 @@ public:
 	FGameplayTag My_Montage_Attack4;
 
 
-	// Map: DamageType To  Resistance
 	TMap<FGameplayTag, FGameplayTag> DamageToResistance;
+	TMap<FGameplayTag, FGameplayTag> DamageToDebuff;
+
 
 private:
 	static FMy_AuraGameplayTags GameplayTagsInstance; // C++：声明，必须在这里

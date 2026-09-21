@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "GameplayEffectTypes.h"
+#include "My_AuraAbilityTypes.h"
 #include "NiagaraSystem.h"
 #include "Components/AudioComponent.h"
 #include "Components/SphereComponent.h"
@@ -24,7 +24,7 @@ public:
 
 	// 暴露给蓝图的变量，并在生成时显示
 	UPROPERTY(BlueprintReadWrite, meta=(ExposeOnSpawn = true))
-	FGameplayEffectSpecHandle DamageEffectSpecHandle;
+	FMy_DamageEffectParams DamageEffectParams;
 
 protected:
 	virtual void BeginPlay() override;

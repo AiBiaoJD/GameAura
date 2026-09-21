@@ -113,6 +113,44 @@ void FMy_AuraGameplayTags::InitializeNativeGameplayTags()
 	);
 
 	/*
+	 * Debuff Tags
+	 */
+	GameplayTagsInstance.My_Debuff_Burn = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("My_Debuff.Burn"),
+		FString("Debuff For Fire Damage")
+	);
+	GameplayTagsInstance.My_Debuff_Stun = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("My_Debuff.Stun"),
+		FString("Debuff For Lighting Damage")
+	);
+	GameplayTagsInstance.My_Debuff_Arcane = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("My_Debuff.Arcane"),
+		FString("Debuff For Arcane Damage")
+	);
+	GameplayTagsInstance.My_Debuff_Physical = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("My_Debuff.Physical"),
+		FString("Debuff For Physical Damage")
+	);
+	/*
+	 * Debuff Param
+	 */
+	GameplayTagsInstance.My_Debuff_Chance = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("My_Debuff.Param.Chance"),
+		FString("Debuff Chance")
+	);
+	GameplayTagsInstance.My_Debuff_Damage = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("My_Debuff.Param.Damage"),
+		FString("Debuff Damage")
+	);
+	GameplayTagsInstance.My_Debuff_Frequency = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("My_Debuff.Param.Frequency"),
+		FString("Debuff Frequency")
+	);
+	GameplayTagsInstance.My_Debuff_Duration = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("My_Debuff.Param.Duration"),
+		FString("Debuff Duration")
+	);
+	/*
 	 * Resistance Tags
 	 */
 	GameplayTagsInstance.My_Attribute_Secondary_Resistance_Fire = UGameplayTagsManager::Get().AddNativeGameplayTag(
@@ -163,7 +201,7 @@ void FMy_AuraGameplayTags::InitializeNativeGameplayTags()
 		FName("My_Abilities.HitReact"),
 		FString("Hit React Ability Tag")
 	);
-	
+
 	GameplayTagsInstance.My_Abilities_None = UGameplayTagsManager::Get().AddNativeGameplayTag(
 		FName("My_Abilities.None"),
 		FString("No Ability - like the nullptr for AbilityTag")
@@ -263,4 +301,10 @@ void FMy_AuraGameplayTags::InitializeNativeGameplayTags()
 	GameplayTagsInstance.DamageToResistance.Add(GameplayTagsInstance.My_DamageType_Lighting, GameplayTagsInstance.My_Attribute_Secondary_Resistance_Lighting);
 	GameplayTagsInstance.DamageToResistance.Add(GameplayTagsInstance.My_DamageType_Arcane, GameplayTagsInstance.My_Attribute_Secondary_Resistance_Arcane);
 	GameplayTagsInstance.DamageToResistance.Add(GameplayTagsInstance.My_DamageType_Physical, GameplayTagsInstance.My_Attribute_Secondary_Resistance_Physical);
+
+	// Map: DamageType To  Debuff
+	GameplayTagsInstance.DamageToDebuff.Add(GameplayTagsInstance.My_DamageType_Fire, GameplayTagsInstance.My_Debuff_Burn);
+	GameplayTagsInstance.DamageToDebuff.Add(GameplayTagsInstance.My_DamageType_Lighting, GameplayTagsInstance.My_Debuff_Stun);
+	GameplayTagsInstance.DamageToDebuff.Add(GameplayTagsInstance.My_DamageType_Arcane, GameplayTagsInstance.My_Debuff_Arcane);
+	GameplayTagsInstance.DamageToDebuff.Add(GameplayTagsInstance.My_DamageType_Physical, GameplayTagsInstance.My_Debuff_Physical);
 }

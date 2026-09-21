@@ -24,7 +24,7 @@ AMy_ProjectileActor::AMy_ProjectileActor()
 	Sphere->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Overlap);
 	Sphere->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Overlap);
 	Sphere->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
-	
+
 
 	ProjectileMovement = CreateDefaultSubobject<UProjectileMovementComponent>("ProjectileMovement");
 	ProjectileMovement->InitialSpeed = 550.f;
@@ -60,9 +60,9 @@ void AMy_ProjectileActor::OnSphereOverlap(UPrimitiveComponent* OverlappedCompone
 	 */
 	if (!HasAuthority()) return;
 	// 碰到施法者
-	if (DamageEffectSpecHandle.Data.Get()->GetContext().GetEffectCauser() == OtherActor) return;
+	if (DamageEffectParams.SourceASC->GetAvatarActor() == OtherActor) return;
 	// 碰到友军？
-	if (!UMy_AuraAbilitySystemLibrary::IsNotFriend(DamageEffectSpecHandle.Data.Get()->GetContext().GetEffectCauser(), OtherActor)) return;
+	if (!UMy_AuraAbilitySystemLibrary::IsNotFriend(DamageEffectParams.SourceASC->GetAvatarActor(), OtherActor)) return;
 
 	// 碰到敌人！
 	MulticastPlayImpactEffects();
@@ -70,7 +70,8 @@ void AMy_ProjectileActor::OnSphereOverlap(UPrimitiveComponent* OverlappedCompone
 	// 激活Effect,只能在服务器修改Attribute,Replicate Attribute到客户端
 	if (UAbilitySystemComponent* TargetASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(OtherActor))
 	{
-		TargetASC->ApplyGameplayEffectSpecToSelf(*DamageEffectSpecHandle.Data.Get());
+		DamageEffectParams.TargetASC = TargetASC;
+		UMy_AuraAbilitySystemLibrary::ApplyDamageEffect(DamageEffectParams);
 	}
 
 	// 先关碰撞再销毁，防止同帧多次触发伤害

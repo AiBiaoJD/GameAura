@@ -45,6 +45,8 @@
 - [四十二、SpellMenu 功能收尾（完成）](#四十二spellmenu-功能收尾完成)
 - [四十三、构建速度排查：磁盘、UBT 并行、.uproject vs .sln](#四十三构建速度排查磁盘ubt-并行uproject-vs-sln)
 - [四十四、伤害全链路 + 两套属性回调](#四十四伤害全链路--两套属性回调)
+- [四十五、GA 数据传输三阶段：Params → Spec → Context](#四十五ga-数据传输三阶段params--spec--context)
+- [四十六、ASC 的身份：AbilityActorInfo 与双端初始化](#四十六asc-的身份abilityactorinfo-与双端初始化)
 
 ---
 
@@ -5308,3 +5310,426 @@ if (Attribute == GetMaxHealthAttribute())
 
 **`PostAttributeChange` 是属性层的门卫（任何写入都过），`PostGameplayEffectExecute` 是 GE 层的门卫（只有 GE 引发，但带完整上下文）。
 GE 改属性时两套按「GE 层 → 属性层 → 写 → 属性层 → GE 层」嵌套执行。**
+
+---
+
+## 四十五、GA 数据传输三阶段：Params → Spec → Context
+
+> 本章是「一次伤害」的**数据流总纲**：三个阶段、三个载体、各自归谁。
+> 触发条件、两套回调的细节见第 44 章。
+
+### 45.1 ★ 三阶段总览（本章核心）
+
+```
+【阶段①  参数】GA 侧
+    FMy_DamageEffectParams
+      ├─ 谁产出：GA 的 MakeDamageEffectParamsFromClassDefaults()
+      ├─ 存哪：   投射物的 UPROPERTY 成员（跨越飞行时间）
+      └─ 方向：   进 ⬇
+              │
+              ▼  命中时
+【阶段②  载体】Spec
+    UAuraAbilitySystemLibrary::ApplyDamageEffect(Params)
+      ├─ MakeEffectContext()                    → 造 Context
+      ├─ MakeOutgoingSpec(GE类, 等级, Context)   → 造 Spec
+      ├─ AssignTagSetByCallerMagnitude × N       → ★ 参数写进 Spec
+      └─ TargetASC->ApplyGameplayEffectSpecToSelf(Spec)
+              │
+              ▼  GE 执行
+【阶段③  结果】Context
+    ExecCalc 读 SetByCaller → 算 → 写 Context
+      └─ 方向：出 ⬆（其实双向）
+              │
+              ▼  GE 执行完
+    PostGameplayEffectExecute 读 Context → 落血 / 飘字 / 死亡 / 造 DOT
+```
+
+| 阶段 | 载体 | 谁产出 | 谁消费 | 时机 | 方向 | 要复制吗 |
+|---|---|---|---|---|---|---|
+| ① | **`FMy_DamageEffectParams`** | GA | `ApplyDamageEffect` | 放技能 → 命中 | **进** ⬇ | ❌ 不需要 |
+| ② | **`FGameplayEffectSpec`** | `MakeOutgoingSpec` | `ExecCalc` / 引擎 | 命中 → GE 执行 | **运输** | 跟着 GE |
+| ③ | **`FMY_AuraGamePlayEffectContext`** | `ExecCalc` | `PostGameplayEffectExecute` / 客户端 | GE 执行中 → 之后 | **出** ⬆ | ✅ **必须** |
+
+> **一句话记**：**Params 装料 → Spec 运输 → Context 回执。**
+
+### 45.2 阶段一：Params —— GA 侧的"参数清单"
+
+```cpp
+USTRUCT(BlueprintType)
+struct FMy_DamageEffectParams
+{
+    UPROPERTY() TObjectPtr<UObject>            WorldContextObject;          // 拿 World 用
+    UPROPERTY() TSubclassOf<UGameplayEffect>   DamageGameplayEffectClass;   // 用哪个 GE
+    UPROPERTY() TObjectPtr<UAbilitySystemComponent> SourceASC;             // 谁打的
+    UPROPERTY() TObjectPtr<UAbilitySystemComponent> TargetASC;             // 打谁（命中时才填！）
+    UPROPERTY() float        BaseDamage;
+    UPROPERTY() float        AbilityLevel;
+    UPROPERTY() FGameplayTag DamageType;
+    UPROPERTY() float        DebuffChance / DebuffDamage / DebuffFrequency / DebuffDuration;
+};
+```
+
+**它的 4 个作用**：
+
+| # | 作用 | 说明 |
+|---|---|---|
+| 1 | **参数打包** | 10+ 个参数 → 1 个，调用点可读、加字段不动签名 |
+| 2 | **跨层跨时间传递** | GA 填 → 存投射物 → 命中时消费 |
+| 3 | **蓝图可用** | `USTRUCT(BlueprintType)` + `UPROPERTY` → Make/Break；`UPARAM(ref)` → 蓝图能原地改 |
+| 4 | ★ **把"造 Spec"推迟到命中时** | 见下 |
+
+#### ★ 第 4 点才是它存在的真正理由
+
+| | **旧做法（存 Spec）** | **新做法（存 Params）** |
+|---|---|---|
+| 造 Spec 的时机 | **生成火球时** | **命中时** |
+| 投射物存什么 | `FGameplayEffectSpecHandle` | `FMy_DamageEffectParams` |
+| 命中时的信息 | ❌ **拿不到**（出发时就定死了） | ✅ 能拿到 |
+
+**哪些参数必须"命中时"才知道**：
+
+| 参数 | 为什么 |
+|---|---|
+| **径向伤害原点** | 爆炸中心 = **命中点** |
+| **击退方向** | = `命中点 − 施法者位置` |
+| **死亡冲量** | 同上 |
+
+> **所以 `TargetASC` 在 `SpawnProjectile` 里传 `nullptr` 是对的** —— 出发时根本不知道打谁：
+> ```cpp
+> Projectile->DamageEffectParams = MakeDamageEffectParamsFromClassDefaults(nullptr);   // 出发时
+> // ...
+> DamageEffectParams.TargetASC = TargetASC;      // 命中时才填（My_ProjectileActor.cpp）
+> ```
+
+### 45.3 阶段二：Spec —— 载体（`ApplyDamageEffect` 六步）
+
+```cpp
+FGameplayEffectContextHandle UMy_AuraAbilitySystemLibrary::ApplyDamageEffect(const FMy_DamageEffectParams& Params)
+{
+    const AActor* SourceAvatarActor = Params.SourceASC->GetAvatarActor();                          // ① 拿 Avatar
+    const FMy_AuraGameplayTags GameplayTags = FMy_AuraGameplayTags::GetInstance();
+
+    FGameplayEffectContextHandle EffectContextHandle = Params.SourceASC->MakeEffectContext();      // ② 造 Context
+    EffectContextHandle.AddSourceObject(SourceAvatarActor);
+
+    FGameplayEffectSpecHandle EffectSpecHandle =                                                   // ③ 造 Spec
+        Params.SourceASC->MakeOutgoingSpec(Params.DamageGameplayEffectClass, Params.AbilityLevel, EffectContextHandle);
+
+    UAbilitySystemBlueprintLibrary::AssignTagSetByCallerMagnitude(EffectSpecHandle, Params.DamageType,        Params.BaseDamage);      // ④ ★ 写 SetByCaller
+    UAbilitySystemBlueprintLibrary::AssignTagSetByCallerMagnitude(EffectSpecHandle, GameplayTags.My_Debuff_Chance,    Params.DebuffChance);
+    UAbilitySystemBlueprintLibrary::AssignTagSetByCallerMagnitude(EffectSpecHandle, GameplayTags.My_Debuff_Damage,    Params.DebuffDamage);
+    UAbilitySystemBlueprintLibrary::AssignTagSetByCallerMagnitude(EffectSpecHandle, GameplayTags.My_Debuff_Duration,  Params.DebuffDuration);
+    UAbilitySystemBlueprintLibrary::AssignTagSetByCallerMagnitude(EffectSpecHandle, GameplayTags.My_Debuff_Frequency, Params.DebuffFrequency);
+
+    Params.TargetASC->ApplyGameplayEffectSpecToSelf(*EffectSpecHandle.Data);                        // ⑤ ★ 应用 Spec
+    return EffectContextHandle;                                                                     // ⑥ 返回 Context
+}
+```
+
+#### ⚠️ 两个最容易错的地方（本项目实际踩过）
+
+**坑 1：用错 API —— `ApplyGameplayEffectToSelf` vs `ApplyGameplayEffectSpecToSelf`**
+
+```cpp
+// AbilitySystemComponent.h:755
+FActiveGameplayEffectHandle ApplyGameplayEffectToSelf(
+    const UGameplayEffect* GameplayEffect,              // ← 要 GE 的【类默认对象】
+    float Level,
+    const FGameplayEffectContextHandle& EffectContext,
+    FPredictionKey PredictionKey = FPredictionKey());
+
+// AbilitySystemComponent.h:320
+virtual FActiveGameplayEffectHandle ApplyGameplayEffectSpecToSelf(
+    const FGameplayEffectSpec& GameplayEffect);          // ← 这个才是要 Spec
+```
+
+| | `ApplyGameplayEffectToSelf` | `ApplyGameplayEffectSpecToSelf` |
+|---|---|---|
+| 参数 | GE 默认对象 + Level + Context | **已造好的 Spec** |
+| 内部行为 | 它自己**再造一遍** `MakeOutgoingSpec` | 直接用你给的 Spec |
+| 什么时候用 | 你**没有** Spec | **你已经有 Spec** ← ★ 你的情况 |
+
+> **写错不只是编译不过** —— 就算能编过，也等于**把刚造的 Spec 扔掉重造，SetByCaller 全丢**。
+
+**坑 2：漏掉整段 `AssignTagSetByCallerMagnitude`**
+
+漏了会怎样（整条链推下来）：
+
+```
+Spec 里没有 SetByCaller 数据
+   ↓
+ExecCalc：Spec.GetSetByCallerMagnitude(Pair.Key, false, 0.f) → 全部返回 0
+   ↓
+for (DamageToResistance) { Damage += 0 * ... } → Damage 永远是 0
+   ↓
+IncomingDamage = 0
+   ↓
+PostGameplayEffectExecute 里 if (LocalIncomingDamage > 0.f) → 【不成立】
+   ↓
+❌ 不扣血、不飘字、不死亡 —— 而且不报错
+```
+
+> **这就是 `Params` 存在的意义**：它就是为了给这一步供料。
+> **没有 SetByCaller，`Params.BaseDamage` 和 4 个 Debuff 参数全是废数据。**
+
+#### 阶段② 的三条要点
+
+| 要点 | 说明 |
+|---|---|
+| **Spec 不是计算者** | 它只负责**运输**（运 SetByCaller + 运 Context），真正算的是挂在 GE 上的 `ExecCalc` |
+| **float 走 SetByCaller，非 float 走 Context** | `FVector`/`bool`/自定义类型塞不进 `TMap<Tag,float>`，只能进 Context |
+| **这里是"造 Context"的地方** | 而且**输入型**字段（击退/径向）也在这里写进 Context |
+
+### 45.4 阶段三：Context —— 结果回传
+
+（机制细节见 **44.5 / 44.7 / 44.8**，这里只放归属）
+
+| | 内容 |
+|---|---|
+| **谁写** | `ExecCalc`（暴击 / 格挡 / Debuff）+ `ApplyDamageEffect`（击退 / 径向 —— 输入型） |
+| **谁读** | `PostGameplayEffectExecute`（落血/飘字/死亡/造 DOT）、客户端（特效） |
+| **为什么要复制** | 服务器算的暴击、Debuff 结果，客户端也要用来显示 |
+| **为什么双向** | 击退方向是"进"（给 ExecCalc 算），暴击是"出"（给 AttributeSet 用） |
+
+> **`Params` 只进不出 → 不需要复制、没有 `NetSerialize`。**
+> **`Context` 双向 → 必须 `Duplicate` + 必须 `NetSerialize`。**
+
+### 45.5 本章一句话总结
+
+**一次伤害的数据流是「三阶段、三载体」：**
+
+**① `FMy_DamageEffectParams`（GA 装料，进）→ ② `FGameplayEffectSpec`（运输，含 SetByCaller + Context）→ ③ `FMY_AuraGamePlayEffectContext`（回执，出）**
+
+**Params 的真正价值是「把造 Spec 推迟到命中那一刻」—— 这样击退方向、径向原点这些命中时才知道的信息才拿得到。**
+
+**两个最容易错的地方：`ApplyGameplayEffectSpecToSelf` 别写成 `ApplyGameplayEffectToSelf`；`AssignTagSetByCallerMagnitude` 一行都别漏（漏了不报错，只是伤害永远是 0）。**
+
+---
+
+## 四十六、ASC 的身份：AbilityActorInfo 与双端初始化
+
+### 46.1 `GetAbilitySystemComponentFromActorInfo()` 的原理
+
+它没有魔法 —— 就是读一个被**注入**进来的字段：
+
+```cpp
+// GameplayAbility.cpp:1053
+UAbilitySystemComponent* UGameplayAbility::GetAbilitySystemComponentFromActorInfo() const
+{
+    if (!ensure(CurrentActorInfo)) { return nullptr; }
+    return CurrentActorInfo->AbilitySystemComponent.Get();     // :1059
+}
+```
+
+**三份信息拼起来**：
+
+| # | 信息 | 谁给的 | 什么时候 |
+|---|---|---|---|
+| ① | "在哪个 ASC 上调的" | **隐式的 `this`** | 调 `TryActivateAbility` 那一刻 |
+| ② | "这个 ASC 的宿主/化身是谁" | **`InitAbilityActorInfo(...)`** | 角色初始化时（你写的） |
+| ③ | "这次激活的上下文" | 引擎**注入**给技能实例 | `CallActivateAbility` 内部 |
+
+**注入链（`GameplayAbility.cpp`）**：
+
+```
+CallActivateAbility(Handle, ActorInfo, ...)          :828
+   ├─ PreActivate(...)                               :830  ★ 先注入
+   │     └─ SetCurrentInfo(...)                      :789
+   │           └─ SetCurrentActorInfo(...)           :1887
+   │                 └─ CurrentActorInfo = ActorInfo;// :1872 ★★ 关键赋值
+   └─ ActivateAbility(...)                           :831  ← 你的代码从这里开始
+```
+
+> **顺序很重要**：`PreActivate`（注入）在 `ActivateAbility`（你的代码）**之前** ——
+> 所以你在 `ActivateAbility` 里一调就能拿到值。
+
+**⚠️ 坑：`NonInstanced` 技能拿不到**
+
+```cpp
+// GameplayAbility.cpp:1868
+void UGameplayAbility::SetCurrentActorInfo(...) const
+{
+    if (IsInstantiated())          // ★ 只有实例化的技能才赋值
+    {
+        CurrentActorInfo = ActorInfo;
+        CurrentSpecHandle = Handle;
+    }
+}
+```
+
+| InstancingPolicy | 能用 `GetAbilitySystemComponentFromActorInfo()` 吗 |
+|---|---|
+| `NonInstanced` | ❌ **不能** —— `CurrentActorInfo` 一直是 null，`ensure` 会失败 |
+| `InstancedPerActor` | ✅ 能用 |
+| `InstancedPerExecution` | ✅ 能用 |
+
+### 46.2 玩家 ASC 的挂载：PlayerState 创建 + Character 缓存 + 接口
+
+**三个角色**：
+
+| 谁 | 有什么 | 语义 |
+|---|---|---|
+| `AMy_AuraPlayerState` | `CreateDefaultSubobject<UMy_AuraAbilitySystemComponent>(...)` | ASC **住在这里** |
+| `AAura_Character` | `UPROPERTY() TObjectPtr<UAbilitySystemComponent> AbilitySystemComponent;` | **只是指针缓存** |
+| `AMyCharacter_Base` | 实现 `IAbilitySystemInterface::GetAbilitySystemComponent()` | 把缓存暴露出去 |
+
+**链路**：
+
+```
+① AMy_AuraPlayerState 构造函数（My_AuraPlayerState.cpp:13-16）  ← 创建组件
+        │
+② AAura_Character::My_InitAbilityActorInfo()（Aura_Character.cpp:166）
+        ├─ :171  ASC->InitAbilityActorInfo(AuraPlayerState, this)     ← 告诉 ASC 谁是 Owner/Avatar
+        ├─ :178  AbilitySystemComponent = AuraPlayerState->GetAbilitySystemComponent();  ★ 拷指针
+        └─ :179  AttributeSet           = AuraPlayerState->GetAttributeSet();
+        │
+③ 使用
+        Character->GetAbilitySystemComponent()                        → 缓存指针
+        UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(X)  → 走接口，通用
+        PlayerState->GetAbilitySystemComponent()                      → 真组件
+        ↑ 三者返回【同一个对象】
+```
+
+**为什么要实现接口**：引擎的通用机制靠它 ——
+
+```cpp
+// My_ProjectileActor.cpp 命中时
+UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(OtherActor)
+// 内部：Cast<IAbilitySystemInterface>(Actor)->GetAbilitySystemComponent()
+```
+
+> **火球不需要知道打中的是玩家还是敌人、ASC 挂在谁身上** —— 只要对方实现了接口就能拿到。
+> 这就是"接口 = 通用契约"（同第 27 章的思路）。
+
+### 46.3 为什么两端各初始化一次
+
+```cpp
+// Aura_Character.cpp:47
+void AAura_Character::PossessedBy(AController* NewController)  // ★ 服务器专属
+{
+    Super::PossessedBy(NewController);
+    My_InitAbilityActorInfo();     // ← 服务器
+    AddCharacterAbilities();       // ← 只有服务器（GiveAbility 必须服务器调）
+}
+
+// Aura_Character.cpp:58
+void AAura_Character::OnRep_PlayerState()                      // ★ 客户端专属
+{
+    Super::OnRep_PlayerState();
+    My_InitAbilityActorInfo();     // ← 客户端
+}
+```
+
+#### 为什么 `PossessedBy` 只在服务器
+
+```cpp
+// Controller.cpp:304-314
+void AController::Possess(APawn* InPawn)
+{
+    if (!bCanPossessWithoutAuthority && !HasAuthority())      // ★ 权限门禁
+    {
+        UE_LOG(LogController, Warning,
+            TEXT("Trying to possess %s without network authority! Request will be ignored."), ...);
+        return;                                               // ★ 客户端直接 return
+    }
+    ...
+    OnPossess(InPawn);                                        // :326
+}
+
+// Controller.cpp:361  →  InPawn->PossessedBy(this)
+```
+
+**客户端走的是完全另一条线**：
+
+```cpp
+// PlayerController.cpp:763  ★ _Implementation = RPC
+void APlayerController::ClientRestart_Implementation(APawn* NewPawn)
+{
+    SetPawn(NewPawn);                      // :770
+    AcknowledgePossession(GetPawn());      // :788
+    // ★ 这条路上【没有】PossessedBy
+}
+// :868 AcknowledgePossession → :877 ServerAcknowledgePossession（RPC 回服务器）
+```
+
+| | 服务器 | 客户端 |
+|---|---|---|
+| 触发链 | `Possess` → `OnPossess` → **`Pawn->PossessedBy`** | `ClientRestart`(RPC) → `SetPawn` → `AcknowledgePossession` |
+| 会调 `PossessedBy` | ✅ | ❌ |
+| PlayerState 就绪 | ✅ | ❌ **还没**（靠复制） |
+| 用什么钩子 | `PossessedBy` | **`OnRep_PlayerState`** |
+
+#### 为什么客户端必须等 `OnRep_PlayerState`
+
+```cpp
+// Pawn.h:158
+UPROPERTY(replicatedUsing=OnRep_PlayerState, ...)
+TObjectPtr<APlayerState> PlayerState;      // ★ 这是【复制属性】
+```
+
+**`Pawn->PlayerState` 是网络复制过来的**，所以：
+
+```
+客户端 Possess 那一刻
+   └─ GetPlayerState<AMy_AuraPlayerState>() → ❌ nullptr
+
+（几帧后 PlayerState 复制到位）
+   └─ 引擎自动调 OnRep_PlayerState() → ✅ 这时才能拿到
+```
+
+而 `My_InitAbilityActorInfo` 里有：
+
+```cpp
+AMy_AuraPlayerState* AuraPlayerState = GetPlayerState<AMy_AuraPlayerState>();
+check(AuraPlayerState);        // ⚠️ null 就直接崩
+```
+
+> **服务器不需要 `OnRep_PlayerState`**（PlayerState 是本地创建的，不走复制 → 不触发）。
+> **两个函数互补，不是重复。**
+
+### 46.4 Owner vs Avatar（及敌人为什么不同）
+
+**玩家**：
+
+```cpp
+AuraPlayerState->GetAbilitySystemComponent()->InitAbilityActorInfo(AuraPlayerState, this);
+//                                                                  ↑ OwnerActor    ↑ AvatarActor
+```
+
+| 角色 | 是谁 | 为什么 |
+|---|---|---|
+| **OwnerActor** | `AMy_AuraPlayerState` | ASC 挂载处，**GAS 数据在这** —— PlayerState 重生/切关卡不销毁，数据才保得住 |
+| **AvatarActor** | `AAura_Character` | 场景里代表玩家，位置/Socket/动画都靠它 |
+
+| 函数 | 返回 |
+|---|---|
+| `GetAbilitySystemComponentFromActorInfo()` | PlayerState 上的 ASC |
+| `GetAvatarActorFromActorInfo()` | **Aura_Character** |
+| `GetOwningActorFromActorInfo()` | **AuraPlayerState** |
+
+> **这解释了 `SetEffectProperty` 里的"不对称"**（44.6）：
+> 玩家的 Owner ≠ Avatar，所以 `SourceASC` 要从 Context 里翻 `GetOriginalInstigatorAbilitySystemComponent()`。
+
+**敌人**：
+
+```cpp
+// Enemy_Characte.cpp:160
+AbilitySystemComponent->InitAbilityActorInfo(this, this);   // Owner == Avatar == 自己
+```
+
+| | 玩家 | 敌人 |
+|---|---|---|
+| ASC 创建在哪 | **PlayerState 构造函数** | **Character 构造函数** |
+| `InitAbilityActorInfo` | `(PlayerState, Character)` | `(this, this)` |
+| Character 的 ASC 成员 | **拷贝来的指针** | **就是组件本身** |
+
+> **同一套接口、同一套调用方式，底层挂载方式完全不同** —— 这正是 `IAbilitySystemInterface` 的价值。
+
+### 46.5 本章一句话总结
+
+**UE 能识别"谁释放的技能"，靠的是三份信息拼起来：① `TryActivateAbility` 隐式的 `this`；② 你写的 `InitAbilityActorInfo(Owner, Avatar)`；③ 激活时引擎把 ActorInfo 指针注入技能实例（`PreActivate` → `CurrentActorInfo = ActorInfo`）。**
+
+**`GetAbilitySystemComponentFromActorInfo()` 只是读第 ③ 步那个字段 —— 它的语义是「当前这次激活挂在哪个 ASC 上」，不是静态的"技能拥有者"。**
+
+**玩家的 ASC 住在 PlayerState，Character 只是缓存指针并用 `IAbilitySystemInterface` 暴露出去；
+初始化必须分两端：服务器靠 `PossessedBy`（客户端根本不调它），客户端靠 `OnRep_PlayerState`（因为 `Pawn->PlayerState` 是复制属性，早调会 `check` 崩）。**

@@ -7,6 +7,7 @@
 #include "AbilitySystemComponent.h"
 #include "My_AuraGamePlayTags_Singleton.h"
 #include "My_AbilityActor/My_ProjectileActor.h"
+#include "MY_AbilitySystem/My_AuraAbilitySystemLibrary.h"
 #include "My_Interraction/My_CombatInterface.h"
 
 
@@ -47,24 +48,8 @@ void UMy_AuraProjectileSpell::SpawnProjectile(const FVector& ProjectileTargetLoc
 			Cast<APawn>(GetOwningActorFromActorInfo()),
 			ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
 
-		const UAbilitySystemComponent* SourceASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(GetAvatarActorFromActorInfo());
-		FGameplayEffectContextHandle EffectContextHandle = SourceASC->MakeEffectContext();
-		EffectContextHandle.SetAbility(this);
-		EffectContextHandle.AddSourceObject(Projectile);
-		TArray<TWeakObjectPtr<AActor>> Actors;
-		EffectContextHandle.AddActors(Actors);
-		FHitResult HitResult;
-		HitResult.Location = ProjectileTargetLocation;
-		EffectContextHandle.AddHitResult(HitResult);
+		Projectile->DamageEffectParams = MakeDamageEffectParamsFromClassDefaults(nullptr);
 
-		const FGameplayEffectSpecHandle SpecHandle = SourceASC->MakeOutgoingSpec(DamageEffectClass, GetAbilityLevel(), EffectContextHandle);
-
-		for (auto& Pair : DamageTypes)
-		{
-			float DamageValue = Pair.Value.GetValueAtLevel(GetAbilityLevel());
-			SpecHandle.Data->SetSetByCallerMagnitude(Pair.Key, DamageValue);
-		}
-		Projectile->DamageEffectSpecHandle = SpecHandle;
 		Projectile->FinishSpawning(SpawnTransform);
 	}
 }

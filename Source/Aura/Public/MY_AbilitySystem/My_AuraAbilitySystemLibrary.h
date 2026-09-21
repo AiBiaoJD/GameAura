@@ -1,4 +1,4 @@
-// Copyright ABiao
+﻿// Copyright ABiao
 
 #pragma once
 
@@ -72,4 +72,8 @@ public:
 
 	// XP Reward
 	static int32 GetXPRewardForClassAndLevel(const UObject* WorldContextObject, EMy_CharacterClass CharacterType, int32 level);
+
+	// 使用FMy_DamageEffectParams参数赋予目标Effect
+	UFUNCTION(BlueprintCallable, Category = "My_AuraAbilitySystemLibrary|My_DamageEffect")
+	 static FGameplayEffectContextHandle ApplyDamageEffect(const FMy_DamageEffectParams& Params); 
 };
