@@ -61,6 +61,100 @@ UMy_ExeCalc_Damage::UMy_ExeCalc_Damage()
 }
 
 
+/**
+ * Debuff 判定：在算伤害之前，决定这次攻击有没有触发 Debuff。
+ *
+ * 为什么不用教程那张 TagsToCaptureDefs（Tag -> CaptureDef）Map：
+ *   外面已经逐个抓好了 4 个抗性值（TargetFireResistance 等），
+ *   这里直接按抗性 Tag 取对应的那个值就行，不需要再造一张表。
+ *
+ * 目前只做到「是否触发」这一步（打日志验证）。
+ * 等 Context 的 Debuff 字段 + Library 的 Set 函数补齐后，把下面 TODO 那段打开即可。
+ */
+static void My_DetermineDebuff(const FGameplayEffectCustomExecutionParameters& ExecutionParams,
+                               const FGameplayEffectSpec& Spec,
+                               float InTargetFireResistance,
+                               float InTargetLightingResistance,
+                               float InTargetArcaneResistance,
+                               float InTargetPhysicalResistance)
+{
+	const FMy_AuraGameplayTags& GameplayTags = FMy_AuraGameplayTags::GetInstance();
+
+	for (const TTuple<FGameplayTag, FGameplayTag>& Pair : GameplayTags.DamageToDebuff)
+	{
+		const FGameplayTag& DamageType = Pair.Key;
+
+		// ① 这个伤害类型这次有没有数据？没有就跳过（说明技能没配这个伤害类型）
+		const float TypeDamage = Spec.GetSetByCallerMagnitude(DamageType, false, -1.f);
+		if (TypeDamage <= -0.5f) // 用 -0.5 做浮点容差，别写 > -1.f
+		{
+			continue;
+		}
+
+		// ② 施法方配的 Debuff 几率
+		const float SourceDebuffChance = Spec.GetSetByCallerMagnitude(GameplayTags.My_Debuff_Chance, false, -1.f);
+		if (SourceDebuffChance <= 0.f)
+		{
+			continue;
+		}
+
+		// ③ 被打方对该伤害类型的抗性（复用外面已抓好的值）
+		//    用 Find 而不是 operator[]：没配抗性时 operator[] 会断言崩溃
+		const FGameplayTag* ResistanceTagPtr = GameplayTags.DamageToResistance.Find(DamageType);
+		if (ResistanceTagPtr == nullptr)
+		{
+			continue;
+		}
+		const FGameplayTag& ResistanceTag = *ResistanceTagPtr;
+
+		float TargetDebuffResistance = 0.f;
+		if (ResistanceTag == GameplayTags.My_Attribute_Secondary_Resistance_Fire)
+		{
+			TargetDebuffResistance = InTargetFireResistance;
+		}
+		else if (ResistanceTag == GameplayTags.My_Attribute_Secondary_Resistance_Lighting)
+		{
+			TargetDebuffResistance = InTargetLightingResistance;
+		}
+		else if (ResistanceTag == GameplayTags.My_Attribute_Secondary_Resistance_Arcane)
+		{
+			TargetDebuffResistance = InTargetArcaneResistance;
+		}
+		else if (ResistanceTag == GameplayTags.My_Attribute_Secondary_Resistance_Physical)
+		{
+			TargetDebuffResistance = InTargetPhysicalResistance;
+		}
+		TargetDebuffResistance = FMath::Clamp(TargetDebuffResistance, 0.f, 95.f);
+
+		// ④ 有效几率 = 几率 × (100 - 抗性) / 100
+		const float EffectiveDebuffChance = SourceDebuffChance * (100.f - TargetDebuffResistance) / 100.f;
+
+		// ⑤ 掷骰：本次是否触发
+		const bool bDebuff = FMath::RandRange(1, 100) < EffectiveDebuffChance;
+
+		UE_LOG(LogTemp, Warning, TEXT("[Debuff判定] 类型=%s  几率=%.1f  抗性=%.1f  有效几率=%.1f  触发=%s"),
+			*DamageType.ToString(), SourceDebuffChance, TargetDebuffResistance, EffectiveDebuffChance,
+			bDebuff ? TEXT("是") : TEXT("否"));
+
+		// ===== TODO：等 Context 的 Debuff 字段 + My_AuraAbilitySystemLibrary 的 Set 函数补齐后打开 =====
+		// if (bDebuff)
+		// {
+		// 	FGameplayEffectContextHandle ContextHandle = Spec.GetContext();
+		//
+		// 	UMy_AuraAbilitySystemLibrary::SetIsSuccessfulDebuff(ContextHandle, true);
+		//
+		// 	const float DebuffDamage    = Spec.GetSetByCallerMagnitude(GameplayTags.My_Debuff_Damage,    false, -1.f);
+		// 	const float DebuffDuration  = Spec.GetSetByCallerMagnitude(GameplayTags.My_Debuff_Duration,  false, -1.f);
+		// 	const float DebuffFrequency = Spec.GetSetByCallerMagnitude(GameplayTags.My_Debuff_Frequency, false, -1.f);
+		//
+		// 	UMy_AuraAbilitySystemLibrary::SetDebuffDamage(ContextHandle, DebuffDamage);
+		// 	UMy_AuraAbilitySystemLibrary::SetDebuffDuration(ContextHandle, DebuffDuration);
+		// 	UMy_AuraAbilitySystemLibrary::SetDebuffFrequency(ContextHandle, DebuffFrequency);
+		// }
+	}
+}
+
+
 void UMy_ExeCalc_Damage::Execute_Implementation(const FGameplayEffectCustomExecutionParameters& ExecutionParams, FGameplayEffectCustomExecutionOutput& OutExecutionOutput) const
 {
 	// 获取源和目标的能力系统组件及对应的Avatar Actor
@@ -91,7 +185,7 @@ void UMy_ExeCalc_Damage::Execute_Implementation(const FGameplayEffectCustomExecu
 	// ===== 获取所有相关属性 =====
 	// 基础伤害值
 	float Damage = 0.f;
-	
+
 
 	// 防御方属性
 	float TargetBlockChance = 0.f; // 格挡几率
@@ -129,6 +223,10 @@ void UMy_ExeCalc_Damage::Execute_Implementation(const FGameplayEffectCustomExecu
 	TargetLightingResistance = FMath::Max(0.f, TargetLightingResistance);
 	TargetArcaneResistance = FMath::Max(0.f, TargetArcaneResistance);
 	TargetPhysicalResistance = FMath::Max(0.f, TargetPhysicalResistance);
+
+	// ===== Debuff 判定（放在算伤害之前；复用上面抓好的抗性值，不需要额外的 Tag->Def 映射表）=====
+	My_DetermineDebuff(ExecutionParams, Spec,
+		TargetFireResistance, TargetLightingResistance, TargetArcaneResistance, TargetPhysicalResistance);
 
 	// ===== 获取伤害计算系数 =====
 	UMy_CharacterClassInfo* CharacterClassInfo = UMy_AuraAbilitySystemLibrary::GetCharacterClassInfo(SourceAvatar);
@@ -212,7 +310,6 @@ void UMy_ExeCalc_Damage::Execute_Implementation(const FGameplayEffectCustomExecu
 			UE_LOG(LogTemp, Warning, TEXT("Critical Hit! Damage: %f"), Damage);
 		}
 		UE_LOG(LogTemp, Warning, TEXT("Critical Hit: %s"), bIsCritical ? TEXT("true") : TEXT("false"));
-
 	}
 
 	// ===== 输出最终伤害值 =====
