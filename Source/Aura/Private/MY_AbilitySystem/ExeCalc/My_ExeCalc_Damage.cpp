@@ -8,6 +8,7 @@
 #include "MY_AbilitySystem/My_AuraAttributeSet.h"
 #include <MY_AbilitySystem/Data/My_CharacterClassInfo.h>
 
+#include "Aura/AuraLogChannels.h"
 #include "MY_AbilitySystem/My_AuraAbilitySystemLibrary.h"
 #include "My_Interraction/My_CombatInterface.h"
 
@@ -67,9 +68,6 @@ UMy_ExeCalc_Damage::UMy_ExeCalc_Damage()
  * 为什么不用教程那张 TagsToCaptureDefs（Tag -> CaptureDef）Map：
  *   外面已经逐个抓好了 4 个抗性值（TargetFireResistance 等），
  *   这里直接按抗性 Tag 取对应的那个值就行，不需要再造一张表。
- *
- * 目前只做到「是否触发」这一步（打日志验证）。
- * 等 Context 的 Debuff 字段 + Library 的 Set 函数补齐后，把下面 TODO 那段打开即可。
  */
 static void My_DetermineDebuff(const FGameplayEffectCustomExecutionParameters& ExecutionParams,
                                const FGameplayEffectSpec& Spec,
@@ -132,25 +130,25 @@ static void My_DetermineDebuff(const FGameplayEffectCustomExecutionParameters& E
 		// ⑤ 掷骰：本次是否触发
 		const bool bDebuff = FMath::RandRange(1, 100) < EffectiveDebuffChance;
 
-		UE_LOG(LogTemp, Warning, TEXT("[Debuff判定] 类型=%s  几率=%.1f  抗性=%.1f  有效几率=%.1f  触发=%s"),
-			*DamageType.ToString(), SourceDebuffChance, TargetDebuffResistance, EffectiveDebuffChance,
-			bDebuff ? TEXT("是") : TEXT("否"));
+		UE_LOG(LogAura, Warning, TEXT("[Debuff判定] 类型=%s  几率=%.1f  抗性=%.1f  有效几率=%.1f  触发=%s"),
+		       *DamageType.ToString(), SourceDebuffChance, TargetDebuffResistance, EffectiveDebuffChance,
+		       bDebuff ? TEXT("是") : TEXT("否"));
 
-		// ===== TODO：等 Context 的 Debuff 字段 + My_AuraAbilitySystemLibrary 的 Set 函数补齐后打开 =====
-		// if (bDebuff)
-		// {
-		// 	FGameplayEffectContextHandle ContextHandle = Spec.GetContext();
-		//
-		// 	UMy_AuraAbilitySystemLibrary::SetIsSuccessfulDebuff(ContextHandle, true);
-		//
-		// 	const float DebuffDamage    = Spec.GetSetByCallerMagnitude(GameplayTags.My_Debuff_Damage,    false, -1.f);
-		// 	const float DebuffDuration  = Spec.GetSetByCallerMagnitude(GameplayTags.My_Debuff_Duration,  false, -1.f);
-		// 	const float DebuffFrequency = Spec.GetSetByCallerMagnitude(GameplayTags.My_Debuff_Frequency, false, -1.f);
-		//
-		// 	UMy_AuraAbilitySystemLibrary::SetDebuffDamage(ContextHandle, DebuffDamage);
-		// 	UMy_AuraAbilitySystemLibrary::SetDebuffDuration(ContextHandle, DebuffDuration);
-		// 	UMy_AuraAbilitySystemLibrary::SetDebuffFrequency(ContextHandle, DebuffFrequency);
-		// }
+		if (bDebuff)
+		{
+			FGameplayEffectContextHandle ContextHandle = Spec.GetContext();
+		
+			UMy_AuraAbilitySystemLibrary::SetIsSuccessfulDebuff(ContextHandle, true);
+		
+			const float DebuffDamage    = Spec.GetSetByCallerMagnitude(GameplayTags.My_Debuff_Damage,    false, -1.f);
+			const float DebuffDuration  = Spec.GetSetByCallerMagnitude(GameplayTags.My_Debuff_Duration,  false, -1.f);
+			const float DebuffFrequency = Spec.GetSetByCallerMagnitude(GameplayTags.My_Debuff_Frequency, false, -1.f);
+			
+			UMy_AuraAbilitySystemLibrary::SetDamageType(ContextHandle, DamageType);
+			UMy_AuraAbilitySystemLibrary::SetDebuffDamage(ContextHandle, DebuffDamage);
+			UMy_AuraAbilitySystemLibrary::SetDebuffDuration(ContextHandle, DebuffDuration);
+			UMy_AuraAbilitySystemLibrary::SetDebuffFrequency(ContextHandle, DebuffFrequency);
+		}
 	}
 }
 
@@ -225,8 +223,7 @@ void UMy_ExeCalc_Damage::Execute_Implementation(const FGameplayEffectCustomExecu
 	TargetPhysicalResistance = FMath::Max(0.f, TargetPhysicalResistance);
 
 	// ===== Debuff 判定（放在算伤害之前；复用上面抓好的抗性值，不需要额外的 Tag->Def 映射表）=====
-	My_DetermineDebuff(ExecutionParams, Spec,
-		TargetFireResistance, TargetLightingResistance, TargetArcaneResistance, TargetPhysicalResistance);
+	My_DetermineDebuff(ExecutionParams, Spec, TargetFireResistance, TargetLightingResistance, TargetArcaneResistance, TargetPhysicalResistance);
 
 	// ===== 获取伤害计算系数 =====
 	UMy_CharacterClassInfo* CharacterClassInfo = UMy_AuraAbilitySystemLibrary::GetCharacterClassInfo(SourceAvatar);

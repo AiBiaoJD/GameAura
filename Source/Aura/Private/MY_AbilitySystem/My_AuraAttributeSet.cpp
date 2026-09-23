@@ -119,7 +119,6 @@ void UMy_AuraAttributeSet::PostAttributeChange(const FGameplayAttribute& Attribu
 		SetMana(GetMaxMana());
 		bTopOffManaOnLevelUp = false;
 	}
-
 }
 
 //在 GameplayEffect 执行完毕后调用
@@ -130,6 +129,13 @@ void UMy_AuraAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffec
 	FMy_EffectProperties Props;
 	SetEffectProperty(Data, Props);
 
+	// ★★ 已经死了就不再处理任何 GE（含 Debuff DOT 的 tick）
+	if (Props.TargetCharacter &&
+		Props.TargetCharacter->Implements<UMy_CombatInterface>() &&
+		IMy_CombatInterface::Execute_IsDead(Props.TargetCharacter))
+	{
+		return;
+	}
 
 	if (Data.EvaluatedData.Attribute == GetHealthAttribute())
 	{
@@ -140,74 +146,124 @@ void UMy_AuraAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffec
 		SetMana(FMath::Clamp(GetMana(), 0, GetMaxMana()));
 	}
 
-	/*
-	 * MetaAttribute部分
-	 */
 	if (Data.EvaluatedData.Attribute == GetIncomingDamageAttribute()) // 这个属性只会在服务器变化
 	{
-		const float LocalIncomingDamage = GetIncomingDamage();
-		SetIncomingDamage(0.f);
-		if (LocalIncomingDamage > 0.f)
-		{
-			const float NewHealth = GetHealth() - LocalIncomingDamage;
-			SetHealth(FMath::Clamp(NewHealth, 0.f, GetMaxHealth()));
-			// UE_LOG(LogTemp, Warning, TEXT("changed Health on %s, Health %f"), *Props.TargetAvatarActor->GetName(), GetHealth());
-			const bool bFatal = NewHealth <= 0.f;
-			if (bFatal)
-			{
-				IMy_CombatInterface* CombatInterface = Cast<IMy_CombatInterface>(Props.TargetAvatarActor);
-				if (CombatInterface)
-				{
-					CombatInterface->Die();
-				}
-				SendXPEvent(Props);
-			}
-			else
-			{
-				FGameplayTagContainer TagContainer;
-				TagContainer.AddTag(FMy_AuraGameplayTags::GetInstance().My_EffectGranted_HitReact);
-				Props.TargetASC->TryActivateAbilitiesByTag(TagContainer);
-			}
-
-			const bool bBlock = UMy_AuraAbilitySystemLibrary::IsBlockedHit(Props.EffectContextHandle);
-			const bool bCritical = UMy_AuraAbilitySystemLibrary::IsCriticalHit(Props.EffectContextHandle);
-			ShowDamageText(Props, LocalIncomingDamage, bBlock, bCritical);
-		}
+		HandleImcomingDamage(Props);
 	}
 
 	if (Data.EvaluatedData.Attribute == GetIncomingXPAttribute())
 	{
-		const float LocalIncomingXP = GetIncomingXP();
-		SetIncomingXP(0.f);
+		HandleIncomingXP(Props);
+	}
+}
 
-		if (Props.SourceCharacter->Implements<UMy_PlayerInterface>() && Props.SourceCharacter->Implements<UMy_CombatInterface>())
+void UMy_AuraAttributeSet::HandleImcomingDamage(const FMy_EffectProperties& Props)
+{
+	const float LocalIncomingDamage = GetIncomingDamage();
+	SetIncomingDamage(0.f);
+	if (LocalIncomingDamage > 0.f)
+	{
+		const float NewHealth = GetHealth() - LocalIncomingDamage;
+		SetHealth(FMath::Clamp(NewHealth, 0.f, GetMaxHealth()));
+		const bool bFatal = NewHealth <= 0.f;
+		if (bFatal)
 		{
-			const int32 CurrentLevel = IMy_CombatInterface::Execute_GetPlayerLevel(Props.SourceCharacter);
-			const int32 CurrentXP = IMy_PlayerInterface::Execute_GetXP(Props.SourceCharacter);
-			const int32 NewLevel = IMy_PlayerInterface::Execute_FindLevelForXP(Props.SourceCharacter, CurrentXP + LocalIncomingXP);
-			const int32 NumLevelUp = NewLevel - CurrentLevel;
-			// 如果升级了
-			if (NumLevelUp > 0)
+			IMy_CombatInterface* CombatInterface = Cast<IMy_CombatInterface>(Props.TargetAvatarActor);
+			if (CombatInterface)
 			{
-				const int32 AttributePointReward = IMy_PlayerInterface::Execute_GetAttributePointReward(Props.SourceCharacter, CurrentLevel);
-				const int32 SpellPointReward =IMy_PlayerInterface::Execute_GetSpellPointReward(Props.SourceCharacter, CurrentLevel);
-
-				IMy_PlayerInterface::Execute_AddToPlayerLevel(Props.SourceCharacter, NumLevelUp);
-				IMy_PlayerInterface::Execute_AddToAttributePoint(Props.SourceCharacter, AttributePointReward);
-				IMy_PlayerInterface::Execute_AddToSpellPoint(Props.SourceCharacter, SpellPointReward);
-
-				//升级补满不再在GE执行中做：此刻MMC还没刷新，GetMaxHealth()读到的是旧Max
-				//只置标记，等MMC刷新MaxHealth/MaxMana后在PostAttributeChange里补满
-				bTopOffHealthOnLevelUp = true;
-				bTopOffManaOnLevelUp = true;
-
-				IMy_PlayerInterface::Execute_LevelUp(Props.SourceCharacter);
+				CombatInterface->Die();
 			}
+			SendXPEvent(Props);
+		}
+		else
+		{
+			FGameplayTagContainer TagContainer;
+			TagContainer.AddTag(FMy_AuraGameplayTags::GetInstance().My_EffectGranted_HitReact);
+			Props.TargetASC->TryActivateAbilitiesByTag(TagContainer);
+		}
 
-			IMy_PlayerInterface::Execute_AddToXP(Props.SourceCharacter, LocalIncomingXP);
+		const bool bBlock = UMy_AuraAbilitySystemLibrary::IsBlockedHit(Props.EffectContextHandle);
+		const bool bCritical = UMy_AuraAbilitySystemLibrary::IsCriticalHit(Props.EffectContextHandle);
+		ShowDamageText(Props, LocalIncomingDamage, bBlock, bCritical);
+
+		if (UMy_AuraAbilitySystemLibrary::IsSuccessfulDebuff(Props.EffectContextHandle))
+		{
+			Debuff(Props);
 		}
 	}
 }
+
+void UMy_AuraAttributeSet::Debuff(const FMy_EffectProperties& Props)
+{
+	const FMy_AuraGameplayTags& GameplayTags = FMy_AuraGameplayTags::GetInstance();
+
+	// ① 从【旧】Context 读 ExecCalc 算好的参数
+	const FGameplayTag DamageType = UMy_AuraAbilitySystemLibrary::GetDamageType(Props.EffectContextHandle);
+	const float DebuffDamage = UMy_AuraAbilitySystemLibrary::GetDebuffDamage(Props.EffectContextHandle);
+	const float DebuffDuration = UMy_AuraAbilitySystemLibrary::GetDebuffDuration(Props.EffectContextHandle);
+	const float DebuffFrequency = UMy_AuraAbilitySystemLibrary::GetDebuffFrequency(Props.EffectContextHandle);
+
+	// ② 动态造一个 GE
+	const FString DebuffName = FString::Printf(TEXT("DynamicDebuff_%s"), *DamageType.ToString());
+	UGameplayEffect* Effect = NewObject<UGameplayEffect>(GetTransientPackage(), FName(DebuffName));
+
+	Effect->DurationPolicy = EGameplayEffectDurationType::HasDuration; // ★ 别忘了
+	Effect->Period = DebuffFrequency;
+	Effect->DurationMagnitude = FScalableFloat(DebuffDuration);
+	Effect->InheritableOwnedTagsContainer.AddTag(GameplayTags.DamageToDebuff[DamageType]); // Granted Tags
+	// ★★ 新增：应用时不立刻执行，等第一个 Period 过去才开始掉血
+	Effect->bExecutePeriodicEffectOnApplication = false;
+	
+	// ③ Modifier 指向 IncomingDamage —— 这样飘字/死亡判定全自动复用
+	FGameplayModifierInfo ModifierInfo;
+	ModifierInfo.Attribute = UMy_AuraAttributeSet::GetIncomingDamageAttribute();
+	ModifierInfo.ModifierOp = EGameplayModOp::Additive;
+	ModifierInfo.ModifierMagnitude = FScalableFloat(DebuffDamage);
+	Effect->Modifiers.Add(ModifierInfo);
+
+	// ④ 造 Context + Spec 并应用
+	FGameplayEffectContextHandle Context = Props.SourceASC->MakeEffectContext(); // ← 必需
+	Context.AddSourceObject(Props.SourceAvatarActor);
+	// （可选）想让 DOT 的 Context 也带上 DamageType，就在这里加：
+	// UMy_AuraAbilitySystemLibrary::SetDamageType(Context, DamageType);
+
+	FGameplayEffectSpec Spec(Effect, Context, 1.f); // ★ 栈对象，不用 new
+	Props.TargetASC->ApplyGameplayEffectSpecToSelf(Spec);
+}
+
+void UMy_AuraAttributeSet::HandleIncomingXP(const FMy_EffectProperties& Props)
+{
+	const float LocalIncomingXP = GetIncomingXP();
+	SetIncomingXP(0.f);
+
+	if (Props.SourceCharacter->Implements<UMy_PlayerInterface>() && Props.SourceCharacter->Implements<UMy_CombatInterface>())
+	{
+		const int32 CurrentLevel = IMy_CombatInterface::Execute_GetPlayerLevel(Props.SourceCharacter);
+		const int32 CurrentXP = IMy_PlayerInterface::Execute_GetXP(Props.SourceCharacter);
+		const int32 NewLevel = IMy_PlayerInterface::Execute_FindLevelForXP(Props.SourceCharacter, CurrentXP + LocalIncomingXP);
+		const int32 NumLevelUp = NewLevel - CurrentLevel;
+		// 如果升级了
+		if (NumLevelUp > 0)
+		{
+			const int32 AttributePointReward = IMy_PlayerInterface::Execute_GetAttributePointReward(Props.SourceCharacter, CurrentLevel);
+			const int32 SpellPointReward = IMy_PlayerInterface::Execute_GetSpellPointReward(Props.SourceCharacter, CurrentLevel);
+
+			IMy_PlayerInterface::Execute_AddToPlayerLevel(Props.SourceCharacter, NumLevelUp);
+			IMy_PlayerInterface::Execute_AddToAttributePoint(Props.SourceCharacter, AttributePointReward);
+			IMy_PlayerInterface::Execute_AddToSpellPoint(Props.SourceCharacter, SpellPointReward);
+
+			//升级补满不再在GE执行中做：此刻MMC还没刷新，GetMaxHealth()读到的是旧Max
+			//只置标记，等MMC刷新MaxHealth/MaxMana后在PostAttributeChange里补满
+			bTopOffHealthOnLevelUp = true;
+			bTopOffManaOnLevelUp = true;
+
+			IMy_PlayerInterface::Execute_LevelUp(Props.SourceCharacter);
+		}
+
+		IMy_PlayerInterface::Execute_AddToXP(Props.SourceCharacter, LocalIncomingXP);
+	}
+}
+
 
 /*
  * 服务器检查到IncomingDamageAttribute变化后,获取对应变化Actor的PlayerController去实现显示Text

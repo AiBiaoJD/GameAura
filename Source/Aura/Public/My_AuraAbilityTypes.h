@@ -46,8 +46,19 @@ struct FMY_AuraGamePlayEffectContext : public FGameplayEffectContext
 public:
 	bool IsCriticalHit() const { return bIsCriticalHit; };
 	bool IsBlockedHit() const { return bIsBlockedHit; };
+	bool IsSuccessfulDebuff() const { return bIsSuccessfulDebuff; };
+	float GetDebuffDamage() const { return DebuffDamage; };
+	float GetDebuffFrequency() const { return DebuffFrequency; };
+	float GetDebuffDuration() const { return DebuffDuration; };
+	FGameplayTag GetDamageType() const { return DamageType; };
+	
 	void SetIsCriticalHit(bool bInCriticalHit) { bIsCriticalHit = bInCriticalHit; }
 	void SetIsBlockedHit(bool bInBlockedHit) { bIsBlockedHit = bInBlockedHit; }
+	void SetIsSuccessfulDebuff(bool bInSuccessfulDebuff) { bIsSuccessfulDebuff = bInSuccessfulDebuff; }
+	void SetDebuffDamage(float InDamage) { DebuffDamage = InDamage; };
+	void SetDebuffFrequency(float InFrequency) { DebuffFrequency = InFrequency; };
+	void SetDebuffDuration(float InDuration) { DebuffDuration = InDuration; };
+	void SetDamageType(const FGameplayTag& InDamageType) { DamageType = InDamageType; };
 
 	/** Returns the actual struct used for serialization, subclasses must override this! */
 	virtual UScriptStruct* GetScriptStruct() const
@@ -77,6 +88,21 @@ protected:
 
 	UPROPERTY()
 	bool bIsCriticalHit = false;
+
+	UPROPERTY()
+	bool bIsSuccessfulDebuff = false;
+
+	UPROPERTY()
+	float DebuffDamage = 0.f;
+
+	UPROPERTY()
+	float DebuffFrequency = 0.f;
+
+	UPROPERTY()
+	float DebuffDuration = 0.f;
+
+	UPROPERTY()
+	FGameplayTag DamageType = FGameplayTag();
 };
 
 template <>

@@ -47,6 +47,8 @@
 - [四十四、伤害全链路 + 两套属性回调](#四十四伤害全链路--两套属性回调)
 - [四十五、GA 数据传输三阶段：Params → Spec → Context](#四十五ga-数据传输三阶段params--spec--context)
 - [四十六、ASC 的身份：AbilityActorInfo 与双端初始化](#四十六asc-的身份abilityactorinfo-与双端初始化)
+- [四十七、Debuff 功能完整实现：动态 GE + Context 三段接力](#四十七debuff-功能完整实现动态-ge--context-三段接力)
+- [四十八、GAS 语义澄清：Source/Target、IsDead 守卫、类型系统](#四十八gas-语义澄清sourcetargetisdead-守卫类型系统)
 
 ---
 
@@ -5733,3 +5735,463 @@ AbilitySystemComponent->InitAbilityActorInfo(this, this);   // Owner == Avatar =
 
 **玩家的 ASC 住在 PlayerState，Character 只是缓存指针并用 `IAbilitySystemInterface` 暴露出去；
 初始化必须分两端：服务器靠 `PossessedBy`（客户端根本不调它），客户端靠 `OnRep_PlayerState`（因为 `Pawn->PlayerState` 是复制属性，早调会 `check` 崩）。**
+
+---
+
+## 四十七、Debuff 功能完整实现：动态 GE + Context 三段接力
+
+### 47.1 完整链路（一图看懂）
+
+```
+【ExecCalc】My_DetermineDebuff
+   读 SetByCaller（几率/伤害/时长/频率）→ 掷骰 → 写 Context
+        │
+        │  ① SetByCaller 是【进去】的通道   ② Context 是【出来】的通道
+        ▼
+【Context】NetSerialize（bit 9~13，SerializeBits = 14）
+        │
+        ▼
+【AttributeSet】PostGameplayEffectExecute
+   └─ if (IsSuccessfulDebuff(Context)) → Debuff(Props)
+         ├─ 从 Context 读回 4 个参数
+         ├─ NewObject<UGameplayEffect> 现场造一个 GE
+         └─ ApplyGameplayEffectSpecToSelf → DOT 周期性掉血
+                │
+                ▼  每次 tick
+           IncomingDamage 改变 → PostGameplayEffectExecute
+                → 飘字 / 死亡判定 / HitReact 全部自动复用 ✅
+```
+
+**关键设计**：Debuff 的 Modifier **指向 `IncomingDamage`** —— 于是 DOT 的伤害走的是**和即时伤害完全同一条管道**，
+飘字、死亡、受击动画一行都不用重写。
+
+### 47.2 `Debuff()` 六步（`My_AuraAttributeSet.cpp`）
+
+```cpp
+void UMy_AuraAttributeSet::Debuff(const FMy_EffectProperties& Props)
+{
+    const FMy_AuraGameplayTags& GameplayTags = FMy_AuraGameplayTags::GetInstance();
+
+    // ① 从【旧】Context（伤害 GE 的那个）读 ExecCalc 算好的参数
+    const FGameplayTag DamageType = UMy_AuraAbilitySystemLibrary::GetDamageType(Props.EffectContextHandle);
+    const float DebuffDamage      = UMy_AuraAbilitySystemLibrary::GetDebuffDamage(Props.EffectContextHandle);
+    const float DebuffDuration    = UMy_AuraAbilitySystemLibrary::GetDebuffDuration(Props.EffectContextHandle);
+    const float DebuffFrequency   = UMy_AuraAbilitySystemLibrary::GetDebuffFrequency(Props.EffectContextHandle);
+
+    // ② 运行时造 GE（没有资产可用，见 47.4 / 47.5）
+    const FString DebuffName = FString::Printf(TEXT("DynamicDebuff_%s"), *DamageType.ToString());
+    UGameplayEffect* Effect = NewObject<UGameplayEffect>(GetTransientPackage(), FName(DebuffName));
+
+    // ③ 填 GE 的"周期三件套"
+    Effect->DurationPolicy    = EGameplayEffectDurationType::HasDuration;  // ★ 不设默认是 Instant，周期全废
+    Effect->Period            = DebuffFrequency;
+    Effect->DurationMagnitude = FScalableFloat(DebuffDuration);            // ★ 不能直接赋 float
+    Effect->InheritableOwnedTagsContainer.AddTag(GameplayTags.DamageToDebuff[DamageType]);  // = Granted Tags
+    Effect->bExecutePeriodicEffectOnApplication = false;                   // ★ 见 47.6 坑 1
+
+    // ④ Modifier 指向 IncomingDamage —— 复用整套伤害管道
+    FGameplayModifierInfo ModifierInfo;
+    ModifierInfo.Attribute         = UMy_AuraAttributeSet::GetIncomingDamageAttribute();
+    ModifierInfo.ModifierOp        = EGameplayModOp::Additive;
+    ModifierInfo.ModifierMagnitude = FScalableFloat(DebuffDamage);
+    Effect->Modifiers.Add(ModifierInfo);
+
+    // ⑤ 造 Context（必需）+ Spec（★ 用栈对象，别 new）
+    FGameplayEffectContextHandle Context = Props.SourceASC->MakeEffectContext();
+    Context.AddSourceObject(Props.SourceAvatarActor);
+
+    // ⑥ 应用
+    FGameplayEffectSpec Spec(Effect, Context, 1.f);
+    Props.TargetASC->ApplyGameplayEffectSpecToSelf(Spec);
+}
+```
+
+### 47.3 `InheritableOwnedTagsContainer` **就是**编辑器的 "Granted Tags"
+
+```cpp
+// GameplayEffect.h:2049-2051
+/** These tags are applied to the actor I am applied to */
+UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = Tags,
+          meta=(DisplayName="GrantedTags", Categories="OwnedTagsCategory"))
+//              ~~~~~~~~~~~~~~~~~~~~~~~~~~ ★ 编辑器显示名
+FInheritedTagContainer InheritableOwnedTagsContainer;
+```
+
+**容易混的三个容器**（就挨在一起）：
+
+| C++ 变量名 | 编辑器显示名 | 注释原文 | 含义 |
+|---|---|---|---|
+| `InheritableGameplayEffectTags` | GameplayEffectAssetTag | *"tags the GE **has** and **DOES NOT** give to the actor"* | GE **自己**有 |
+| **`InheritableOwnedTagsContainer`** | **GrantedTags** ★ | *"applied **to the actor** I am applied to"* | **给目标** |
+| `InheritableBlockedAbilityTagsContainer` | GrantedBlockedAbilityTags | — | 给目标加"封锁技能"标签 |
+
+**验证**（`GameplayEffect.cpp:1233-1257`）：
+
+```cpp
+void FGameplayEffectSpec::GetAllGrantedTags(OUT FGameplayTagContainer& Container) const
+{
+	Container.AppendTags(DynamicGrantedTags);
+	if (Def) { Container.AppendTags(Def->InheritableOwnedTagsContainer.CombinedTags); }   // ★ 就是它
+}
+void FGameplayEffectSpec::GetAllAssetTags(OUT FGameplayTagContainer& Container) const
+{
+	Container.AppendTags(GetDynamicAssetTags());
+	if (Def) { Container.AppendTags(Def->InheritableGameplayEffectTags.CombinedTags); }   // ← 另一个
+}
+```
+
+> **你其实早就在用它** —— 冷却异步任务里的 `Spec.GetAllGrantedTags(GrantedTags)` 读的就是这个容器，
+> 而 `GE_FireBolt_Cooldown` 那一栏是在**编辑器**里配的。
+>
+> **"编辑器配" 和 "C++ AddTag" 是同一个字段的两个入口** —— 区别只在于
+> **运行时用 `NewObject` 造的 GE 没有编辑器界面，只能代码填**。
+
+### 47.4 `GetTransientPackage()` 是什么
+
+```cpp
+// UObjectGlobals.h:1642 —— ★ 它其实就是 NewObject 的默认 Outer
+template< class T >
+T* NewObject(UObject* Outer = (UObject*)GetTransientPackage())
+```
+
+```cpp
+// Obj.cpp:4834-4835 —— 它是在哪创建的
+GObjTransientPkg = NewObject<UPackage>(nullptr, TEXT("/Engine/Transient"), RF_Transient);
+GObjTransientPkg->AddToRoot();
+```
+
+| 点 | 含义 |
+|---|---|
+| 名字 = `/Engine/Transient` | 引擎启动时创建的特殊包 |
+| `RF_Transient` | ★ **瞬态 → 永远不会被保存到磁盘（不进 .pak）** |
+| `AddToRoot()` | 常驻内存 |
+
+**为什么必须用它**：UObject 有严格的树状结构，每个对象都要挂在某个 Outer 下。选不同的 Outer：
+
+| Outer | 结果 |
+|---|---|
+| ✅ `GetTransientPackage()` | 不属于任何资产 → **不会被打包、不出现在 Content Browser** |
+| ⚠️ `this` | 生命周期绑在身上，而且会被序列化进关卡/存档 |
+| ❌ 蓝图资产所在的包 | **会被当成那个资产的一部分 → 污染资产** |
+
+> **类比**：Transient Package = **草稿纸**（写完就扔）；蓝图资产的包 = **正式书页**（会被出版社印进去）。
+
+### 47.5 `Effect->DurationMagnitude = DebuffDuration;` 为什么编译不过
+
+**因为它的类型不是 `float`**（`GameplayEffect.h:1970`）：
+
+```cpp
+FGameplayEffectModifierMagnitude DurationMagnitude;    // ★ 不是 float
+```
+
+**为什么设计成这么复杂** —— 它要支持 4 种取值模式（`:237-258` 的 4 个构造函数）：
+
+| 模式 | 类型 | 含义 |
+|---|---|---|
+| ScalableFloat | `FScalableFloat` | 常数 / 按等级查曲线 |
+| AttributeBased | `FAttributeBasedFloat` | 从属性推导 |
+| CustomCalculationClass | `FCustomCalculationBasedFloat` | 自定义 MMC |
+| **SetByCaller** | `FSetByCallerFloat` | **从 Spec 的 SetByCaller 表读** |
+
+**为什么不能隐式转**：
+
+```cpp
+FScalableFloat(float);                          // ScalableFloat.h:23（非 explicit）
+FGameplayEffectModifierMagnitude(const FScalableFloat&);   // GameplayEffect.h:243
+```
+
+→ `float → FScalableFloat → FGameplayEffectModifierMagnitude` 需要**两次用户定义转换**，
+而 **C++ 标准规定一次隐式转换序列里最多只能有【一次】用户定义转换** → 编译错误。
+
+**修法**（显式做掉第一次）：
+
+```cpp
+Effect->DurationMagnitude = FScalableFloat(DebuffDuration);
+```
+
+**★ 回到 `Period` 的硬限制**：
+
+| 字段 | 类型 | 支持 SetByCaller？ |
+|---|---|---|
+| `DurationMagnitude` | `FGameplayEffectModifierMagnitude` | ✅ 支持（`GameplayEffect.cpp:3186` 有专门分支） |
+| `Modifiers[].ModifierMagnitude` | `FGameplayEffectModifierMagnitude` | ✅ 支持 |
+| **`Period`** | **`FScalableFloat`**（`GameplayEffect.h:1974`） | ❌ **不支持**（只有常数/曲线） |
+
+→ **`DebuffFrequency` 必须写进 `Period`，传不进去** → **这就是"必须动态造 GE"的硬性原因**。
+
+### 47.6 ★ 动态 GE 的三个坑（本项目实际踩过）
+
+#### 坑 1：`bExecutePeriodicEffectOnApplication` 默认 `true` → 命中瞬间多飘一个数字
+
+```cpp
+// GameplayEffect.h:1976-1978
+/** If true, the effect executes on application and then at every period interval.
+ *  If false, no execution occurs until the first period elapses. */
+bool bExecutePeriodicEffectOnApplication;      // 默认 true（GameplayEffect.cpp:60）
+```
+
+```cpp
+// GameplayEffect.cpp:3231-3234 —— 引擎就是这么干的
+if (AppliedEffectSpec.Def->bExecutePeriodicEffectOnApplication)
+{
+    TimerManager.SetTimerForNextTick(Delegate);      // ★ 下一帧立刻执行一次周期效果
+}
+```
+
+**现象**：火球命中 → 飘【直伤 100】→ **下一帧**飘【灼烧 5】—— 肉眼看是"同时飘两个数字"。
+
+**修法**：
+
+```cpp
+Effect->bExecutePeriodicEffectOnApplication = false;    // 等第一个 Period 过去才开始掉血
+```
+
+> **这是设计选择不是 bug**：`true` = "命中立刻烫一下"（很多 ARPG 的灼烧就这德行）；
+> `false` = "延迟发作"（中毒/腐蚀类）。**教程没设这一行**，所以它也是"立刻烫一下"。
+
+#### 坑 2：`StackingType` / `StackLimitCount` 在动态 GE 上**不生效**
+
+```cpp
+Effect->StackingType = EGameplayEffectStackingType::AggregateBySource;   // 看起来有用
+Effect->StackLimitCount = 1;                                             // 实际没用
+```
+
+**引擎判断堆叠靠 `Spec.Def` 的【指针相等】**（`GameplayEffect.cpp:2518-2538`）：
+
+```cpp
+FActiveGameplayEffect* FActiveGameplayEffectsContainer::FindStackableActiveGameplayEffect(const FGameplayEffectSpec& Spec)
+{
+    const UGameplayEffect* GEDef = Spec.Def;
+    ...
+    for (FActiveGameplayEffect& ActiveEffect : this)
+    {
+        // ★★ 要求是【同一个 GE 对象】
+        if (ActiveEffect.Spec.Def == Spec.Def && (...)) { StackableGE = &ActiveEffect; break; }
+    }
+}
+```
+
+**而 `Debuff()` 每次 `NewObject<UGameplayEffect>` 都造一个全新对象** → `Def` 指针永远不同
+→ **堆叠匹配永远失败** → 连打两枪会有**两个独立的灼烧**。
+
+#### 坑 3：`new FGameplayEffectSpec` 会泄漏
+
+```cpp
+// ❌ 教程的写法
+if (FGameplayEffectSpec* MutableSpec = new FGameplayEffectSpec(Effect, EffectContext, 1.f))
+{
+    ...
+    Props.TargetASC->ApplyGameplayEffectSpecToSelf(*MutableSpec);
+}   // ← 从来没 delete
+
+// ✅ 更安全：FGameplayEffectSpec 是值类型，Apply 内部会拷贝，栈对象就行
+FGameplayEffectSpec Spec(Effect, Context, 1.f);
+Props.TargetASC->ApplyGameplayEffectSpecToSelf(Spec);
+```
+
+`FGameplayEffectSpec` **不是 UObject**（不受 GC 管理）→ `new` 了不 `delete` 就是纯泄漏。
+
+> **教程写 `new` 是为了拿到 Spec 去往 Context 里塞 `SetDamageType`** ——
+> 而那个 `SetDamageType` 目前**全项目没人读**（见 48 章），所以这笔代码纯属成本。
+
+### 47.7 一句话总结
+
+**Debuff 的实现是「Context 三段接力」的收尾：ExecCalc 算好 → Context 带出来 → AttributeSet 里动态造 GE 落地。**
+
+**必须动态造 GE 的硬性原因**：`Period` 是 `FScalableFloat`（不支持 SetByCaller），而 `DebuffFrequency` 必须写进它。
+
+**四个必填项**：`DurationPolicy = HasDuration`、`Period`、`DurationMagnitude`、`InheritableOwnedTagsContainer`（= Granted Tags）。
+**一个建议项**：`bExecutePeriodicEffectOnApplication = false`（否则命中瞬间多飘一个数字）。
+
+---
+
+## 四十八、GAS 语义澄清：Source/Target、IsDead 守卫、类型系统
+
+### 48.1 ★ `ApplyGameplayEffectSpecToSelf` 的 Source / Target 是谁
+
+**`ToSelf` 只决定 Target，Source 由 Context 决定。**
+
+```cpp
+// AbilitySystemComponent.cpp:409-417
+FGameplayEffectContextHandle UAbilitySystemComponent::MakeEffectContext() const
+{
+	FGameplayEffectContextHandle Context = FGameplayEffectContextHandle(UAbilitySystemGlobals::Get().AllocGameplayEffectContext());
+	// By default use the owner and avatar as the instigator and causer
+	// ~~~~~~ ★ 引擎注释原话
+	check(AbilityActorInfo.IsValid());
+	Context.AddInstigator(AbilityActorInfo->OwnerActor.Get(), AbilityActorInfo->AvatarActor.Get());   // ★★
+	return Context;
+}
+```
+
+| | 由谁决定 | 怎么决定 |
+|---|---|---|
+| **Target** | `ApplyGameplayEffectSpecToSelf` 的调用者 | `this` = 你在哪个 ASC 上调 |
+| **Source** | **Context** | `MakeEffectContext()` 用**调用它的那个 ASC** 的 Owner/Avatar |
+
+**所以正确写法是"两个不同的 ASC 各管一头"**：
+
+```cpp
+Props.SourceASC->MakeEffectContext()               // → Source = 攻击者
+Props.TargetASC->ApplyGameplayEffectSpecToSelf(Spec)   // → Target = 受害者
+```
+
+**⚠️ 两个都用 `TargetASC` 的话**：Context 的 Instigator 变成受害者 →
+ExecCalc 里 `DEFINE_ATTRIBUTE_CAPTUREDEF(..., CriticalHitChance, Source, ...)` 会去抓**被打的人的暴击率**
+→ **不报错，只是数值全错**。
+
+**另**：`ApplyGameplayEffectSpecToTarget(Spec, TargetASC)` 和 `TargetASC->ToSelf(Spec)` **完全等价**
+（`AbilitySystemComponent.cpp:724` 就是一行转发）。
+
+### 48.2 ★ 教程的 `IsDead` 守卫（我一开始读漏了）
+
+`AuraAttributeSet.cpp:132-139`：
+
+```cpp
+void UAuraAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallbackData& Data)
+{
+	Super::PostGameplayEffectExecute(Data);
+	
+	FEffectProperties Props;
+	SetEffectProperties(Data, Props);
+
+	// ★★★ 就是这一行 —— 位置很讲究：在 SetEffects 之后、属性分流之前
+	if(Props.TargetCharacter->Implements<UCombatInterface>() && ICombatInterface::Execute_IsDead(Props.TargetCharacter)) return;
+
+	if (Data.EvaluatedData.Attribute == GetHealthAttribute())   { ... }
+	if (Data.EvaluatedData.Attribute == GetIncomingDamageAttribute()) { HandleIncomingDamage(Props); }
+	...
+}
+```
+
+**没有这一行会怎样**（本项目实际踩过）：
+
+```
+敌人死亡（bDead = true）
+    ↓
+Debuff 的 DOT tick → IncomingDamage 改变 → PostGameplayEffectExecute
+    ↓
+（没有守卫，继续往下）
+    ↓
+HandleIncomingDamage → NewHealth = 0 - 5 = -5 → bFatal = true（永远为真！）
+    ↓
+Die() + SendXPEvent() → IncomingXP += XPReward → 【一直升级】
+```
+
+**为什么 `bFatal` 永远为真**：血被 Clamp 到 0，再吃 5 点伤害就是 `-5`，`-5 <= 0` 依然成立。
+
+**一行挡住四个副作用**：
+
+| 副作用 | 有守卫后 |
+|---|---|
+| 反复加 XP → 一直升级 | ✅ 停 |
+| 反复 `Die()` | ✅ 停 |
+| 一直飘伤害数字 | ✅ 停 |
+| 属性反复变 → 无意义网络复制 | ✅ 停 |
+
+**本项目实现**（比教程多一个判空，更稳）：
+
+```cpp
+if (Props.TargetCharacter &&
+    Props.TargetCharacter->Implements<UMy_CombatInterface>() &&
+    IMy_CombatInterface::Execute_IsDead(Props.TargetCharacter))
+{
+    return;
+}
+```
+
+> **教训**：读教程代码时，"守卫/早退"这类**一行就返回**的代码最容易看漏 ——
+> 而它们往往正是解决问题的关键。**上下文要整段读，别只读出错的那一段。**
+
+### 48.3 `static_cast` vs `Cast<>`
+
+| | **`static_cast<T*>(Ptr)`** | **`Cast<T>(Ptr)`** |
+|---|---|---|
+| 是什么 | **C++ 关键字** | **UE 模板函数** |
+| 能用在什么上 | 任何类型 | **只能 `UObject`** |
+| 运行时检查 | ❌ **无** | ✅ 有（反射 `IsA`） |
+| 类型不符 | 返回**看似有效实则错误**的指针 → UB | 返回 **`nullptr`** |
+| 开销 | 0 | 一次反射查找 |
+
+**为什么这里的 Context 只能用 `static_cast`**：
+
+```cpp
+// GameplayEffectTypes.h:218-219
+USTRUCT()                                          // ★★ USTRUCT，不是 UCLASS
+struct GAMEPLAYABILITIES_API FGameplayEffectContext { ... };
+```
+
+**USTRUCT 没有 `IsA()`、没有 `UClass`** → `Cast<>` 用不了。
+
+**更安全的 USTRUCT 版写法**（用 `GetScriptStruct()` 代替 `IsA()`）：
+
+```cpp
+const FGameplayEffectContext* Raw = EffectContextHandle.Get();
+if (Raw && Raw->GetScriptStruct() == FMY_AuraGamePlayEffectContext::StaticStruct())
+{
+    return static_cast<const FMY_AuraGamePlayEffectContext*>(Raw)->IsBlockedHit();
+}
+```
+
+> 教程和本项目都没加（因为 `MyAbilitySystemGlobals::AllocGameplayEffectContext()` 保证类型一定对）——
+> **知道有这条路就行**。
+
+### 48.4 `EffectContext` 的 Get/Set 为什么收口到 Library
+
+**关键点：`Handle.Get()` 返回的是【基类】指针**（`GameplayEffectTypes.h:499`）：
+
+```cpp
+FGameplayEffectContext* Get() { return IsValid() ? Data.Get() : nullptr; }   // ★ 基类！
+```
+
+**所以 `static_cast` 躲不掉** —— 就算字段改成 `public` 也一样。两条实际写法对比：
+
+```cpp
+// ① 直接访问（字段 public）
+static_cast<FMY_AuraGamePlayEffectContext*>(Handle.Get())->DebuffDamage = 5.f;   // 78 字符
+
+// ② 走 Library
+UMy_AuraAbilitySystemLibrary::SetDebuffDamage(Handle, 5.f);                       // 58 字符 ✅ 更短
+```
+
+**而且引擎自己就是这么设计的**：`FGameplayEffectContext` 基类的字段也是 `protected`（`GameplayEffectTypes.h:389-400`），
+并提供 `GetInstigator()` 访问器，`Handle` 上还包了 `AddInstigator()` 转发（`:518`）。
+
+**Library 的真正价值（3 条）**：
+
+| # | 价值 | 说明 |
+|---|---|---|
+| 1 | **判空收口** | `Handle.Get()` 可能是 null，忘了判就崩；Library 里判一次，所有调用点安全 |
+| 2 | **cast 只写一次** | 换 Context 类型只改一个文件，不用满项目找 `static_cast<长类型名>` |
+| 3 | **蓝图可用** | ★ **蓝图无法 `static_cast` C++ 子类** —— 这条是硬限制 |
+
+**结论**：直接访问**不会更省事**，只是把成本从"Library 写一次"挪到"每个调用点各写一次"。
+
+### 48.5 "收口"是什么意思
+
+> **把散落在多处的"同一件事"，集中到一个地方做。**
+
+| | 散口 | 收口 |
+|---|---|---|
+| 生活类比 | 公司 30 人每人兜里一把大门钥匙，换密码要挨个通知 | 门口设收发室，只改一个地方 |
+| 本项目例子 | 每个文件各自 `static_cast<FMY_AuraGamePlayEffectContext*>(Handle.Get())` | `UMy_AuraAbilitySystemLibrary::SetDebuffDamage(Handle, 5.f)` |
+| 成本 | **每次调用**都要付（cast + 判空） | **一次性**（写 10 个小函数） |
+| 风险 | "有的地方改了、有的地方忘了" | 无 |
+
+**你项目里已经有很多"收口"**：
+
+| 已存在的东西 | 收口了什么 |
+|---|---|
+| `IAbilitySystemInterface` | "从任意 Actor 拿 ASC" → 火球不用知道打中的是玩家还是敌人 |
+| `SetEffectProperty(Data, Props)` | "从 Data 推导 Source/Target 完整信息" |
+| `ApplyDamageEffect(Params)` | "用 Params 造 Spec 并应用" |
+| `BindAbilityAction(..., InputTag)` | "把按键和 Tag 绑在委托上" |
+| Library 里那 10 个 Get/Set | "怎么从 Handle 拿到我的 Context" |
+
+### 48.6 一句话总结
+
+**`ToSelf` 只管 Target，Source 由 `MakeEffectContext()` 的调用者决定 —— 写错不报错，只是数值全错。**
+
+**`PostGameplayEffectExecute` 开头的 `IsDead` 早退，一行挡住"死后还在处理 GE"引发的连锁问题（一直升级 / 反复 Die / 一直飘字）。**
+
+**`FGameplayEffectContext` 是 USTRUCT → `Cast<>` 用不了 → 只能用 `static_cast`；而 `Handle.Get()` 返回基类指针，所以 cast 躲不掉 —— 这正是把 Get/Set 收口到 Library 的理由（判空 + 只写一次 + 蓝图可用）。**
