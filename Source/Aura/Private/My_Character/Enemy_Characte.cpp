@@ -39,12 +39,12 @@ int32 AEnemy_Characte::GetPlayerLevel_Implementation()
 	return Level;
 }
 
-void AEnemy_Characte::Die()
+void AEnemy_Characte::Die(const FVector& DeathImpulse)
 {
 	SetLifeSpan(LifeSpan);
 	if (AuraAIController)
 		AuraAIController->GetBlackboardComponent()->SetValueAsBool(FName("Dead"), true);
-	Super::Die();
+	Super::Die(DeathImpulse);
 }
 
 void AEnemy_Characte::SetCombatTarget_Implementation(AActor* InCombatTarget)

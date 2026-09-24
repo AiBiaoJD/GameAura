@@ -104,25 +104,27 @@ FMy_DeathSignature& AMyCharacter_Base::GetOnDeath()
 }
 
 
-void AMyCharacter_Base::Die()
+void AMyCharacter_Base::Die(const FVector& DeathImpulse)
 {
 	Weapon->DetachFromComponent(FDetachmentTransformRules(EDetachmentRule::KeepWorld, true));
-	MulticastHandleDeath();
+	MulticastHandleDeath(DeathImpulse);
 }
 
-void AMyCharacter_Base::MulticastHandleDeath_Implementation()
+void AMyCharacter_Base::MulticastHandleDeath_Implementation(const FVector& DeathImpulse)
 {
 	UGameplayStatics::PlaySoundAtLocation(this, DeathSound, GetActorLocation());
 
 	Weapon->SetSimulatePhysics(true);
 	Weapon->SetEnableGravity(true);
 	Weapon->SetCollisionEnabled(ECollisionEnabled::PhysicsOnly);
-
+	Weapon->AddImpulse(DeathImpulse * 0.1f, NAME_None, true);   // ★ 武器冲量（0.1 倍，因为轻）
+	
 	GetMesh()->SetSimulatePhysics(true);
 	GetMesh()->SetEnableGravity(true);
 	GetMesh()->SetCollisionEnabled(ECollisionEnabled::PhysicsOnly);
 	GetMesh()->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);
-
+	GetMesh()->AddImpulse(DeathImpulse, NAME_None, true);       // ★ 身体冲量（全量）
+	
 	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
 	Dissolve();

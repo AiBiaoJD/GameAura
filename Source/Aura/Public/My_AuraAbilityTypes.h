@@ -3,6 +3,16 @@
 #include "GameplayEffectTypes.h"
 #include "My_AuraAbilityTypes.generated.h"
 
+// ★ ApplyGE 之前的「参数原料箱」
+//   填：GA 侧从蓝图配好值（MakeDamageEffectParamsFromClassDefaults）
+//   存：投射物的 UPROPERTY 成员，跨越飞行时间
+//   用：命中时交给 ApplyDamageEffect 分流到【三个地方】——
+//       ① 造 Spec 的原料：DamageGameplayEffectClass / AbilityLevel
+//       ② 调用对象：      SourceASC（谁造）/ TargetASC（谁挨打）
+//       ③ SetByCaller（float 数值，给 ExecCalc 读）：
+//            BaseDamage / DamageType / DebuffChance/Damage/Duration/Frequency
+//       ④ Context（非 float，给 ExecCalc / Post 读）：
+//            DeathImpulse（死亡冲量，FVector 塞不进 SetByCaller）
 USTRUCT(BlueprintType)
 struct FMy_DamageEffectParams
 {
@@ -36,6 +46,11 @@ struct FMy_DamageEffectParams
 	float DebuffFrequency = 0.f;
 	UPROPERTY()
 	float DebuffDuration = 0.f;
+
+	UPROPERTY()
+	float DeathImpulseMagnitude = 0.f;
+	UPROPERTY()
+	FVector DeathImpulse = FVector(0.f, 0.f, 0.f);
 };
 
 USTRUCT(BlueprintType)
@@ -51,7 +66,8 @@ public:
 	float GetDebuffFrequency() const { return DebuffFrequency; };
 	float GetDebuffDuration() const { return DebuffDuration; };
 	FGameplayTag GetDamageType() const { return DamageType; };
-	
+	FVector GetDeathImpulse() const { return DeathImpulse; };
+
 	void SetIsCriticalHit(bool bInCriticalHit) { bIsCriticalHit = bInCriticalHit; }
 	void SetIsBlockedHit(bool bInBlockedHit) { bIsBlockedHit = bInBlockedHit; }
 	void SetIsSuccessfulDebuff(bool bInSuccessfulDebuff) { bIsSuccessfulDebuff = bInSuccessfulDebuff; }
@@ -59,6 +75,7 @@ public:
 	void SetDebuffFrequency(float InFrequency) { DebuffFrequency = InFrequency; };
 	void SetDebuffDuration(float InDuration) { DebuffDuration = InDuration; };
 	void SetDamageType(const FGameplayTag& InDamageType) { DamageType = InDamageType; };
+	void SetDeathImpulse(FVector InDeathImpulse) { DeathImpulse = InDeathImpulse; };
 
 	/** Returns the actual struct used for serialization, subclasses must override this! */
 	virtual UScriptStruct* GetScriptStruct() const
@@ -103,6 +120,9 @@ protected:
 
 	UPROPERTY()
 	FGameplayTag DamageType = FGameplayTag();
+
+	UPROPERTY()
+	FVector DeathImpulse = FVector(0.f, 0.f, 0.f);
 };
 
 template <>

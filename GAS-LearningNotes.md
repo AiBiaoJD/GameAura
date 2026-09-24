@@ -51,6 +51,7 @@
 - [四十八、GAS 语义澄清：Source/Target、IsDead 守卫、类型系统](#四十八gas-语义澄清sourcetargetisdead-守卫类型系统)
 - [四十九、状态型特效与委托生命周期](#四十九状态型特效与委托生命周期)
 - [五十、UE 接口的 U 类与 I 类](#五十ue-接口的-u-类与-i-类)
+- [五十一、灼烧期间不播 HitReact：Activation Blocked Tags 机制](#五十一灼烧期间不播-hitreactactivation-blocked-tags-机制)
 
 ---
 
@@ -6510,3 +6511,260 @@ void PrimaryTargetDied(AActor* DeadActor);      // ← C++ 只声明，实现在
 
 **GameplayCue 是"用 Tag 投递表现"的通用机制**（自带网络复制），适合一次性表现；
 需要"自治"的持续状态（Debuff / 被动）用自定义组件更省心。
+
+---
+
+## 五十一、灼烧期间不播 HitReact：Activation Blocked Tags 机制
+
+> 起因：敌人被点燃（Burn）后，DOT 每 tick 掉一次血，**每 tick 都被判定为「挨打」**，
+> 于是受击动画被反复触发 —— 敌人在地上抽搐个不停、路也走不了。
+>
+> 解决办法：在 `My_GA_HitReact` 的 **`Activation Blocked Tags`** 里加上 `My_Debuff.Burn`。
+
+### 51.1 触发源：DOT 每一次 tick 都会喊一次 HitReact
+
+`My_AuraAttributeSet.cpp:181-195`：
+
+```cpp
+else   // 没死
+{
+    FGameplayTagContainer TagContainer;
+    TagContainer.AddTag(FMy_AuraGameplayTags::GetInstance().My_EffectGranted_HitReact);
+    Props.TargetASC->TryActivateAbilitiesByTag(TagContainer);   // ← 185 行：喊受击
+}
+...
+if (UMy_AuraAbilitySystemLibrary::IsSuccessfulDebuff(Props.EffectContextHandle))
+{
+    Debuff(Props);                                              // ← 194 行：挂 DOT
+}
+```
+
+因为 DOT 的伤害走的是**同一条** `IncomingDamage` 通道：
+
+```
+DOT 每 0.5s tick → 改 IncomingDamage
+   → PostGameplayEffectExecute → HandleIncomingDamage
+        → 没死 → TryActivateAbilitiesByTag(HitReact)   ← 每 tick 喊一遍
+```
+
+**被烧 5 秒 = 喊 10 遍受击。**
+
+> ★ 注意代码顺序：**先喊 HitReact（185 行），后挂 DOT（194 行）** ——
+> 这个顺序决定了「直击那一下仍然会播」，见 51.5。
+
+### 51.2 关键认知：`TryActivateAbilitiesByTag` 不是「硬启动」
+
+它不绕开检查，而是走**完整的激活链**：
+
+```
+TryActivateAbilitiesByTag(Tag)
+   └─ TryActivateAbility(Handle)
+        └─ InternalTryActivateAbility
+             └─ CanActivateAbility
+                  └─ DoesAbilitySatisfyTagRequirements(...)   // GameplayAbility.cpp:356
+```
+
+**所以「Tag 不合适」能挡住它。**
+
+### 51.3 `ActivationBlockedTags` 检查的是【自己】身上的 Tag
+
+`GameplayAbility.cpp:214-231`：
+
+```cpp
+if (ActivationBlockedTags.Num() || ActivationRequiredTags.Num())
+{
+    static FGameplayTagContainer AbilitySystemComponentTags;
+    AbilitySystemComponentTags.Reset();
+
+    AbilitySystemComponent.GetOwnedGameplayTags(AbilitySystemComponentTags);   // ★ 查自己
+    if (AbilitySystemComponentTags.HasAny(ActivationBlockedTags))
+    {
+        bBlocked = true;                                                        // ★ 有就激活失败
+    }
+    if (!AbilitySystemComponentTags.HasAll(ActivationRequiredTags)) { bMissing = true; }
+}
+```
+
+> **语义**：「只要我自己身上有这些 Tag，我这个技能就不许激活。」
+>
+> `My_GA_HitReact` 的 `Ability Tags` = `My_EffectGranted.HitReact`（`TryActivateAbilitiesByTag` 靠它找到技能），
+> 加进 `Activation Blocked Tags` 的是 `My_Debuff.Burn`。
+
+### 51.4 `My_Debuff.Burn` 怎么跑到敌人身上的 —— Tag 生命周期 = DOT 生命周期
+
+```
+① My_AuraAttributeSet.cpp:228   Debuff() 给动态 GE 挂 Granted Tags
+   Effect->InheritableOwnedTagsContainer.AddTag(*DebuffTagPtr);   // My_Debuff.Burn
+                          │
+② GE 被应用时，引擎把 Granted Tags 写进 Owner 的 Tag 表
+   GameplayEffect.cpp:3384
+   Owner->UpdateTagMap(Effect.Spec.Def->InheritableOwnedTagsContainer.CombinedTags, 1);
+                          │
+③ 敌人 ASC 从此【拥有】My_Debuff.Burn → GetOwnedGameplayTags() 里就有它
+                          │
+④ DOT 到期被移除时撤销
+   GameplayEffect.cpp:3684
+   Owner->UpdateTagMap(..., -1);
+```
+
+配套证据：`FGameplayEffectSpec::GetAllGrantedTags`（`GameplayEffect.cpp:1233-1240`）
+= `DynamicGrantedTags` + `Def->InheritableOwnedTagsContainer.CombinedTags`。
+
+★ **Tag 的存在时间恰好等于 `DebuffDuration`** —— 灼烧期间不抽、灼烧一结束立刻恢复，正是想要的效果。
+
+> 这也解释了为什么**用 Tag 而不是加代码判断**很划算：
+> 「灼烧中」这个状态**本来就已经有现成的 Tag 在表达**了（GE 的 Granted Tags），
+> 直接复用它就行，零代码。
+
+### 51.5 完整时序：为什么「直击那一下」仍然会播
+
+```
+【火球直击，非致命】
+  └─ HandleIncomingDamage
+       ├─ ① TryActivateAbilitiesByTag(HitReact)      // 185 行，先喊
+       │      → 此刻身上【还没有】Burn tag → 通过 → ✅ 播放受击（被打当然要抽）
+       └─ ② Debuff() → 挂 DOT GE → Burn tag 上身     // 194 行，后挂（UpdateTagMap +1）
+
+【0.5s 后 DOT tick】
+  └─ HandleIncomingDamage
+       └─ TryActivateAbilitiesByTag(HitReact)
+              → GetOwnedGameplayTags() 里有 My_Debuff.Burn
+              → ActivationBlockedTags 命中 → bBlocked = true
+              → ❌ 激活失败 → 不播受击   ← 就是想要的效果
+  ...（重复 N 次，全被挡）
+
+【DOT 到期被移除】
+  └─ UpdateTagMap(-1) → Burn tag 消失
+       → 之后任何伤害 → HitReact 又能播了 ✅
+```
+
+### 51.6 ★ 六组 Tag 栏位对照表（最容易配错的地方）
+
+名字很像，但**方向和对象完全不同**：
+
+| 栏位 | 引擎检查处 | 语义 | 一句话 |
+|---|---|---|---|
+| **Ability Tags** | — | 这个技能**叫什么名字** | `TryActivateAbilitiesByTag` 靠它找到技能 |
+| **Activation Blocked Tags** | `GameplayAbility.cpp:222` | **我自己有这些 Tag → 我就不能激活** | 「我中毒了就别让我抽」✅ 本次用的 |
+| **Activation Required Tags** | `GameplayAbility.cpp:227` | 我自己**必须全有**才能激活 | 「只有狂暴状态才能放」 |
+| **Block Abilities with Tag** | `GameplayAbility.cpp:209` → `AreAbilityTagsBlocked(AbilityTags)` | **我激活期间**，让**别的**带这些 Tag 的技能无法激活 | 「我放大招时别人别插队」 |
+| **Cancel Abilities with Tag** | 激活时 | **我激活时把别人取消掉** | 「我一放技能就打断你读条」 |
+| **Source / Target Blocked Tags** | `GameplayAbility.cpp:237 / 253` | 检查**施法方 / 目标方**（另一个人）的 Tag | 用于「对别人」的场景 |
+
+> **记忆法**：
+> - **Activation** 开头 → 管**自己能不能放**
+> - **Block / Cancel** 开头 → 管**别人**（我激活时影响别人）
+> - **Source / Target** 开头 → 管**对面那个人**
+
+### 51.7 ⚠️ 这个方案的副作用：一刀切
+
+| 场景 | 会不会播受击 |
+|---|---|
+| 火球直击（挂 DOT 之前） | ✅ 播 |
+| 灼烧 DOT tick | ❌ 不播（**这正是目的**） |
+| **灼烧期间被第二发火球直击** | ❌ **也不播**（副作用） |
+| **灼烧期间被近战砍** | ❌ **也不播**（副作用） |
+| 灼烧结束后被打 | ✅ 恢复正常 |
+
+**它挡的是「身上有 Burn tag 时的所有 HitReact 激活」，而不是「DOT 这一次伤害」。**
+
+### 51.8 【待定 · 以后再决定】方案 B：在代码里区分「这次伤害是不是 DOT tick」
+
+**触发条件**：如果哪天觉得「**灼烧期间新挨的直击也应该抽**」，那 `Activation Blocked Tags` 就不够精确了，
+就要换成方案 B。
+
+**做法**：给 Context 加一个「这次是 DOT 伤害」的标记，触发 HitReact 前判一下：
+
+```cpp
+else
+{
+    // 只有不是 DOT tick 才播受击
+    if (!UMy_AuraAbilitySystemLibrary::IsDOTDamage(Props.EffectContextHandle))
+    {
+        FGameplayTagContainer TagContainer;
+        TagContainer.AddTag(FMy_AuraGameplayTags::GetInstance().My_EffectGranted_HitReact);
+        Props.TargetASC->TryActivateAbilitiesByTag(TagContainer);
+    }
+}
+```
+
+**标记要打在哪里**：`My_AuraAttributeSet.cpp:240` —— `Debuff()` 里**新造的那个 Context**：
+
+```cpp
+FGameplayEffectContextHandle Context = Props.SourceASC->MakeEffectContext();
+Context.AddSourceObject(Props.SourceAvatarActor);
+UMy_AuraAbilitySystemLibrary::SetIsDOTDamage(Context, true);   // ★ 关键
+```
+
+**涉及改动（备忘清单）**：
+
+1. `FMY_AuraGamePlayEffectContext` 加 `bool bIsDOTDamage` + Get/Set（`My_AuraAbilityTypes.h`）
+2. `NetSerialize` 加一位 —— **当前最大位号已经是 14**（DeathImpulse），新位号 15 →
+   `SerializeBits(&RepBits, 16)`；⚠️ 加了字段忘了改位数 = **新字段静默丢失**（不报错，只是客户端收不到）
+3. `My_AuraAbilitySystemLibrary` 加 `Get/SetIsDOTDamage`
+4. `HandleIncomingDamage` 里加上面那个判断
+
+**取舍**：
+
+| 方案 | 优点 | 缺点 |
+|---|---|---|
+| **A. `Activation Blocked Tags`（当前）** | **零代码**，纯配置；Tag 生命周期自动跟随 GE | 一刀切：灼烧期间**所有**受击都不播 |
+| **B. Context 标记 + 代码判断** | 精确：只有 DOT tick 不播 | 要动结构体 + `NetSerialize` + Library 四五个文件 |
+| A + B 一起 | 最稳（双保险） | — |
+
+**结论：先按 A 用着。等真觉得「灼烧期间被打却不抽」别扭了，再上 B。**
+
+### 51.9 附：同一个根因的另一处 —— DOT 打死人没有死亡冲量【待定】
+
+`Debuff()` 里那个新造的 Context（`My_AuraAttributeSet.cpp:240`）**除了没带 DOT 标记，也没带 `DeathImpulse`**：
+
+```cpp
+FGameplayEffectContextHandle Context = Props.SourceASC->MakeEffectContext();  // ← 全新，DeathImpulse = (0,0,0)
+Context.AddSourceObject(Props.SourceAvatarActor);
+FGameplayEffectSpec Spec(Effect, Context, 1.f);
+Props.TargetASC->ApplyGameplayEffectSpecToSelf(Spec);
+```
+
+于是被灼烧打死时，`HandleIncomingDamage` 从 Context 里取到的冲量是 `(0,0,0)`：
+
+```
+【直击打死】Context A（ApplyDamageEffect 造的）→ DeathImpulse ✅ → 尸体飞出去 ✅
+【灼烧 DOT 打死】Context B（Debuff() 造的）   → DeathImpulse ❌ (0,0,0) → 尸体原地不动 ❌
+```
+
+**注意**：`Die()` 其实**被调用了**（尸体也变布娃娃），只是**传进去的冲量是零向量**。
+
+**最小修法**（在 `My_AuraAttributeSet.cpp:240` 之后两行）：
+
+```cpp
+// ★ 把【旧】Context 的死亡冲量转存到【新】Context
+UMy_AuraAbilitySystemLibrary::SetDeathImpulse(
+    Context,
+    UMy_AuraAbilitySystemLibrary::GetDeathImpulse(Props.EffectContextHandle));
+```
+
+⚠️ **不能**顺手把 `bIsSuccessfulDebuff` 也复制过去 ——
+那会让 DOT **每次 tick 都再挂一个新 DOT**（`HandleIncomingDamage` 末尾会再调 `Debuff()`），无限套娃。
+现在因为新 Context 该标志默认 `false`，天然不会递归。
+
+> **共同根因**：`Debuff()` 新造的 Context 是个「白板」。
+> 凡是 DOT 打死人/触发受击时需要的信息，**都得手动从旧 Context 搬过去** ——
+> 这跟第 45 章「Params → Spec → Context 三段接力」是同一个道理：
+> **Context 不会自动继承任何东西。**
+
+### 51.10 一句话总结
+
+**`Activation Blocked Tags` 的语义是「我自己身上有这些 Tag，我就不许激活」——
+它查的是 `GetOwnedGameplayTags()`（自己 ASC）而不是对面。**
+
+**而 `My_Debuff.Burn` 是 DOT GE 的 `Granted Tags`，
+由引擎在 GE 应用 / 移除时自动 `UpdateTagMap(+1 / -1)`（`GameplayEffect.cpp:3384 / 3684`）挂到敌人 ASC 上 ——
+所以这个 Tag 的存在时间恰好等于灼烧持续时间。**
+
+**`TryActivateAbilitiesByTag` 走完整 `CanActivateAbility` 检查（`GameplayAbility.cpp:356 → 222`），
+所以 DOT 每 tick 想喊受击时，一看到身上的 Burn 就直接判失败 → 不播。
+直击那一下仍然会播，因为代码顺序是「先喊 HitReact、后挂 DOT」。**
+
+**副作用是一刀切：灼烧期间所有受击都不播。
+若要「灼烧期间新挨的直击仍然要抽」，需改用方案 B（给 Context 打 DOT 标记 + 代码判断），
+见 51.8 的备忘清单。**

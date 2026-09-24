@@ -70,6 +70,8 @@ void AMy_ProjectileActor::OnSphereOverlap(UPrimitiveComponent* OverlappedCompone
 	// 激活Effect,只能在服务器修改Attribute,Replicate Attribute到客户端
 	if (UAbilitySystemComponent* TargetASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(OtherActor))
 	{
+		const FVector DeathImpulse = GetActorForwardVector() * DamageEffectParams.DeathImpulseMagnitude;
+		DamageEffectParams.DeathImpulse = DeathImpulse;
 		DamageEffectParams.TargetASC = TargetASC;
 		UMy_AuraAbilitySystemLibrary::ApplyDamageEffect(DamageEffectParams);
 	}

@@ -168,10 +168,13 @@ void UMy_AuraAttributeSet::HandleIncomingDamage(const FMy_EffectProperties& Prop
 		const bool bFatal = NewHealth <= 0.f;
 		if (bFatal)
 		{
+			// ★ 从 Context 取 ExecCalc/Param 传来的死亡冲量
+			const FVector DeathImpulse = UMy_AuraAbilitySystemLibrary::GetDeathImpulse(Props.EffectContextHandle);
+
 			IMy_CombatInterface* CombatInterface = Cast<IMy_CombatInterface>(Props.TargetAvatarActor);
 			if (CombatInterface)
 			{
-				CombatInterface->Die();
+				CombatInterface->Die(DeathImpulse);
 			}
 			SendXPEvent(Props);
 		}

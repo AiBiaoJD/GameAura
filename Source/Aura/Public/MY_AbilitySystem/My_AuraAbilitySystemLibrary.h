@@ -55,10 +55,10 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "My_AuraAbilitySystemLibrary|My_GameplayEffects")
 	static bool IsCriticalHit(const FGameplayEffectContextHandle& EffectContextHandle);
-	
+
 	UFUNCTION(BlueprintPure, Category = "My_AuraAbilitySystemLibrary|My_GameplayEffects")
 	static bool IsSuccessfulDebuff(const FGameplayEffectContextHandle& EffectContextHandle);
-	
+
 	UFUNCTION(BlueprintPure, Category = "My_AuraAbilitySystemLibrary|My_GameplayEffects")
 	static float GetDebuffDamage(const FGameplayEffectContextHandle& EffectContextHandle);
 
@@ -67,13 +67,19 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "My_AuraAbilitySystemLibrary|My_GameplayEffects")
 	static float GetDebuffFrequency(const FGameplayEffectContextHandle& EffectContextHandle);
-	
+
+	UFUNCTION(BlueprintPure, Category = "My_AuraAbilitySystemLibrary|My_GameplayEffects")
+	static FGameplayTag GetDamageType(const FGameplayEffectContextHandle& EffectContextHandle);
+
+	UFUNCTION(BlueprintPure, Category = "My_AuraAbilitySystemLibrary|My_GameplayEffects")
+	static FVector GetDeathImpulse(const FGameplayEffectContextHandle& EffectContextHandle);
+
 	UFUNCTION(BlueprintCallable, Category = "My_AuraAbilitySystemLibrary|My_GameplayEffects")
 	static void SetIsBlockedHit(UPARAM(ref) FGameplayEffectContextHandle& EffectContextHandle, bool IsBlocked);
 
 	UFUNCTION(BlueprintCallable, Category = "My_AuraAbilitySystemLibrary|My_GameplayEffects")
 	static void SetIsCriticalHit(UPARAM(ref) FGameplayEffectContextHandle& EffectContextHandle, bool IsCritical);
-	
+
 	UFUNCTION(BlueprintCallable, Category = "My_AuraAbilitySystemLibrary|My_GameplayEffects")
 	static void SetIsSuccessfulDebuff(UPARAM(ref) FGameplayEffectContextHandle& EffectContextHandle, bool bInSuccessfulDebuff);
 
@@ -86,12 +92,11 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "My_AuraAbilitySystemLibrary|My_GameplayEffects")
 	static void SetDebuffFrequency(UPARAM(ref) FGameplayEffectContextHandle& EffectContextHandle, float InFrequency);
 
-	UFUNCTION(BlueprintPure, Category = "My_AuraAbilitySystemLibrary|My_GameplayEffects")
-	static FGameplayTag GetDamageType(const FGameplayEffectContextHandle& EffectContextHandle);
-
 	UFUNCTION(BlueprintCallable, Category = "My_AuraAbilitySystemLibrary|My_GameplayEffects")
 	static void SetDamageType(UPARAM(ref) FGameplayEffectContextHandle& EffectContextHandle, const FGameplayTag& InDamageType);
 
+	UFUNCTION(BlueprintCallable, Category = "My_AuraAbilitySystemLibrary|My_GameplayEffects")
+	static void SetDeathImpulse(UPARAM(ref) FGameplayEffectContextHandle& EffectContextHandle, FVector InDeathImpulse);
 
 	// Attack Part: Get Actor from sphere
 	UFUNCTION(BlueprintCallable, Category = "My_AuraAbilitySystemLibrary|My_GameplayMachanics")

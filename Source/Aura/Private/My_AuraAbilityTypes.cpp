@@ -61,11 +61,15 @@ bool FMY_AuraGamePlayEffectContext::NetSerialize(FArchive& Ar, class UPackageMap
 		{
 			RepBits |= 1 << 13;
 		}
+		if (!DeathImpulse.IsZero())
+		{
+			RepBits |= 1 << 14;
+		}
 	}
 
-	// ★★ 位数 = 最大位号 + 1。当前最大位号是 13，所以写 14。
+	// ★★ 位数 = 最大位号 + 1。当前最大位号是 14，所以写 15。
 	//     加了新字段却忘了改这里 -> 新字段静默丢失（不报错，只是客户端收不到）
-	Ar.SerializeBits(&RepBits, 14);
+	Ar.SerializeBits(&RepBits, 15);
 
 	if (RepBits & (1 << 0))
 	{
@@ -134,6 +138,10 @@ bool FMY_AuraGamePlayEffectContext::NetSerialize(FArchive& Ar, class UPackageMap
 	if (RepBits & (1 << 13))
 	{
 		DamageType.NetSerialize(Ar, Map, bOutSuccess);
+	}
+	if (RepBits & (1 << 14))
+	{
+		DeathImpulse.NetSerialize(Ar, Map, bOutSuccess);
 	}
 	if (Ar.IsLoading())
 	{

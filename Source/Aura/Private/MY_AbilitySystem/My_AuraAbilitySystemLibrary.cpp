@@ -127,10 +127,10 @@ FGameplayEffectContextHandle UMy_AuraAbilitySystemLibrary::ApplyDamageEffect(con
 {
 	const AActor* SourceAvatarActor = Params.SourceASC->GetAvatarActor();
 	const FMy_AuraGameplayTags GameplayTags = FMy_AuraGameplayTags::GetInstance();
-	
+
 	FGameplayEffectContextHandle EffectContextHandle = Params.SourceASC->MakeEffectContext();
 	EffectContextHandle.AddSourceObject(SourceAvatarActor);
-
+	SetDeathImpulse(EffectContextHandle, Params.DeathImpulse);
 	FGameplayEffectSpecHandle EffectSpecHandle = Params.SourceASC->MakeOutgoingSpec(Params.DamageGameplayEffectClass, Params.AbilityLevel, EffectContextHandle);
 	UAbilitySystemBlueprintLibrary::AssignTagSetByCallerMagnitude(EffectSpecHandle, Params.DamageType, Params.BaseDamage);
 	UAbilitySystemBlueprintLibrary::AssignTagSetByCallerMagnitude(EffectSpecHandle, GameplayTags.My_Debuff_Chance, Params.DebuffChance);
@@ -138,7 +138,7 @@ FGameplayEffectContextHandle UMy_AuraAbilitySystemLibrary::ApplyDamageEffect(con
 	UAbilitySystemBlueprintLibrary::AssignTagSetByCallerMagnitude(EffectSpecHandle, GameplayTags.My_Debuff_Duration, Params.DebuffDuration);
 	UAbilitySystemBlueprintLibrary::AssignTagSetByCallerMagnitude(EffectSpecHandle, GameplayTags.My_Debuff_Frequency, Params.DebuffFrequency);
 	Params.TargetASC->ApplyGameplayEffectSpecToSelf(*EffectSpecHandle.Data);
-	
+
 	return EffectContextHandle;
 }
 
@@ -268,11 +268,28 @@ FGameplayTag UMy_AuraAbilitySystemLibrary::GetDamageType(const FGameplayEffectCo
 	return FGameplayTag();
 }
 
+FVector UMy_AuraAbilitySystemLibrary::GetDeathImpulse(const FGameplayEffectContextHandle& EffectContextHandle)
+{
+	if (const FMY_AuraGamePlayEffectContext* AuraGamePlayEffectContext = static_cast<const FMY_AuraGamePlayEffectContext*>(EffectContextHandle.Get()))
+	{
+		return AuraGamePlayEffectContext->GetDeathImpulse();
+	}
+	return FVector::ZeroVector;
+}
+
 void UMy_AuraAbilitySystemLibrary::SetDamageType(FGameplayEffectContextHandle& EffectContextHandle, const FGameplayTag& InDamageType)
 {
 	if (FMY_AuraGamePlayEffectContext* AuraGamePlayEffectContext = static_cast<FMY_AuraGamePlayEffectContext*>(EffectContextHandle.Get()))
 	{
 		AuraGamePlayEffectContext->SetDamageType(InDamageType);
+	}
+}
+
+void UMy_AuraAbilitySystemLibrary::SetDeathImpulse(FGameplayEffectContextHandle& EffectContextHandle, FVector InDeathImpulse)
+{
+	if (FMY_AuraGamePlayEffectContext* AuraGamePlayEffectContext = static_cast<FMY_AuraGamePlayEffectContext*>(EffectContextHandle.Get()))
+	{
+		AuraGamePlayEffectContext->SetDeathImpulse(InDeathImpulse);
 	}
 }
 
