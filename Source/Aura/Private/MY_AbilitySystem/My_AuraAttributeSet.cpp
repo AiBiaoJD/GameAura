@@ -148,7 +148,7 @@ void UMy_AuraAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffec
 
 	if (Data.EvaluatedData.Attribute == GetIncomingDamageAttribute()) // 这个属性只会在服务器变化
 	{
-		HandleImcomingDamage(Props);
+		HandleIncomingDamage(Props);
 	}
 
 	if (Data.EvaluatedData.Attribute == GetIncomingXPAttribute())
@@ -157,7 +157,7 @@ void UMy_AuraAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffec
 	}
 }
 
-void UMy_AuraAttributeSet::HandleImcomingDamage(const FMy_EffectProperties& Props)
+void UMy_AuraAttributeSet::HandleIncomingDamage(const FMy_EffectProperties& Props)
 {
 	const float LocalIncomingDamage = GetIncomingDamage();
 	SetIncomingDamage(0.f);
@@ -210,10 +210,22 @@ void UMy_AuraAttributeSet::Debuff(const FMy_EffectProperties& Props)
 	Effect->DurationPolicy = EGameplayEffectDurationType::HasDuration; // ★ 别忘了
 	Effect->Period = DebuffFrequency;
 	Effect->DurationMagnitude = FScalableFloat(DebuffDuration);
-	Effect->InheritableOwnedTagsContainer.AddTag(GameplayTags.DamageToDebuff[DamageType]); // Granted Tags
+	// ★ 用 Find 而不是 operator[]：
+	//   TMap::operator[] 内部是 FindChecked —— Key 不存在时会【断言崩溃】。
+	//   虽然上游已经用 IsSuccessfulDebuff 挡了一层，但"触发了 Debuff 却没配映射"
+	//   仍然可能出现（比如以后新增了伤害类型但忘了往 DamageToDebuff 加）。
+	//   → 找不到就跳过、不造 GE，最多是没特效，不会崩。
+	const FGameplayTag* DebuffTagPtr = GameplayTags.DamageToDebuff.Find(DamageType);
+	if (DebuffTagPtr == nullptr)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Debuff] 伤害类型 [%s] 没有配对应的 Debuff Tag，跳过"), *DamageType.ToString());
+		return;
+	}
+	// 这一行等价于在 GE 蓝图里配 "Granted Tags"（详见笔记 47.3）
+	Effect->InheritableOwnedTagsContainer.AddTag(*DebuffTagPtr);
 	// ★★ 新增：应用时不立刻执行，等第一个 Period 过去才开始掉血
 	Effect->bExecutePeriodicEffectOnApplication = false;
-	
+
 	// ③ Modifier 指向 IncomingDamage —— 这样飘字/死亡判定全自动复用
 	FGameplayModifierInfo ModifierInfo;
 	ModifierInfo.Attribute = UMy_AuraAttributeSet::GetIncomingDamageAttribute();

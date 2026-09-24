@@ -5,6 +5,7 @@
 #include "AbilitySystemInterface.h"
 #include "GameFramework/Character.h"
 #include "MY_AbilitySystem/Data/My_CharacterClassInfo.h"
+#include "MY_AbilitySystem/Debuff/My_DebuffNiagaraComponent.h"
 #include "My_Interraction/My_CombatInterface.h"
 #include "MyCharacter_Base.generated.h"
 
@@ -40,8 +41,12 @@ public:
 	virtual int32 GetMinionCount_Implementation() override;
 	virtual void IncreaseMinionCount_Implementation(int32 num) override;
 	virtual EMy_CharacterClass GetCharacterClass_Implementation() override;
+	virtual FMy_ASCRegisteredSignature& GetOnASCRegistered() override;
+	virtual FMy_DeathSignature& GetOnDeath() override;
 	/** end Combat interface **/
-
+	FMy_ASCRegisteredSignature OnASCRegistered;
+	FMy_DeathSignature OnDeath;
+	
 	UPROPERTY(EditAnywhere, Category = "My_Combat")
 	TArray<FMy_TaggedMontage> AttackMontage;
 
@@ -119,6 +124,10 @@ protected:
 	/* Character Class*/
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Character Class Default")
 	EMy_CharacterClass CharacterClass = EMy_CharacterClass::Warrior;
+
+	/* Debuff*/
+	UPROPERTY(VisibleAnywhere)
+	TObjectPtr<UMy_DebuffNiagaraComponent> BurnDebuffComponent;
 	
 private:
 	/* 这些变量刚好没被Enemy使用,只是给Aura的

@@ -161,6 +161,11 @@ void AEnemy_Characte::My_InitAbilityActorInfo()
 	Cast<UMy_AuraAbilitySystemComponent>(AbilitySystemComponent)->AbilityActorInfoSet();
 
 	InitializeDefaultAttribute();
+
+	// ★ 广播"ASC 已就绪"（和玩家一致，见 Aura_Character.cpp:My_InitAbilityActorInfo 的说明）
+	//   敌人的 ASC 在构造函数里就创建了，通常组件 BeginPlay 时已经就绪，
+	//   但两条路径都覆盖更稳妥 —— 组件那边是 if/else，不会重复注册。
+	OnASCRegistered.Broadcast(AbilitySystemComponent);
 }
 
 // 初始化敌人的Attribute和Ability 从DataAsset中

@@ -193,4 +193,11 @@ void AAura_Character::My_InitAbilityActorInfo()
 
 	//4.使用Effect初始化Aura的PrimaryAttribute
 	InitializeDefaultAttribute();
+
+	//5.★ 广播"ASC 已就绪"
+	//  谁在等它：UMy_DebuffNiagaraComponent / 被动技能特效组件 这类"通用零件"。
+	//  它们的 BeginPlay 可能早于这里的初始化（客户端的 ASC 要等 OnRep_PlayerState），
+	//  所以它们会先挂在 OnASCRegistered 上，等这一行广播之后再去注册 Tag 监听。
+	//  ⚠️ 不广播的话，那些组件永远收不到通知 —— 不报错、不崩，只是特效永远不出现。
+	OnASCRegistered.Broadcast(AbilitySystemComponent);
 }

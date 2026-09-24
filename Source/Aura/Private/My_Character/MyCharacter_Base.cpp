@@ -24,6 +24,10 @@ AMyCharacter_Base::AMyCharacter_Base()
 	GetMesh()->SetCollisionResponseToChannel(ECC_MyProjectile, ECR_Overlap);
 	GetMesh()->SetGenerateOverlapEvents(true);
 	GetCapsuleComponent()->SetGenerateOverlapEvents(false); //确保mesh 和 capsule只有一个用来处理OnOverlap
+
+	BurnDebuffComponent = CreateDefaultSubobject<UMy_DebuffNiagaraComponent>(TEXT("Burn Debuff"));
+	BurnDebuffComponent->SetupAttachment(GetRootComponent());
+	BurnDebuffComponent->DebuffTag = FMy_AuraGameplayTags::GetInstance().My_Debuff_Burn;
 }
 
 
@@ -89,6 +93,16 @@ EMy_CharacterClass AMyCharacter_Base::GetCharacterClass_Implementation()
 	return CharacterClass;
 }
 
+FMy_ASCRegisteredSignature& AMyCharacter_Base::GetOnASCRegistered()
+{
+	return OnASCRegistered;
+}
+
+FMy_DeathSignature& AMyCharacter_Base::GetOnDeath()
+{
+	return OnDeath;
+}
+
 
 void AMyCharacter_Base::Die()
 {
@@ -98,8 +112,8 @@ void AMyCharacter_Base::Die()
 
 void AMyCharacter_Base::MulticastHandleDeath_Implementation()
 {
-	UGameplayStatics::PlaySoundAtLocation(this,DeathSound,GetActorLocation());
-	
+	UGameplayStatics::PlaySoundAtLocation(this, DeathSound, GetActorLocation());
+
 	Weapon->SetSimulatePhysics(true);
 	Weapon->SetEnableGravity(true);
 	Weapon->SetCollisionEnabled(ECollisionEnabled::PhysicsOnly);
@@ -114,6 +128,7 @@ void AMyCharacter_Base::MulticastHandleDeath_Implementation()
 	Dissolve();
 
 	bDead = true;
+	OnDeath.Broadcast(this);
 }
 
 void AMyCharacter_Base::Dissolve()
@@ -159,7 +174,7 @@ FVector AMyCharacter_Base::GetWeaponSockLocation_Implementation(const FGameplayT
 	{
 		return GetMesh()->GetSocketLocation(TailSockName);
 	}
-	return  FVector();
+	return FVector();
 }
 
 
@@ -198,4 +213,3 @@ void AMyCharacter_Base::AddCharacterAbilities()
 	ASC->AddCharacterAbilitiesFromASC(StartupAbility);
 	ASC->AddCharacterPassiveAbilitiesFromASC(StartupPassiveAbility);
 }
-

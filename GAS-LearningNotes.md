@@ -49,6 +49,8 @@
 - [四十六、ASC 的身份：AbilityActorInfo 与双端初始化](#四十六asc-的身份abilityactorinfo-与双端初始化)
 - [四十七、Debuff 功能完整实现：动态 GE + Context 三段接力](#四十七debuff-功能完整实现动态-ge--context-三段接力)
 - [四十八、GAS 语义澄清：Source/Target、IsDead 守卫、类型系统](#四十八gas-语义澄清sourcetargetisdead-守卫类型系统)
+- [四十九、状态型特效与委托生命周期](#四十九状态型特效与委托生命周期)
+- [五十、UE 接口的 U 类与 I 类](#五十ue-接口的-u-类与-i-类)
 
 ---
 
@@ -6195,3 +6197,316 @@ UMy_AuraAbilitySystemLibrary::SetDebuffDamage(Handle, 5.f);                     
 **`PostGameplayEffectExecute` 开头的 `IsDead` 早退，一行挡住"死后还在处理 GE"引发的连锁问题（一直升级 / 反复 Die / 一直飘字）。**
 
 **`FGameplayEffectContext` 是 USTRUCT → `Cast<>` 用不了 → 只能用 `static_cast`；而 `Handle.Get()` 返回基类指针，所以 cast 躲不掉 —— 这正是把 Get/Set 收口到 Library 的理由（判空 + 只写一次 + 蓝图可用）。**
+
+---
+
+## 四十九、状态型特效与委托生命周期
+
+> 本章回答两个问题：**什么时候需要自定义 Niagara 组件**；**委托该用哪种绑定方式**。
+
+### 49.1 ★ 三类特效：谁负责"结束"决定一切
+
+| 类型 | 谁负责开始 | **谁负责结束** | 项目里的例子 | 要自定义组件吗 |
+|---|---|---|---|---|
+| **① 一次性** | 触发点代码 | **Niagara 自己**（Duration 到了就停） | 命中特效 `My_ProjectileActor.cpp:94`、点击提示 `AuraPlayerController.cpp:189`、FireBlast Cue、升级特效 | ❌ 直接 `SpawnSystemAtLocation` / `Activate(true)` |
+| **② Actor 生命期型** | 触发点代码 | **Actor 自己**（销毁时一起走） | （拖尾类，项目里目前没有） | ❌ 挂上就行 |
+| **③ 状态型** | 状态出现 | ★ **必须有人盯着状态** | **Burn / Stun Debuff**、**被动技能特效** | ✅ **必须自定义组件** |
+
+**铁证**：项目里**只有两个**自定义 Niagara 组件，而**两个都是状态型**：
+
+- `UDebuffNiagaraComponent` —— 监听 **GameplayTag**
+- `UPassiveNiagaraComponent` —— 监听装备状态
+
+**它们结构几乎一样（这不是巧合）**：
+
+| | `UDebuffNiagaraComponent` | `UPassiveNiagaraComponent` |
+|---|---|---|
+| 构造 | `bAutoActivate = false;` | 同 |
+| `BeginPlay` 注册监听 | `RegisterGameplayTagEvent(DebuffTag, ...)` | `ActivatePassiveEffect.AddUObject(...)` |
+| ASC 没就绪的兜底 | `GetOnASCRegisteredDelegate()` | 同 |
+| 状态变 → 亮/灭 | `DebuffTagChanged` | `OnPassiveActivate` |
+| 额外判断 | `IsDead`（死了别亮） | `ActivateIfEquipped`（没装备别亮） |
+
+> **判断标准只有一条**：**这个特效有没有一个需要被关掉的「状态」？**
+
+### 49.2 状态型难在哪：**开始容易，结束难**
+
+Debuff 有 **5 条结束路径**：
+
+| # | 怎么结束 | 手动版要写 | 组件版 |
+|---|---|---|---|
+| 1 | Duration 到期 | `Deactivate()` | 自动（Tag 计数 1→0） |
+| 2 | 被驱散 | `Deactivate()` | 自动 |
+| 3 | 被免疫 | 压根没 Activate | 自动（Tag 一直 0） |
+| 4 | **主人死亡** | `Deactivate()` | ⚠️ **Tag 可能没变** → 需额外处理（见 49.4） |
+| 5 | ASC 销毁 | — | 组件跟角色一起销毁 |
+
+**手动版漏一个就是"残影"bug**；组件版只盯一个 Tag，**一个监听点覆盖大部分路径**。
+
+**另一个本质差别：网络**
+
+| | 一次性特效 | 状态型特效 |
+|---|---|---|
+| 谁播 | 服务器用 `NetMulticast` RPC 广播<br>（如 `MulticastPlayImpactEffects`） | **每个端各自响应自己收到的 Tag** |
+| 为什么 | "碰撞"只发生在服务器 | ★ **不需要额外 RPC** —— Tag 复制本身就是广播 |
+| 数据通道 | RPC | **`GrantedTags`（会复制）** |
+
+> ⚠️ **关键**：`IncomingDamage` 是 Meta Attribute，**只在服务器变** →
+> 靠它驱动特效的话客户端永远看不到；而 **Tag 是复制的** → 客户端自动同步。
+
+### 49.3 ★ `AddLambda` vs `AddWeakLambda`
+
+| | **`AddLambda(L)`** | **`AddWeakLambda(O, L)`** |
+|---|---|---|
+| 多存什么 | 只存 lambda | lambda + **`TWeakObjectPtr<O>`** |
+| 对象死了 | ❌ **照样执行** → 野指针 | ✅ **静默跳过** |
+| 能 `RemoveAll(O)` | ❌ 没绑对象 | ✅ |
+
+**源码证据**（`DelegateInstancesImpl.h:846-855`）：
+
+```cpp
+private:
+	// Context object - the validity of this object controls the validity of the lambda
+	//                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ★ 引擎注释原话
+	TWeakObjectPtr<UserClass> ContextObject;
+	mutable typename TRemoveConst<FunctorType>::Type Functor;
+```
+
+```cpp
+// :835-844
+bool ExecuteIfSafe(ParamTypes... Params) const final
+{
+	if (ContextObject.IsValid()) { (void)this->Payload.ApplyAfter(Functor, Params...); return true; }
+	return false;                                  // 死了 → 静默跳过
+}
+```
+
+**为什么这里必须用**：组件订阅的是**角色的委托**，角色很可能比组件活得久；
+而 lambda 里 `[this]` 捕获的 `this` **不被 GC 追踪**（不是 UPROPERTY）→
+组件销毁后委托仍持有它 → 角色下次广播时执行 → 解引用已销毁的 `this`。
+
+> **判断口诀**：**"这个委托会不会比我活得久？"** 会 → **必须 `AddWeakLambda`**。
+>
+> ⚠️ **教程自己两处不一致**：`PassiveNiagaraComponent.cpp:27` 用 `AddLambda`（不安全），
+> `DebuffNiagaraComponent.cpp:27` 用 `AddWeakLambda`（安全）→ **照后者写**。
+
+### 49.4 ★ 死亡处理的两条路径（本项目实际实现）
+
+```cpp
+// 路径 A：Tag 变化时判 IsDead
+void DebuffTagChanged(...)
+{
+	const bool bOwnerAlive = ... && !IMy_CombatInterface::Execute_IsDead(GetOwner());
+	if (NewCount > 0 && bOwnerAlive) { Activate(); } else { Deactivate(); }
+}
+
+// 路径 B：订阅死亡委托
+CombatInterface->GetOnDeath().AddDynamic(this, &UMy_DebuffNiagaraComponent::OnOwnerDeath);
+void OnOwnerDeath(AActor*) { Deactivate(); }
+```
+
+| | **路径 A** | **路径 B** |
+|---|---|---|
+| 触发时机 | **Tag 变化**时（加/减） | **死亡那一刻** |
+| 防的是 | 「死后**才**发生 Tag 变化」（延迟 GE 加 Tag / GE 到期移除） | ★ 「**死亡时 Tag 根本没变**」 |
+
+**路径 A 单独不够**：
+
+```
+角色死亡 → Debuff GE 的 Duration 还有 3 秒 → Tag 还在
+        → Tag 没变 → DebuffTagChanged 根本不会被调用
+        → 特效留在尸体上 ❌
+        → ★ 只有路径 B 能救
+```
+
+**两条都会调 `Deactivate()`**（死亡时一次、GE 到期时一次），但 **`Deactivate()` 幂等，无害**。
+
+**★ 本项目写法比教程更好**：
+
+| | 教程 | 本项目 |
+|---|---|---|
+| 路径 B | `MulticastHandleDeath` 里**硬编码** `BurnDebuffComponent->Deactivate(); StunDebuffComponent->Deactivate();` | 角色只 `OnDeath.Broadcast(this)`，**组件自己订阅自己关** |
+| 加第 3 个 Debuff 要改哪 | ❌ **必须改角色** | ✅ **完全不用改** |
+| 角色需要知道有哪些组件吗 | ✅ 需要 | ❌ 不需要 |
+
+### 49.5 "ASC 就绪"委托：为什么需要、为什么必须过接口
+
+**为什么需要**：组件的 `BeginPlay` 可能**早于 ASC 初始化**（玩家的 ASC 要等 `OnRep_PlayerState`）
+→ 不能假设 ASC 一定在，也不能每帧轮询 → 用委托"你好了告诉我一声"。
+
+```cpp
+if (ASC) { ASC->RegisterGameplayTagEvent(...).AddUObject(...); }
+else if (CombatInterface)
+{
+	CombatInterface->GetOnASCRegistered().AddWeakLambda(this, [this](UAbilitySystemComponent* InASC)
+	{
+		InASC->RegisterGameplayTagEvent(...).AddUObject(...);
+	});
+}
+```
+
+**为什么过接口而不是 `Cast<AAuraCharacterBase>`**：组件是挂在**任何战斗单位**上的通用零件 →
+`Cast<具体类>` 会把它绑死；`Cast<ICombatInterface>` 只要求"你是个战斗单位"。
+
+> ⚠️ **两个必须成对的东西（本项目都踩过）**：
+> 1. **接口必须返回引用**（`FMy_ASCRegisteredSignature&`）——
+>    返回**值**的话 `AddWeakLambda` 加到的是**临时副本**上，广播时什么都不触发（**静默失效**）
+> 2. **必须有 `Broadcast`** —— 教程在玩家/敌人的 `InitAbilityActorInfo` 各广播一次；
+>    漏了同样**静默失效**（不报错、不崩，只是监听永远不生效）
+
+### 49.6 一句话总结
+
+**判断"要不要自定义 Niagara 组件"只看一条：这个特效有没有一个需要被关掉的「状态」。**
+**状态型（Debuff / 被动）→ 必须自定义组件；一次性（命中 / 爆炸 / 升级）→ 直接播。**
+
+**状态型难在"结束"**：Debuff 有 5 条结束路径 → 手动关必漏；
+组件只盯一个 Tag → **一个监听点覆盖大部分路径**，而且搭 Tag 复制的便车，**零网络代码**。
+
+**订阅长寿命委托必须用 `AddWeakLambda`**（lambda 里 `[this]` 不被 GC 追踪），
+**且"死亡"要两条路径都做**（Tag 变化 + 死亡委托）—— 因为死亡时 Tag 可能没变。
+
+---
+
+## 五十、UE 接口的 U 类与 I 类
+
+### 50.1 `UINTERFACE` 模式：为什么有两个类
+
+```cpp
+UINTERFACE(MinimalAPI, BlueprintType)
+class UMy_CombatInterface : public UInterface     // ← U 类：反射层的"壳"
+{
+	GENERATED_BODY()
+};
+
+class AURA_API IMy_CombatInterface                // ← I 类：逻辑层的"实体"
+{
+	GENERATED_BODY()
+	// 虚函数、UFUNCTION、委托都声明在这
+};
+```
+
+| | **U 类** | **I 类** |
+|---|---|---|
+| 有什么 | `StaticClass()`、`UClassType`（由 `GENERATED_BODY()` 生成） | 虚函数、`Execute_Xxx` 静态函数 |
+| 干什么 | 承载 `UClass`，被**反射查询** | 声明虚函数，被 **`Cast` / `Execute_`** 用 |
+
+### 50.2 ★ 用在哪（本项目踩过的 C2039 报错）
+
+**报错原文**：
+
+```
+Class.h(3785): Error C2039 : "StaticClass": 不是 "IMy_CombatInterface" 的成员
+```
+
+**根因**（`Class.h:3781-3786`）：
+
+```cpp
+template<class T>
+FORCEINLINE bool UObject::Implements() const
+{
+	UClass const* const MyClass = GetClass();
+	return MyClass && MyClass->ImplementsInterface(T::StaticClass());
+	//                                        ~~~~~~~~~~~~~~~ ★ 要 T 有 StaticClass()
+}
+```
+
+**`StaticClass()` 只有 UCLASS / UINTERFACE 类才有** —— I 类只是普通 C++ 类，没有它。
+
+| 用法 | 写哪个 | 内部机制 |
+|---|---|---|
+| `Obj->Implements<**U**My_CombatInterface>()` | ★ **U 类** | `T::StaticClass()` |
+| `Class->ImplementsInterface(**U**My_CombatInterface::StaticClass())` | ★ **U 类** | 同上 |
+| `Cast<**I**My_CombatInterface>(Obj)` | **I 类** | `InterfaceType::UClassType`（I 类生成的 typedef） |
+| `**I**My_CombatInterface::Execute_IsDead(Obj)` | **I 类** | 反射执行函数定义在 I 类上 |
+| `Cast<**I**...>(Obj)->SomeFunc()` | **I 类** | 调 C++ 虚函数 |
+
+> **口诀**：**「查类型用 U，调用 / 转换用 I」**
+
+**自查命令**（有输出就是写错了）：
+
+```powershell
+Get-ChildItem -Path Source -Recurse -File -Include *.cpp,*.h |
+  Select-String -Pattern 'Implements<I\w+'
+```
+
+### 50.3 ★ 委托选型：原生 vs DYNAMIC（由"谁来处理"决定）
+
+本项目正好有两个委托，**声明方式刻意相反**：
+
+| | **`FMy_ASCRegisteredSignature`** | **`FMy_DeathSignature`** |
+|---|---|---|
+| 声明 | `DECLARE_MULTICAST_DELEGATE_OneParam`<br>★ **原生** | `DECLARE_**DYNAMIC**_MULTICAST_DELEGATE_OneParam`<br>★ **动态** |
+| 绑定方式 | `AddWeakLambda` / `AddUObject` | **`AddDynamic`**（要求回调是 `UFUNCTION()`） |
+| **谁处理** | **纯 C++**（`UMy_DebuffNiagaraComponent`） | ★ **蓝图**（`BlueprintImplementableEvent`） |
+| 内部存什么 | C++ 函数指针 / lambda | **函数名字符串**（走反射） |
+| 性能 | 快 | 慢（`ProcessEvent`） |
+
+**教程的 `OnDeathDelegate` 就是给蓝图用的**（`AuraBeamSpell.h:30-33`）：
+
+```cpp
+UFUNCTION(BlueprintImplementableEvent)
+void PrimaryTargetDied(AActor* DeadActor);      // ← C++ 只声明，实现在 GA_Electrocute 蓝图里
+```
+
+**规律**：
+
+> **处理者在 C++ → 用原生委托；处理者在蓝图 → 必须用 DYNAMIC。**
+
+**为什么闪电链需要"死亡通知"**：闪电链依次电击 N 个目标 ——
+主目标死了要**结束技能**，附加目标死了要**跳过**；
+没有委托就只能每帧轮询所有目标（丑 + 抓不准时机）。
+
+> **顺带**：教程用 `IsAlreadyBound` 防重复绑定（因为 `TraceFirstTarget` 会被多次调用）——
+> 这和笔记 31.4 那条「`AddLambda` 重复绑定坑」是同一个问题。
+
+### 50.4 GameplayCue 是什么（一句话 + 要点）
+
+**GAS 的「表现层投递系统」** —— 逻辑层只发一个 `GameplayCue.XXX` Tag，
+引擎按 Tag 在 `GameplayCueNotifyPaths` 扫出来的映射表里找到 Notify 蓝图，并在**所有客户端**播放。
+
+| 要点 | 说明 |
+|---|---|
+| **两种 Notify** | `UGameplayCueNotify_Static`（UObject，一次性）/ `AGameplayCueNotify_Actor`（AActor，可持续）<br>内置子类：`Burst`（粒子+音效）、`HitImpact` |
+| **四个事件** | `OnActive` / `WhileActive`（每帧）/ `Executed` / `Removed` |
+| **两种入口** | GE 资产的 `GameplayCues` 数组（最常用）/ 代码调 `ExecuteGameplayCue`（本项目 `AuraFireBall.cpp:41`） |
+| **自带网络复制** | `InvokeGameplayCueExecuted` 走 NetMulticast —— 解决笔记第 10 章那条"服务器放特效客户端看不见" |
+| ⚠️ **最易踩的坑** | Notify 蓝图里的 `GameplayCueTag` **必须和触发时用的 Tag 一致**，否则**静默不执行、不报错** |
+
+**本项目的配置**：
+
+```ini
+; Config/DefaultGame.ini:9-10
++GameplayCueNotifyPaths=/Game/Blueprints/AbilitySystem/GameplayCueNotifies
++GameplayCueNotifyPaths=/Game/MyBlueprints/AbilitySystem/Enemy/Cue
+```
+
+**和自定义组件的分工**：
+
+| | GameplayCue | 自定义 Niagara 组件 |
+|---|---|---|
+| 适合 | **一次性表现**（爆炸 / 命中 / 音效） | **需要"自治"的持续状态**（Debuff / 被动） |
+| 持续型能用吗 | ✅ 能（`AddGameplayCue` + `Actor` 型 Notify） | ✅ 能 |
+| 缺点 | 持续型仍要 `Add` / `Remove` **成对调用**（有漏掉 Remove 的风险） | 换特效要改组件的资产引用 |
+
+### 50.5 附：一次 BOM 脚本事故（教训）
+
+我写"全项目 BOM 审计"脚本时，条件写成了「**无 BOM 就补**」，
+而不是「**含非 ASCII 且无 BOM 才补**」→ **一次性改了 183 个文件**（含大量教程参考文件）。
+
+**已全部还原**（剥掉那 3 个字节，脚本是幂等的）。
+
+**教训**：
+
+- **批处理脚本的"影响范围"必须先打印出来再执行**（先列名单 → 确认 → 再改），不要一边判定一边写
+- 本项目 BOM 的正确判据是：**`非 ASCII` 且 `无 BOM`** ——
+  纯 ASCII 的文件加不加 BOM 都行，**但别去动它们**（会污染 git diff，把用户自己的改动淹掉）
+
+### 50.6 一句话总结
+
+**UE 接口有两个类：`Implements<>` / `ImplementsInterface()` 用 U 类（要 `StaticClass()`），
+`Cast<>` / `Execute_Xxx` 用 I 类。口诀：查类型用 U，调用 / 转换用 I。**
+
+**委托选型由"谁来处理"决定：处理者在 C++ → 原生委托；处理者在蓝图 → DYNAMIC（`AddDynamic` + `UFUNCTION`）。**
+
+**GameplayCue 是"用 Tag 投递表现"的通用机制**（自带网络复制），适合一次性表现；
+需要"自治"的持续状态（Debuff / 被动）用自定义组件更省心。

@@ -301,7 +301,7 @@ private:
 	void SetEffectProperty(const struct FGameplayEffectModCallbackData& Data, FMy_EffectProperties& Props) const;
 	void ShowDamageText(const FMy_EffectProperties& Props, float Damage, bool IsBlockedHit, bool IsCriticalHit) const;
 	void SendXPEvent(const FMy_EffectProperties& Props) const;
-	void HandleImcomingDamage(const FMy_EffectProperties& Props);
+	void HandleIncomingDamage(const FMy_EffectProperties& Props);
 	void HandleIncomingXP(const FMy_EffectProperties& Props);
 	void Debuff(const FMy_EffectProperties& Props);
 };

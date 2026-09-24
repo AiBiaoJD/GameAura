@@ -1,4 +1,4 @@
-// Copyright ABiao
+﻿// Copyright ABiao
 
 #pragma once
 
@@ -9,6 +9,9 @@
 #include "My_CombatInterface.generated.h"
 
 class UNiagaraSystem;
+
+DECLARE_MULTICAST_DELEGATE_OneParam(FMy_ASCRegisteredSignature, UAbilitySystemComponent*)
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FMy_DeathSignature, AActor*, DeadActor);
 
 USTRUCT(BlueprintType)
 struct FMy_TaggedMontage
@@ -82,4 +85,7 @@ public:
 
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable)
 	EMy_CharacterClass GetCharacterClass();
+
+	virtual FMy_ASCRegisteredSignature& GetOnASCRegistered() = 0;
+	virtual FMy_DeathSignature& GetOnDeath() = 0;
 };
