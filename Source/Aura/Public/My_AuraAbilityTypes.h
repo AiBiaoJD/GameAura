@@ -22,35 +22,42 @@ struct FMy_DamageEffectParams
 	{
 	}
 
-	UPROPERTY()
+	UPROPERTY(BlueprintReadWrite)
 	TObjectPtr<UObject> WorldContextObject = nullptr;
-	UPROPERTY()
+	UPROPERTY(BlueprintReadWrite)
 	TSubclassOf<UGameplayEffect> DamageGameplayEffectClass = nullptr;
-	UPROPERTY()
+	UPROPERTY(BlueprintReadWrite)
 	TObjectPtr<UAbilitySystemComponent> SourceASC;
-	UPROPERTY()
+	UPROPERTY(BlueprintReadWrite)
 	TObjectPtr<UAbilitySystemComponent> TargetASC;
 
-	UPROPERTY()
+	UPROPERTY(BlueprintReadWrite)
 	float BaseDamage = 0.f;
-	UPROPERTY()
+	UPROPERTY(BlueprintReadWrite)
 	float AbilityLevel = 1.f;
-	UPROPERTY()
+	UPROPERTY(BlueprintReadWrite)
 	FGameplayTag DamageType = FGameplayTag();
 
-	UPROPERTY()
+	UPROPERTY(BlueprintReadWrite)
 	float DebuffChance = 0.f;
-	UPROPERTY()
+	UPROPERTY(BlueprintReadWrite)
 	float DebuffDamage = 0.f;
-	UPROPERTY()
+	UPROPERTY(BlueprintReadWrite)
 	float DebuffFrequency = 0.f;
-	UPROPERTY()
+	UPROPERTY(BlueprintReadWrite)
 	float DebuffDuration = 0.f;
 
-	UPROPERTY()
+	UPROPERTY(BlueprintReadWrite)
 	float DeathImpulseMagnitude = 0.f;
-	UPROPERTY()
+	UPROPERTY(BlueprintReadWrite)
 	FVector DeathImpulse = FVector(0.f, 0.f, 0.f);
+
+	UPROPERTY(BlueprintReadWrite)
+	float KnockbackChance = 0.f;
+	UPROPERTY(BlueprintReadWrite)
+	float KnockbackMagnitude = 0.f;
+	UPROPERTY(BlueprintReadWrite)
+	FVector Knockback = FVector(0.f, 0.f, 0.f);
 };
 
 USTRUCT(BlueprintType)
@@ -67,6 +74,7 @@ public:
 	float GetDebuffDuration() const { return DebuffDuration; };
 	FGameplayTag GetDamageType() const { return DamageType; };
 	FVector GetDeathImpulse() const { return DeathImpulse; };
+	FVector GetKnockback() const { return Knockback; };
 
 	void SetIsCriticalHit(bool bInCriticalHit) { bIsCriticalHit = bInCriticalHit; }
 	void SetIsBlockedHit(bool bInBlockedHit) { bIsBlockedHit = bInBlockedHit; }
@@ -76,6 +84,7 @@ public:
 	void SetDebuffDuration(float InDuration) { DebuffDuration = InDuration; };
 	void SetDamageType(const FGameplayTag& InDamageType) { DamageType = InDamageType; };
 	void SetDeathImpulse(FVector InDeathImpulse) { DeathImpulse = InDeathImpulse; };
+	void SetKnockback(FVector InKnockback) { Knockback = InKnockback; };
 
 	/** Returns the actual struct used for serialization, subclasses must override this! */
 	virtual UScriptStruct* GetScriptStruct() const
@@ -123,6 +132,9 @@ protected:
 
 	UPROPERTY()
 	FVector DeathImpulse = FVector(0.f, 0.f, 0.f);
+
+	UPROPERTY()
+	FVector Knockback = FVector(0.f, 0.f, 0.f);
 };
 
 template <>

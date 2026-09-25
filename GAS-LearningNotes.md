@@ -52,6 +52,7 @@
 - [四十九、状态型特效与委托生命周期](#四十九状态型特效与委托生命周期)
 - [五十、UE 接口的 U 类与 I 类](#五十ue-接口的-u-类与-i-类)
 - [五十一、灼烧期间不播 HitReact：Activation Blocked Tags 机制](#五十一灼烧期间不播-hitreactactivation-blocked-tags-机制)
+- [五十二、三条链路总览：Debuff / DeathImpulse / Knockback](#五十二三条链路总览debuff--deathimpulse--knockback)
 
 ---
 
@@ -6768,3 +6769,354 @@ UMy_AuraAbilitySystemLibrary::SetDeathImpulse(
 **副作用是一刀切：灼烧期间所有受击都不播。
 若要「灼烧期间新挨的直击仍然要抽」，需改用方案 B（给 Context 打 DOT 标记 + 代码判断），
 见 51.8 的备忘清单。**
+
+---
+
+## 五十二、三条链路总览：Debuff / DeathImpulse / Knockback
+
+> 这一章把「伤害附带的三件事」串成一张总图：
+> **Debuff（持续伤害）**、**DeathImpulse（死亡击飞）**、**Knockback（受击位移）**。
+> 三条链路走的是**同一根骨架**，区别只在「**在哪判定**」和「**结果放哪**」。
+
+### 52.1 共同骨架：四段式
+
+```
+① 能力 BP 配置      Damage Type / Debuff Xxx / Death Impulse Magnitude / Knockback Xxx
+        │
+        ▼
+② 打包参数          MakeDamageEffectParamsFromClassDefaults(AActor* TargetActor)
+        │              → FMy_DamageEffectParams（一个"原料箱"结构体）
+        ▼
+③ 分流              ApplyDamageEffect(Params)
+        │              ├─ float  → Spec 的 SetByCaller（ExecCalc 读）
+        │              └─ 非float → Context（PostGameplayEffectExecute 读）
+        ▼
+④ 消费              ExecCalc（判定）/ AttributeSet（造 GE、Die、LaunchCharacter）
+```
+
+**记住一句话：能力给值 → 中间某处判定 → AttributeSet 执行。**
+
+### 52.2 总览图
+
+```
+【能力 BP】敌人 Melee / 火球 / Aura 的火球
+   Damage Type │ Debuff Chance·Damage·Duration·Frequency │ Death Impulse Magnitude │ Knockback Chance·Magnitude
+        │
+        │ ① MakeDamageEffectParamsFromClassDefaults(TargetActor)      My_AuraDamageGameplayAbility.cpp:16
+        ▼
+   FMy_DamageEffectParams Params          （My_AuraAbilityTypes.h:6）
+        │
+        ├─【近战】Params.DeathImpulse = ToTarget * Magnitude          My_AuraDamageGameplayAbility.cpp:43
+        │         Params.Knockback    = 掷骰通过 ? ToTarget * Magnitude : 0   ← ★ 52.6
+        │
+        └─【投射物】ExposeOnSpawn 带过去，撞人时才算
+                   DamageEffectParams.DeathImpulse = GetActorForwardVector() * Magnitude   My_ProjectileActor.cpp:73
+                   DamageEffectParams.Knockback    = 掷骰通过 ? Rotation(45°) * Magnitude : 0  My_ProjectileActor.cpp:76
+        │
+        │ ② ApplyDamageEffect(Params)                                  My_AuraAbilitySystemLibrary.cpp:126
+        ▼
+   ┌───────────────────────────────┴────────────────────────────────┐
+   │ SetByCaller（float，给 ExecCalc 读）                            │ Context（非 float，给 Post 读）
+   │   DamageType        = BaseDamage                               │   SetDeathImpulse(Params.DeathImpulse)
+   │   My_Debuff_Chance  = Params.DebuffChance                      │   SetKnockback(Params.Knockback)
+   │   My_Debuff_Damage / _Duration / _Frequency                    │   （★ 没有 KnockbackChance！）
+   └───────────────────────────────┬────────────────────────────────┘
+                                   │
+                                   ▼
+                    GameplayEffectSpec ──► ExecCalc My_ExeCalc_Damage
+                                   │
+                                   │ ③ My_DetermineDebuff（My_ExeCalc_Damage.cpp:72）
+                                   │      读 My_Debuff_Chance + 目标抗性 → 掷骰
+                                   │      命中 → 把结果写回 Context：
+                                   │        SetIsSuccessfulDebuff(true)
+                                   │        SetDamageType(DamageType)
+                                   │        SetDebuffDamage / _Duration / _Frequency
+                                   ▼
+                    PostGameplayEffectExecute ──► 同 Context
+                                   │
+                                   ▼
+              UMy_AuraAttributeSet::HandleIncomingDamage     My_AuraAttributeSet.cpp:160
+                                   │
+                    ┌──────────────┼───────────────────────────┐
+                    │              │                           │
+              bFatal│         !bFatal│                           │
+                    ▼              ▼                           ▼
+        GetDeathImpulse    TryActivate(HitReact)      IsSuccessfulDebuff?
+        → Die(Impulse)     GetKnockback → LaunchCharacter   → Debuff(Props)
+                    │              │                           │
+                    ▼              ▼                           ▼
+        MulticastHandleDeath  （受击位移）           造 DOT GE（GrantedTags = Debuff Tag）
+        Mesh / Weapon              每秒 IncomingDamage += DebuffDamage
+        AddImpulse                 → 又回到 HandleIncomingDamage（循环）
+```
+
+### 52.3 ★ 三条链路对照表（最重要的一张表）
+
+| | **Debuff** | **DeathImpulse** | **Knockback** |
+|---|---|---|---|
+| 原始参数 | `DebuffChance` / `Damage` / `Frequency` / `Duration` | `DeathImpulseMagnitude` | `KnockbackChance` / `Magnitude` |
+| 参数存放 | BP → `Params` | BP → `Params` | BP → `Params` |
+| **在哪判定** | **ExecCalc**（`My_DetermineDebuff`） | **不判定**（死了就飞） | **上游**：近战 `MakeDamageEffectParams…`／投射物 `OnSphereOverlap` |
+| **为什么在那判定** | 需要**目标抗性**（只有 ExecCalc 抓得到）；且 Chance 已进 Spec | — | Chance **没进 GE**，下游读不到（见 52.7） |
+| **结果放哪** | Context：`bIsSuccessfulDebuff` + `DamageType` + 3 个 float | `Params.DeathImpulse` → Context | `Params.Knockback` → Context |
+| 结果类型 | bool + Tag + float | `FVector` | `FVector` |
+| **谁消费** | `My_AuraAttributeSet::Debuff()` | `HandleIncomingDamage` 的 `bFatal` 分支 | `HandleIncomingDamage` 的 `!bFatal` 分支 |
+| 最终表现 | 每秒掉血（DOT GE） | `Mesh` / `Weapon` 的 `AddImpulse` | `LaunchCharacter` |
+| 触发时机 | 可能触发（几率） | **必触发**（只要致死） | 可能触发（几率） |
+
+### 52.4 链路 A：Debuff（逐段）
+
+| 段 | 位置 | 做什么 |
+|---|---|---|
+| ① | 能力 BP | 配 `Damage Type` + `DebuffChance/Damage/Frequency/Duration` |
+| ② | `My_AuraDamageGameplayAbility.cpp:26-29` | 原样搬进 `Params`（**不判定**） |
+| ③ | `My_AuraAbilitySystemLibrary.cpp:137-141` | `AssignTagSetByCallerMagnitude` 写进 **Spec** |
+| ④ | `My_ExeCalc_Damage.cpp:72-152` | **判定**：读 Chance → 算「几率 × (100−抗性)/100」→ 掷骰 → 写 **Context** |
+| ⑤ | `My_AuraAttributeSet.cpp:192-195` | `IsSuccessfulDebuff` 为真 → 调 `Debuff()` |
+| ⑥ | `My_AuraAttributeSet.cpp:205-252` | 造动态 GE：`GrantedTags = DamageToDebuff[DamageType]`，`Period/Duration`，**按 Debuff Tag 分流加 Modifier** |
+| ⑦ | GE 每 tick | `IncomingDamage += DebuffDamage` → 回到 `HandleIncomingDamage` |
+
+**关键代码：**
+```cpp
+// ④ 判定（ExecCalc）
+const float EffectiveDebuffChance = SourceDebuffChance * (100.f - TargetDebuffResistance) / 100.f;
+const bool bDebuff = FMath::RandRange(1, 100) < EffectiveDebuffChance;
+if (bDebuff)
+{
+    UMy_AuraAbilitySystemLibrary::SetIsSuccessfulDebuff(ContextHandle, true);
+    UMy_AuraAbilitySystemLibrary::SetDamageType(ContextHandle, DamageType);
+    UMy_AuraAbilitySystemLibrary::SetDebuffDamage / _Duration / _Frequency(...);
+}
+```
+
+```cpp
+// ⑥ 造 GE（AttributeSet）—— ★ 按 Debuff 种类分流
+const FGameplayTag* DebuffTagPtr = GameplayTags.DamageToDebuff.Find(DamageType);
+if (DebuffTagPtr == nullptr) { return; }                       // 找不到就跳过，不崩
+Effect->InheritableOwnedTagsContainer.AddTag(*DebuffTagPtr);   // = GE 蓝图的 "Granted Tags"
+Effect->Period = DebuffFrequency;
+Effect->DurationMagnitude = FScalableFloat(DebuffDuration);
+Effect->bExecutePeriodicEffectOnApplication = false;           // 等第一个 Period 才掉血
+
+if (DebuffTagPtr->MatchesTagExact(GameplayTags.My_Debuff_Burn))  // ★ 只有灼烧掉血
+{
+    FGameplayModifierInfo ModifierInfo;
+    ModifierInfo.Attribute = UMy_AuraAttributeSet::GetIncomingDamageAttribute();
+    ModifierInfo.ModifierOp = EGameplayModOp::Additive;
+    ModifierInfo.ModifierMagnitude = FScalableFloat(DebuffDamage);
+    Effect->Modifiers.Add(ModifierInfo);
+}
+```
+
+**「哪种伤害 → 哪种 Debuff」的表**（`My_AuraGamePlayTags_Singleton.cpp:305-309`）：
+
+| 伤害类型 | Debuff Tag | 现在有数值效果吗 |
+|---|---|---|
+| `My_DamageType.Fire` | `My_Debuff.Burn` | ✅ 每秒掉血 |
+| `My_DamageType.Lighting` | `My_Debuff.Stun` | ❌ 只挂 Tag |
+| `My_DamageType.Arcane` | `My_Debuff.Arcane` | ❌ 只挂 Tag |
+| `My_DamageType.Physical` | `My_Debuff.Physical` | ❌ 只挂 Tag |
+
+> **「效果种类」由 Debuff Tag 决定，不是由 DamageType 决定。**
+> 判断要写 `if (DebuffTagPtr->MatchesTagExact(...))` 而不是 `if (DamageType == ...)` ——
+> 将来物理配一个「流血」，只要加个分支，伤害类型那边的逻辑不用动。
+
+### 52.5 链路 B：DeathImpulse（逐段）
+
+| 段 | 位置 | 做什么 |
+|---|---|---|
+| ① | 能力 BP | 配 `Death Impulse Magnitude`（6000~14000 量级） |
+| ② | `My_AuraDamageGameplayAbility.cpp:43` | 近战：`Params.DeathImpulse = ToTarget * Magnitude`（**必给，不掷骰**） |
+| ②' | `My_ProjectileActor.cpp:73` | 投射物：`= GetActorForwardVector() * Magnitude` |
+| ③ | `My_AuraAbilitySystemLibrary.cpp:133` | `SetDeathImpulse(Context, Params.DeathImpulse)` → 写 **Context** |
+| ④ | `My_AuraAttributeSet.cpp:169-178` | `bFatal` → `GetDeathImpulse(Context)` → `CombatInterface->Die(Impulse)` |
+| ⑤ | `My_CombatInterface.h:60` | `virtual void Die(const FVector& DeathImpulse) = 0;`（**跨类抽象口**） |
+| ⑥ | `MyCharacter_Base.cpp:107-110` | `Die()` → `MulticastHandleDeath(Impulse)`（NetMulticast） |
+| ⑦ | `MyCharacter_Base.cpp:113-126` | `Weapon->AddImpulse(Impulse * 0.1f, NAME_None, true)`<br>`GetMesh()->AddImpulse(Impulse, NAME_None, true)` |
+
+**方向差异（重要）：**
+
+| 来源 | 方向算法 | 说明 |
+|---|---|---|
+| 近战 | `(Target - Self).Rotation()` + `Pitch = 45°` | 对着目标，抬高 45°（斜上飞） |
+| 投射物 | `GetActorForwardVector()` | 顺着飞来的方向 |
+
+**为什么 `Die()` 要带参数？**（第 27 章「接口居中翻译」的同一套路）
+- `AttributeSet` **不能** `Cast<AAuraEnemy>`（会反向依赖、加新敌人要改数据层）
+- 所以定义 `ICombatInterface::Die(const FVector&)` —— **「你是战斗单位，就得能按这个方向死」**
+- 谁实现了接口谁就自动能用，`AttributeSet` 一行都不用改
+
+**注意**：`AddImpulse` 是 **`UPrimitiveComponent`** 的方法，不在 `AActor` / `ACharacter` 上 ——
+所以必须先 `GetMesh()` / `Weapon` 拿到组件再调。
+
+### 52.6 链路 C：Knockback（逐段）
+
+| 段 | 位置 | 做什么 |
+|---|---|---|
+| ① | 能力 BP | 配 `Knockback Chance`（示例 0 / 20）、`Knockback Magnitude`（示例 400 / 600） |
+| ② | `My_AuraDamageGameplayAbility.cpp:49-52` | **近战：在这里掷骰** `<br>` `if (FMath::RandRange(1,100) < KnockbackChance) Params.Knockback = ToTarget * Magnitude;` |
+| ②' | `My_ProjectileActor.cpp:76-89` | **投射物：撞人时掷骰** `<br>` 命中 → `Rotation.Pitch = 45°` → `Rotation.Vector() * Magnitude`；`else` 兜底清零 |
+| ③ | `My_AuraAbilitySystemLibrary.cpp:134` | `SetKnockback(Context, Params.Knockback)` |
+| ④ | `My_AuraAttributeSet.cpp:186-190` | 非致命分支：`GetKnockback(Context)` → `if (!IsNearlyZero(1.f))` → `Props.TargetCharacter->LaunchCharacter(Knockback, true, true)` |
+
+```cpp
+// ④ 消费
+const FVector Knockback = UMy_AuraAbilitySystemLibrary::GetKnockback(Props.EffectContextHandle);
+if (!Knockback.IsNearlyZero(1.f))
+{
+    Props.TargetCharacter->LaunchCharacter(Knockback, true, true);   // XY 和 Z 都覆盖
+}
+```
+
+**为什么掷骰放"上游"而不是 `HandleIncomingDamage` 里？**
+
+> **因为 Debuff 的 DOT 每 tick 也会走 `HandleIncomingDamage`。**
+> 如果把掷骰放那里，就会变成「被灼烧时每 0.5 秒重新掷一次骰」——
+> 烧着烧着人就被推着走。**一次攻击只能掷一次骰。**
+
+### 52.7 ★ 判据：判定只能发生在「读得到 Chance 的地方」
+
+| 位置 | 读得到 `DebuffChance`? | 读得到 `KnockbackChance`? |
+|---|---|---|
+| 能力（`Params`） | ✅ | ✅ |
+| 投射物（成员 `DamageEffectParams`） | ✅ | ✅ |
+| **Spec / ExecCalc** | ✅（走了 SetByCaller） | ❌ **没写进去** |
+| **Context / AttributeSet** | ❌（只有判定结果） | ❌（只有结果向量） |
+
+**根因**：`ApplyDamageEffect` 把 Debuff 的 4 个 float 都 `AssignTagSetByCallerMagnitude` 了，
+**唯独没有 `My_Knockback_Chance`**：
+
+```cpp
+// My_AuraAbilitySystemLibrary.cpp:133-141
+SetDeathImpulse(EffectContextHandle, Params.DeathImpulse);
+SetKnockback(EffectContextHandle, Params.Knockback);          // ← 只传【结果向量】
+FGameplayEffectSpecHandle EffectSpecHandle = ...MakeOutgoingSpec(...);
+
+AssignTagSetByCallerMagnitude(EffectSpecHandle, Params.DamageType,   Params.BaseDamage);
+AssignTagSetByCallerMagnitude(EffectSpecHandle, My_Debuff_Chance,    Params.DebuffChance);   // ★ 传了
+AssignTagSetByCallerMagnitude(EffectSpecHandle, My_Debuff_Damage,    Params.DebuffDamage);
+AssignTagSetByCallerMagnitude(EffectSpecHandle, My_Debuff_Duration,  Params.DebuffDuration);
+AssignTagSetByCallerMagnitude(EffectSpecHandle, My_Debuff_Frequency, Params.DebuffFrequency);
+// ← 没有 My_Knockback_Chance 这一行 → ExecCalc 读不到 → 只能在能力/投射物里判
+```
+
+**想让 Knockback 也去 ExecCalc 统一判定？要补两处：**
+1. `ApplyDamageEffect` 里加一行 `AssignTagSetByCallerMagnitude(..., My_Knockback_Chance, Params.KnockbackChance)`
+2. ExecCalc 里掷骰后 `SetKnockback(Spec.GetContext(), 方向向量)`
+
+| 方案 | 优点 | 缺点 |
+|---|---|---|
+| **当前（能力 + 投射物各自掷）** | 改动小 | **两处代码，容易漏**（近战就漏过一次） |
+| **搬进 ExecCalc** | 一处覆盖所有伤害路径；和 Debuff 对称 | 要补 SetByCaller + 方向计算 |
+
+### 52.8 传输通道怎么选
+
+| 数据 | 走哪条通道 | 原因 |
+|---|---|---|
+| 伤害值、Debuff 4 个 float | **SetByCaller**（`TMap<FGameplayTag, float>`） | 是 float，且 ExecCalc 要读 |
+| `DeathImpulse` / `Knockback`（**FVector**） | **Context** | **`SetByCallerTagMagnitudes` 只能装 float，FVector 塞不进去** |
+| `bIsSuccessfulDebuff` / `IsBlockedHit` / `IsCriticalHit` | **Context** | 布尔结果，非 float |
+
+### 52.9 Context 的 NetSerialize 位表（加字段必看）
+
+`FMY_AuraGamePlayEffectContext::NetSerialize`（`My_AuraAbilityTypes.cpp`）：
+
+| 位 | 字段 |
+|---|---|
+| 0 | `Instigator` |
+| 1 | `EffectCauser` |
+| 2 | `AbilityCDO` |
+| 3 | `SourceObject` |
+| 4 | `Actors` |
+| 5 | `HitResult` |
+| 6 | `bHasWorldOrigin` |
+| 7 | `bIsBlockedHit` |
+| 8 | `bIsCriticalHit` |
+| 9 | **`bIsSuccessfulDebuff`** |
+| 10 | `DebuffDamage` |
+| 11 | `DebuffDuration` |
+| 12 | `DebuffFrequency` |
+| 13 | `DamageType` |
+| 14 | **`DeathImpulse`** |
+| 15 | **`Knockback`** |
+
+```cpp
+// ★★ 位数 = 最大位号 + 1。当前最大位号是 15，所以写 16。
+Ar.SerializeBits(&RepBits, 16);
+```
+
+> ⚠️ **加了新字段却忘了改这里 → 新字段静默丢失**
+> （只在客户端失效，不报错、不崩溃、很难查）。
+
+### 52.10 文件 ↔ 函数 责任表
+
+| 文件 | 函数 | 在这三条链路里的角色 |
+|---|---|---|
+| `My_AuraDamageGameplayAbility.h` | `DebuffChance/Damage/Frequency/Duration`、`DeathImpulseMagnitude`、`KnockbackChance/Magnitude` | **三条链路的参数源头**（C++ 默认值） |
+| `My_AuraDamageGameplayAbility.cpp` | `MakeDamageEffectParamsFromClassDefaults` | **打包 `Params`**；近战算 `DeathImpulse`；**近战掷 Knockback** |
+| `My_ProjectileActor.cpp` | `OnSphereOverlap` | **投射物掷 Knockback**；投射物算 `DeathImpulse` |
+| `My_AuraAbilitySystemLibrary.cpp` | `ApplyDamageEffect` | **分流器**：float → SetByCaller；FVector/bool → Context |
+| 同上 | `Get/SetDeathImpulse`、`Get/SetKnockback`、`Get/SetDamageType`、`Get/SetDebuff…` | **Context 读写门面**（`static_cast` + 空指针检查） |
+| `My_ExeCalc_Damage.cpp` | `Execute_Implementation` | 抓 4 个抗性、调 `My_DetermineDebuff`、算最终伤害 |
+| 同上 | `My_DetermineDebuff` | **Debuff 判定**（掷骰 + 把结果写进 Context） |
+| `My_AuraAttributeSet.cpp` | `HandleIncomingDamage` | **总调度**：致命→`Die`；非致命→HitReact + `LaunchCharacter`；最后→`Debuff` |
+| 同上 | `Debuff` | **造 DOT GE**（GrantedTags + Period + 按 Debuff Tag 分流的 Modifier） |
+| `My_CombatInterface.h` | `Die(const FVector&)` | 跨类调用的**抽象口**（让 AttributeSet 不依赖具体角色类） |
+| `MyCharacter_Base.cpp` | `Die` / `MulticastHandleDeath` | **死亡表现**：`Mesh` / `Weapon` 的 `AddImpulse` |
+| `Enemy_Characte.cpp` | `Die` | 敌人额外处理（`SetLifeSpan` + 黑板 `Dead`） |
+| `My_AuraAbilityTypes.h` | `FMy_DamageEffectParams` | **参数原料箱**（BP → 打包 → 执行前） |
+| 同上 | `FMY_AuraGamePlayEffectContext` | **结果箱**（跨 Spec / ExecCalc / Post 传递） |
+| `My_AuraAbilityTypes.cpp` | `NetSerialize` | Context 的网络复制（位表见 52.9） |
+| `My_AuraGamePlayTags_Singleton.cpp` | `DamageToDebuff` / `DamageToResistance` | **伤害类型 → Debuff / 抗性** 的映射表 |
+
+### 52.11 本次修掉的两个坑
+
+**坑 1：击退几率形同虚设（近战）**
+```cpp
+// ❌ 改前：无条件赋值 → KnockbackChance 填 0 也照样击退
+Params.Knockback = ToTarget * KnockbackMagnitude;
+
+// ✅ 改后：先掷骰
+if (FMath::RandRange(1, 100) < KnockbackChance)
+{
+    Params.Knockback = ToTarget * KnockbackMagnitude;
+}
+```
+外加投射物补 `else { DamageEffectParams.Knockback = FVector::ZeroVector; }` 兜底
+（防止参数生成阶段预置过非零值）。
+
+**坑 2：所有 Debuff 都掉血**
+```cpp
+// ❌ 改前：无条件加 IncomingDamage Modifier → Physical / Arcane / Stun 也每秒掉血
+Effect->Modifiers.Add(ModifierInfo);
+
+// ✅ 改后：按 Debuff 种类分流，只有 Burn 掉血
+if (DebuffTagPtr->MatchesTagExact(GameplayTags.My_Debuff_Burn))
+{
+    Effect->Modifiers.Add(ModifierInfo);
+}
+```
+
+**两个坑的共同点**：**「几率」这个词出现在代码里，但从来没有人读它。**
+配置项在蓝图里静静地躺着，代码一边倒地无条件执行 ——
+**排查这类问题的第一步：全局搜那个参数名，看它被读过几次。**
+
+### 52.12 一句话总结
+
+**三条链路共用一根骨架：
+`能力 BP 配参数 → MakeDamageEffectParamsFromClassDefaults 打包 → ApplyDamageEffect 分流 → ExecCalc 判定 → AttributeSet 消费`。**
+
+| | 判定在哪 | 结果怎么走 | 谁执行 |
+|---|---|---|---|
+| **Debuff** | **ExecCalc**（要目标抗性） | Context：bool + Tag + float | `Debuff()` 造 DOT GE → 每秒掉血 |
+| **DeathImpulse** | 不判定（致死必给） | `Params` → Context（FVector） | `Die()` → `MulticastHandleDeath` → `AddImpulse` |
+| **Knockback** | **上游**（能力 / 投射物，因为 Chance 没进 GE） | `Params` → Context（FVector） | `HandleIncomingDamage` → `LaunchCharacter` |
+
+**判据：判定只能发生在「读得到 Chance 的地方」。**
+Debuff 的 Chance 走了 SetByCaller 进 Spec → ExecCalc 能判；
+Knockback 的 Chance 没进 GE → 只能在调用 `ApplyDamageEffect` 之前判。
+
+**传输通道的规矩：float 走 SetByCaller（ExecCalc 要读），FVector / bool 走 Context。**
+
+**`Die(const FVector&)` 之所以要带参数：让 `AttributeSet` 通过 `ICombatInterface` 调用，
+不 `Cast` 到任何具体角色类（同第 27 章「接口居中翻译」）。**

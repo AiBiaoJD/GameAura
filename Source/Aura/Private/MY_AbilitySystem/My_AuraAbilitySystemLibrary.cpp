@@ -131,6 +131,8 @@ FGameplayEffectContextHandle UMy_AuraAbilitySystemLibrary::ApplyDamageEffect(con
 	FGameplayEffectContextHandle EffectContextHandle = Params.SourceASC->MakeEffectContext();
 	EffectContextHandle.AddSourceObject(SourceAvatarActor);
 	SetDeathImpulse(EffectContextHandle, Params.DeathImpulse);
+	SetKnockback(EffectContextHandle, Params.Knockback);
+	
 	FGameplayEffectSpecHandle EffectSpecHandle = Params.SourceASC->MakeOutgoingSpec(Params.DamageGameplayEffectClass, Params.AbilityLevel, EffectContextHandle);
 	UAbilitySystemBlueprintLibrary::AssignTagSetByCallerMagnitude(EffectSpecHandle, Params.DamageType, Params.BaseDamage);
 	UAbilitySystemBlueprintLibrary::AssignTagSetByCallerMagnitude(EffectSpecHandle, GameplayTags.My_Debuff_Chance, Params.DebuffChance);
@@ -277,6 +279,15 @@ FVector UMy_AuraAbilitySystemLibrary::GetDeathImpulse(const FGameplayEffectConte
 	return FVector::ZeroVector;
 }
 
+FVector UMy_AuraAbilitySystemLibrary::GetKnockback(const FGameplayEffectContextHandle& EffectContextHandle)
+{
+	if (const FMY_AuraGamePlayEffectContext* AuraGamePlayEffectContext = static_cast<const FMY_AuraGamePlayEffectContext*>(EffectContextHandle.Get()))
+	{
+		return AuraGamePlayEffectContext->GetKnockback();
+	}
+	return FVector::ZeroVector;
+}
+
 void UMy_AuraAbilitySystemLibrary::SetDamageType(FGameplayEffectContextHandle& EffectContextHandle, const FGameplayTag& InDamageType)
 {
 	if (FMY_AuraGamePlayEffectContext* AuraGamePlayEffectContext = static_cast<FMY_AuraGamePlayEffectContext*>(EffectContextHandle.Get()))
@@ -290,6 +301,14 @@ void UMy_AuraAbilitySystemLibrary::SetDeathImpulse(FGameplayEffectContextHandle&
 	if (FMY_AuraGamePlayEffectContext* AuraGamePlayEffectContext = static_cast<FMY_AuraGamePlayEffectContext*>(EffectContextHandle.Get()))
 	{
 		AuraGamePlayEffectContext->SetDeathImpulse(InDeathImpulse);
+	}
+}
+
+void UMy_AuraAbilitySystemLibrary::SetKnockback(FGameplayEffectContextHandle& EffectContextHandle, FVector InKnockback)
+{
+	if (FMY_AuraGamePlayEffectContext* AuraGamePlayEffectContext = static_cast<FMY_AuraGamePlayEffectContext*>(EffectContextHandle.Get()))
+	{
+		AuraGamePlayEffectContext->SetKnockback(InKnockback);
 	}
 }
 

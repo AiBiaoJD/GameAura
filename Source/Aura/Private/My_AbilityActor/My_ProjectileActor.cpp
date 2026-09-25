@@ -72,7 +72,24 @@ void AMy_ProjectileActor::OnSphereOverlap(UPrimitiveComponent* OverlappedCompone
 	{
 		const FVector DeathImpulse = GetActorForwardVector() * DamageEffectParams.DeathImpulseMagnitude;
 		DamageEffectParams.DeathImpulse = DeathImpulse;
+
+		const bool bKnockback = FMath::RandRange(1, 100) < DamageEffectParams.KnockbackChance;
+		if (bKnockback)
+		{
+			FRotator Rotation = GetActorRotation();
+			Rotation.Pitch = 45.f;
+			const FVector KnockDir = Rotation.Vector() * DamageEffectParams.KnockbackMagnitude;
+			DamageEffectParams.Knockback = KnockDir;
+		}
+		else
+		{
+			// ★ 兜底清零：参数生成阶段可能会无条件写过一个默认值，
+			//   掷骰失败时必须清掉，否则这里会变成"必击退"
+			DamageEffectParams.Knockback = FVector::ZeroVector;
+		}
+
 		DamageEffectParams.TargetASC = TargetASC;
+
 		UMy_AuraAbilitySystemLibrary::ApplyDamageEffect(DamageEffectParams);
 	}
 

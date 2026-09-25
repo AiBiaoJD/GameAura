@@ -183,6 +183,12 @@ void UMy_AuraAttributeSet::HandleIncomingDamage(const FMy_EffectProperties& Prop
 			FGameplayTagContainer TagContainer;
 			TagContainer.AddTag(FMy_AuraGameplayTags::GetInstance().My_EffectGranted_HitReact);
 			Props.TargetASC->TryActivateAbilitiesByTag(TagContainer);
+
+			const FVector Knockback = UMy_AuraAbilitySystemLibrary::GetKnockback(Props.EffectContextHandle);
+			if (!Knockback.IsNearlyZero(1.f))
+			{
+				Props.TargetCharacter->LaunchCharacter(Knockback, true, true);
+			}
 		}
 
 		const bool bBlock = UMy_AuraAbilitySystemLibrary::IsBlockedHit(Props.EffectContextHandle);
@@ -229,12 +235,32 @@ void UMy_AuraAttributeSet::Debuff(const FMy_EffectProperties& Props)
 	// ★★ 新增：应用时不立刻执行，等第一个 Period 过去才开始掉血
 	Effect->bExecutePeriodicEffectOnApplication = false;
 
-	// ③ Modifier 指向 IncomingDamage —— 这样飘字/死亡判定全自动复用
-	FGameplayModifierInfo ModifierInfo;
-	ModifierInfo.Attribute = UMy_AuraAttributeSet::GetIncomingDamageAttribute();
-	ModifierInfo.ModifierOp = EGameplayModOp::Additive;
-	ModifierInfo.ModifierMagnitude = FScalableFloat(DebuffDamage);
-	Effect->Modifiers.Add(ModifierInfo);
+	// ★★ ③ 按【Debuff 种类】分流：每种 Debuff 的效果不一样
+	//
+	//   注意判断的是 DebuffTag（效果种类），不是 DamageType（触发原因）。
+	//   以后物理伤害想配一个"流血"Debuff，它同样应该掉血 ——
+	//   那时只需要在这里加分支，不用动伤害类型那边的逻辑。
+	//
+	//   当前实现：
+	//     My_Debuff.Burn → 每秒掉血（DOT）
+	//     其他           → 只挂 Tag，不加任何 Modifier（= 暂时没有数值效果）
+	if (DebuffTagPtr->MatchesTagExact(GameplayTags.My_Debuff_Burn))
+	{
+		// Modifier 指向 IncomingDamage —— 这样飘字/死亡判定全自动复用
+		FGameplayModifierInfo ModifierInfo;
+		ModifierInfo.Attribute = UMy_AuraAttributeSet::GetIncomingDamageAttribute();
+		ModifierInfo.ModifierOp = EGameplayModOp::Additive;
+		ModifierInfo.ModifierMagnitude = FScalableFloat(DebuffDamage);
+		Effect->Modifiers.Add(ModifierInfo);
+	}
+	// 以后要加新 Debuff 就在这里续 else if。例如眩晕（教程的做法，见 AuraAttributeSet.cpp:226-232）：
+	// else if (DebuffTagPtr->MatchesTagExact(GameplayTags.My_Debuff_Stun))
+	// {
+	//     Effect->InheritableOwnedTagsContainer.AddTag(GameplayTags.My_Player_Block_CursorTrace);
+	//     Effect->InheritableOwnedTagsContainer.AddTag(GameplayTags.My_Player_Block_InputHeld);
+	//     Effect->InheritableOwnedTagsContainer.AddTag(GameplayTags.My_Player_Block_InputPressed);
+	//     Effect->InheritableOwnedTagsContainer.AddTag(GameplayTags.My_Player_Block_InputReleased);
+	// }
 
 	// ④ 造 Context + Spec 并应用
 	FGameplayEffectContextHandle Context = Props.SourceASC->MakeEffectContext(); // ← 必需

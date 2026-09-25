@@ -117,7 +117,7 @@ void AMyCharacter_Base::MulticastHandleDeath_Implementation(const FVector& Death
 	Weapon->SetSimulatePhysics(true);
 	Weapon->SetEnableGravity(true);
 	Weapon->SetCollisionEnabled(ECollisionEnabled::PhysicsOnly);
-	Weapon->AddImpulse(DeathImpulse * 0.1f, NAME_None, true);   // ★ 武器冲量（0.1 倍，因为轻）
+	Weapon->AddImpulse(DeathImpulse * 0.04f, NAME_None, true);   // ★ 武器冲量（0.1 倍，因为轻）
 	
 	GetMesh()->SetSimulatePhysics(true);
 	GetMesh()->SetEnableGravity(true);
