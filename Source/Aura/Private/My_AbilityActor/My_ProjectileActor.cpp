@@ -105,6 +105,9 @@ void AMy_ProjectileActor::Destroyed()
 		LoopingSoundComponent->Stop();
 	}
 	Super::Destroyed();
+
+	// 主动切断强引用
+	HomingTargetSceneComponent = nullptr;
 }
 
 void AMy_ProjectileActor::MulticastPlayImpactEffects_Implementation()

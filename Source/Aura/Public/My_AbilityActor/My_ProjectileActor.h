@@ -26,6 +26,11 @@ public:
 	UPROPERTY(BlueprintReadWrite, meta=(ExposeOnSpawn = true))
 	FMy_DamageEffectParams DamageEffectParams;
 
+	// 【强引用成员】用来保住虚拟追踪点组件，防止GC回收
+	// 当追踪地面时，新建的USceneComponent会存到这里，UPROPERTY标记提供强引用保护
+	UPROPERTY()
+	TObjectPtr<USceneComponent> HomingTargetSceneComponent;
+
 protected:
 	virtual void BeginPlay() override;
 

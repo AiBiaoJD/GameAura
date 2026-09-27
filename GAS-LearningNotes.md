@@ -53,6 +53,7 @@
 - [五十、UE 接口的 U 类与 I 类](#五十ue-接口的-u-类与-i-类)
 - [五十一、灼烧期间不播 HitReact：Activation Blocked Tags 机制](#五十一灼烧期间不播-hitreactactivation-blocked-tags-机制)
 - [五十二、三条链路总览：Debuff / DeathImpulse / Knockback](#五十二三条链路总览debuff--deathimpulse--knockback)
+- [五十三、FireBolt 多火球生成 + 追踪（Homing）](#五十三firebolt-多火球生成--追踪homing)
 
 ---
 
@@ -7120,3 +7121,259 @@ Knockback 的 Chance 没进 GE → 只能在调用 `ApplyDamageEffect` 之前判
 
 **`Die(const FVector&)` 之所以要带参数：让 `AttributeSet` 通过 `ICombatInterface` 调用，
 不 `Cast` 到任何具体角色类（同第 27 章「接口居中翻译」）。**
+
+---
+
+## 五十三、FireBolt 多火球生成 + 追踪（Homing）
+
+> 需求：一次施法发射**多枚**焰矢，呈**扇形均匀散开**，并且**每一枚都能自己追踪目标**。
+> 目标可能是**敌人 Actor**，也可能是**地面上的一个点**。
+
+### 53.1 拆成两个独立问题
+
+| 问题 | 本质 | 用到的机制 |
+|---|---|---|
+| **多火球** | 每次循环换一个**朝向** | `GetEvenSpreadRotators` + 循环 `SpawnActorDeferred` |
+| **追踪** | 给每枚弹指定一个**追踪目标组件** | `ProjectileMovement->HomingTargetComponent` |
+
+### 53.2 多火球：扇形均匀扩散
+
+**工具函数**（`My_AuraAbilitySystemLibrary.cpp`）：
+
+```cpp
+TArray<FRotator> UMy_AuraAbilitySystemLibrary::GetEvenSpreadRotators(
+    const FVector& Forward, const FVector& RotateAxis, float TotalSpreadAngle, int32 Count)
+{
+    TArray<FRotator> ResultRots;
+    if (Count <= 0) return ResultRots;
+
+    if (Count == 1)                      // ★ 必须特例：否则下面要除 (Count - 1) = 0
+    {
+        ResultRots.Add(Forward.Rotation());
+        return ResultRots;
+    }
+
+    for (int32 i = 0; i < Count; i++)
+    {
+        // 当前这一发相对 Forward 的偏移角
+        float CurrentAngle = (-TotalSpreadAngle / 2.f) + (TotalSpreadAngle * (float)i / (Count - 1));
+        // 以 Forward 为基准，绕 Axis 轴旋转
+        FVector Dir = Forward.RotateAngleAxis(CurrentAngle, RotateAxis);
+        ResultRots.Add(Dir.Rotation());
+    }
+    return ResultRots;
+}
+```
+
+**公式拆解**：
+
+```
+CurrentAngle = -总角度/2 + 总角度 × i/(Count-1)
+               └─起点─┘    └───────步长───────┘
+
+  从 -45° 均匀走到 +45°（SpawnSpread = 90）
+```
+
+**角度分配表**（`SpawnSpread = 90`，轴 = `FVector::UpVector` → 水平扇开）：
+
+| Count | 各发的角度 |
+|---|---|
+| 1 | 0°（特例） |
+| 2 | −45°, +45° |
+| 3 | −45°, 0°, +45° |
+| 4 | −45°, −15°, +15°, +45° |
+| 5 | −45°, −22.5°, 0°, +22.5°, +45° |
+
+> **注意 `(Count - 1)` 这个分母** —— 它保证**首尾正好落在 ±总角度/2 上**（而不是平分区间）。
+> 所以 `Count == 1` 会**除以 0**，必须单独处理（这段代码已经挡了）。
+>
+> 另外还有一个 `GetEvenSpreadDirections` 版本返回 `FVector`，逻辑完全一样，只是不转 `FRotator`。
+
+**火球数量**（`My_AuraFireBolt.cpp`）：
+```cpp
+NumProjectiles = FMath::Min(NumProjectiles, GetAbilityLevel());   // 每级多一发，但有上限
+```
+
+### 53.3 `SpawnActorDeferred`：为什么不能直接用 `SpawnActor`
+
+因为**有些东西必须在 `BeginPlay` 之前设好**：
+
+```cpp
+AMy_ProjectileActor* Projectile = GetWorld()->SpawnActorDeferred<AMy_ProjectileActor>(
+    ProjectileClass,
+    SpawnTransform,
+    GetOwningActorFromActorInfo(),                      // Owner
+    Cast<APawn>(GetOwningActorFromActorInfo()),         // Instigator
+    ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+
+Projectile->DamageEffectParams = MakeDamageEffectParamsFromClassDefaults(nullptr);  // ← 生成前设置
+Projectile->ProjectileMovement->bIsHomingProjectile = bLaunchHomingProjectile;
+Projectile->ProjectileMovement->HomingAccelerationMagnitude = FMath::FRandRange(...);
+Projectile->ProjectileMovement->HomingTargetComponent = ...;
+
+Projectile->FinishSpawning(SpawnTransform);             // ← 到这里 BeginPlay 才执行
+```
+
+| | `SpawnActor` | `SpawnActorDeferred` |
+|---|---|---|
+| 执行顺序 | Spawn → **立即 BeginPlay** → 返回指针 | Spawn → 返回指针（**未 BeginPlay**）→ 你设置属性 → `FinishSpawning` → BeginPlay |
+| 能改构造后的成员吗 | ✅ 能改，但 `BeginPlay` 已经跑过了 | ✅ **能在 BeginPlay 前设好** |
+| 用途 | 一般 Actor | **需要"出生前配置"的 Actor**（投射物、特效） |
+
+> 这也是 `DamageEffectParams` 为什么标 `meta=(ExposeOnSpawn = true)`（`My_ProjectileActor.h:26`）——
+> 它本来就是给 deferred spawn 用的。
+
+### 53.4 追踪：两种目标，两种接法
+
+```cpp
+if (HomingTarget && HomingTarget->Implements<UMy_CombatInterface>())
+{
+    // ① 目标是【敌人 Actor】→ 直接追它的根组件
+    Projectile->ProjectileMovement->HomingTargetComponent = HomingTarget->GetRootComponent();
+}
+else
+{
+    // ② 目标是【地面上的一个点】→ 造一个虚拟组件放在那里当追踪点
+    Projectile->HomingTargetSceneComponent = NewObject<USceneComponent>(Projectile);
+    Projectile->HomingTargetSceneComponent->SetWorldLocation(ProjectileTargetLocation);
+    Projectile->ProjectileMovement->HomingTargetComponent = Projectile->HomingTargetSceneComponent;
+}
+
+// ③ 开关 + 加速度（每发随机，让弹道略有差异）
+Projectile->ProjectileMovement->bIsHomingProjectile = bLaunchHomingProjectile;
+Projectile->ProjectileMovement->HomingAccelerationMagnitude = FMath::FRandRange(HomingAccelerationMin, HomingAccelerationMax);
+```
+
+**为什么 Actor 要检查 `Implements<UMy_CombatInterface>()`？**
+因为 `HomingTarget` 是从蓝图传进来的 `AActor*`，可能是地面点（用 `AActor*` 传的 **nullptr 之外的占位**），
+也可能是敌人。**用接口而不是 `Cast<AAuraEnemy>`** —— 和第 27/52 章同一个思路：
+「你是战斗单位，就能被追踪」。
+
+### 53.5 ★★ 最重要的一条：地面追踪点的 **GC 坑**
+
+`My_ProjectileActor.h`：
+
+```cpp
+// 【强引用成员】用来保住虚拟追踪点组件，防止GC回收
+UPROPERTY()
+TObjectPtr<USceneComponent> HomingTargetSceneComponent;
+```
+
+**为什么必须自己存一份？** —— 因为引擎那边的字段是个**弱指针**：
+
+`ProjectileMovementComponent.h:193`
+```cpp
+/** The component we are homing towards... */
+TWeakObjectPtr<USceneComponent> HomingTargetComponent;      // ← ★ 弱引用！
+```
+
+```
+NewObject<USceneComponent>(Projectile)        ← 造出来了，但谁"持有"它？
+        │
+        ▼
+ProjectileMovement->HomingTargetComponent     ← TWeakObjectPtr，不构成强引用
+        │                                         → 没人持有 → GC 时被回收！
+        ▼
+UPROPERTY() TObjectPtr<USceneComponent>
+    HomingTargetSceneComponent                ← ★ 这才是"强引用"，组件靠它活着
+```
+
+**症状**：不加这个 `UPROPERTY()`，火球飞一会儿就突然**不追踪了**（直线飞出去）——
+因为追踪点组件被 GC 悄悄回收了，`HomingTargetComponent` 变成 `nullptr`。
+**不报错、不崩溃，只是"有时候好像不灵"** —— 典型的 GC 问题特征。
+
+**销毁时主动切断**（`My_ProjectileActor.cpp` `Destroyed()`）：
+```cpp
+void AMy_ProjectileActor::Destroyed()
+{
+    ...
+    Super::Destroyed();
+
+    // 主动切断强引用
+    HomingTargetSceneComponent = nullptr;
+}
+```
+投射物都没了，追踪点也没用了 —— 早点断开放 GC 一条生路。
+
+> **规律**：**引擎字段是弱指针时，你必须自己用 `UPROPERTY()` 持有。
+> 凡是"我 `NewObject` 出来、交给别人的弱引用字段用"的东西，都要问一句：谁在保它？**
+
+### 53.6 Pitch 抬高：只在远距离才做
+
+```cpp
+// 先算距离
+float Dist = 0.f;
+if (HomingTarget && HomingTarget->Implements<UMy_CombatInterface>())
+{
+    Dist = FVector::Dist(SockLoc, HomingTarget->GetActorLocation());   // 敌人：用真实位置
+}
+else
+{
+    Dist = FVector::Dist(SockLoc, ProjectileTargetLocation);           // 地面点：用传入位置
+}
+
+// 只有【远距离】且 bOverridePitch 为 true 才抬高 Pitch
+if (bOverridePitch && Dist >= HomingMinDistance)      // HomingMinDistance = 300
+{
+    BaseRotation.Pitch = PitchOverride;
+}
+```
+
+| 距离 | Pitch | 效果 |
+|---|---|---|
+| `< 300`（近距离） | 不抬高，用原始瞄准角 | 近处不"抛"出去，直接打 |
+| `>= 300`（远距离） | 用 `PitchOverride`（如 45°） | 抛物线射出，配合追踪画出弧线 |
+
+> 注意**敌人目标用 `GetActorLocation()`** 而不是 `ProjectileTargetLocation` ——
+> 因为对 Actor 目标时，传进来的可能是"脚下的地面点"或光标点，用真实位置算距离才准。
+
+### 53.7 和 DeathImpulse / Knockback 的衔接
+
+```cpp
+Projectile->DamageEffectParams = MakeDamageEffectParamsFromClassDefaults(nullptr);
+                                                                        // ↑ 注意是 nullptr
+```
+
+**投射物传 `nullptr`** → `if (IsValid(TargetActor))` 不成立 → 第 52 章里那段
+"近战默认方向计算"**不执行** → `Params.DeathImpulse` / `Params.Knockback` 保持 `(0,0,0)`。
+
+**这是对的**：投射物的方向和击退判定要等**撞到人的那一刻**才知道
+（`My_ProjectileActor.cpp:73 / 76`），提前算没意义。
+
+```
+近战：参数生成时就知道目标 → 当场算方向 + 掷击退骰
+投射物：参数生成时还不知道撞谁 → 等 OnSphereOverlap 再算
+```
+
+### 53.8 文件 ↔ 函数 表
+
+| 文件 | 函数/成员 | 角色 |
+|---|---|---|
+| `My_AuraFireBolt.h` | `SpawnSpread` | 扇形总角度（90°） |
+| 同上 | `bLaunchHomingProjectile` / `HomingAccelerationMin·Max` | 追踪开关 + 加速度随机范围 |
+| 同上 | `HomingMinDistance` | 超过这个距离才抬高 Pitch（300） |
+| `My_AuraFireBolt.cpp` | `SpawnProjectiles` | **主流程**：算朝向 → 循环 DeferredSpawn → 配追踪 → FinishSpawning |
+| `My_AuraProjectileSpell.h` | `NumProjectiles` | 火球数量上限（5） |
+| `My_AuraAbilitySystemLibrary.cpp` | `GetEvenSpreadRotators` / `GetEvenSpreadDirections` | **扇形均匀角度**（纯函数工具） |
+| `My_ProjectileActor.h` | `HomingTargetSceneComponent` | **★ 追踪点组件的强引用**（防 GC） |
+| `My_ProjectileActor.cpp` | `Destroyed` | 主动切断强引用 |
+| 同上 | `OnSphereOverlap` | 撞人时算 `DeathImpulse` / 掷 `Knockback` 骰（第 52 章） |
+
+### 53.9 一句话总结
+
+**多火球 = 把"一个朝向"变成"一组均匀朝向"** ——
+`GetEvenSpreadRotators` 用 `-总角度/2 + 总角度 × i/(Count-1)` 从 −45° 走到 +45°，
+`Count==1` 要特例（分母是 `Count-1`）。
+
+**追踪 = 给每枚弹的 `ProjectileMovement->HomingTargetComponent` 指定一个组件** ——
+敌人直接给 `GetRootComponent()`；地面点要**自己 `NewObject` 一个 `USceneComponent`**。
+
+**★ 地面点那个组件必须用 `UPROPERTY() TObjectPtr<USceneComponent>` 自己持有** ——
+因为 `HomingTargetComponent` 是 `TWeakObjectPtr`（`ProjectileMovementComponent.h:193`），
+**不构成强引用**，不自己保就会被 GC 回收，表现为"飞一会儿突然不追踪了"，且不报错。
+
+**发射用 `SpawnActorDeferred` + `FinishSpawning`** —— 因为 `DamageEffectParams`、追踪目标
+都必须在 `BeginPlay` 之前设好。
+
+**给投射物传 `MakeDamageEffectParamsFromClassDefaults(nullptr)`** ——
+方向和击退骰留到撞人时再算（`OnSphereOverlap`），近战则在参数生成时就算。

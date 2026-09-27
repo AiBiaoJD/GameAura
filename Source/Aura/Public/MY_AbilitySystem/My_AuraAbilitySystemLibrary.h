@@ -100,7 +100,7 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "My_AuraAbilitySystemLibrary|My_GameplayEffects")
 	static void SetDeathImpulse(UPARAM(ref) FGameplayEffectContextHandle& EffectContextHandle, FVector InDeathImpulse);
-	
+
 	UFUNCTION(BlueprintCallable, Category = "My_AuraAbilitySystemLibrary|My_GameplayEffects")
 	static void SetKnockback(UPARAM(ref) FGameplayEffectContextHandle& EffectContextHandle, FVector InKnockback);
 	// Attack Part: Get Actor from sphere
@@ -116,4 +116,13 @@ public:
 	// 使用FMy_DamageEffectParams参数赋予目标Effect
 	UFUNCTION(BlueprintCallable, Category = "My_AuraAbilitySystemLibrary|My_DamageEffect")
 	static FGameplayEffectContextHandle ApplyDamageEffect(const FMy_DamageEffectParams& Params);
+
+
+	// 均匀间隔的一组旋转朝向
+	UFUNCTION(BlueprintCallable, Category="Aura|Math")
+	static TArray<FRotator> GetEvenSpreadRotators(const FVector& Forward, const FVector& RotateAxis, float TotalSpreadAngle, int32 Count);
+
+	// 经过旋转得到的均匀方向向量
+	UFUNCTION(BlueprintCallable, Category="Aura|Math")
+	static TArray<FVector> GetEvenSpreadDirections(const FVector& Forward, const FVector& RotateAxis, float TotalSpreadAngle, int32 Count);
 };

@@ -132,7 +132,7 @@ FGameplayEffectContextHandle UMy_AuraAbilitySystemLibrary::ApplyDamageEffect(con
 	EffectContextHandle.AddSourceObject(SourceAvatarActor);
 	SetDeathImpulse(EffectContextHandle, Params.DeathImpulse);
 	SetKnockback(EffectContextHandle, Params.Knockback);
-	
+
 	FGameplayEffectSpecHandle EffectSpecHandle = Params.SourceASC->MakeOutgoingSpec(Params.DamageGameplayEffectClass, Params.AbilityLevel, EffectContextHandle);
 	UAbilitySystemBlueprintLibrary::AssignTagSetByCallerMagnitude(EffectSpecHandle, Params.DamageType, Params.BaseDamage);
 	UAbilitySystemBlueprintLibrary::AssignTagSetByCallerMagnitude(EffectSpecHandle, GameplayTags.My_Debuff_Chance, Params.DebuffChance);
@@ -351,4 +351,49 @@ bool UMy_AuraAbilitySystemLibrary::IsNotFriend(AActor* FirstActor, AActor* Secon
 	const bool BothAreEnemy = FirstActor->ActorHasTag("Enemy") && SecondActor->ActorHasTag("Enemy");
 	const bool Friends = BothArePlayer || BothAreEnemy;
 	return !Friends;
+}
+
+TArray<FRotator> UMy_AuraAbilitySystemLibrary::GetEvenSpreadRotators(const FVector& Forward, const FVector& RotateAxis, float TotalSpreadAngle, int32 Count)
+{
+	TArray<FRotator> ResultRots;
+	if (Count <= 0) return ResultRots;
+
+	if (Count == 1)
+	{
+		ResultRots.Add(Forward.Rotation());
+		return ResultRots;
+	}
+
+	for (int32 i = 0; i < Count; i++)
+	{
+		// 计算当前这一发相对于Forward的偏移角度
+		float CurrentAngle = (-TotalSpreadAngle / 2.f) + (TotalSpreadAngle * (float)i / (Count - 1));
+		// 以Forward为基准，绕Axis轴旋转得到方向
+		FVector Dir = Forward.RotateAngleAxis(CurrentAngle, RotateAxis);
+		ResultRots.Add(Dir.Rotation());
+	}
+	return ResultRots;
+}
+
+
+TArray<FVector> UMy_AuraAbilitySystemLibrary::GetEvenSpreadDirections(const FVector& Forward, const FVector& RotateAxis, float TotalSpreadAngle, int32 Count)
+{
+	TArray<FVector> ResultDirs;
+	if (Count <= 0) return ResultDirs;
+
+	if (Count == 1)
+	{
+		ResultDirs.Add(Forward);
+		return ResultDirs;
+	}
+
+	for (int32 i = 0; i < Count; i++)
+	{
+		// 计算当前这一发相对于Forward的偏移角度
+		float CurrentAngle = (-TotalSpreadAngle / 2.f) + (TotalSpreadAngle * (float)i / (Count - 1));
+		// 以Forward为基准，绕Axis轴旋转得到方向
+		FVector Dir = Forward.RotateAngleAxis(CurrentAngle, RotateAxis);
+		ResultDirs.Add(Dir);
+	}
+	return ResultDirs;
 }
