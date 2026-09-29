@@ -11,6 +11,7 @@
 #include "My_Aura_Controller.generated.h"
 
 
+class UNiagaraSystem;
 class UDamageTextComponent;
 class UMy_DamageTextComponent;
 class IMy_Enemy_Interface;
@@ -87,7 +88,9 @@ private:
 	float AutoRunningAcceptanceRadius = 50.0f; //自动寻路停止距离
 	UPROPERTY(VisibleAnywhere)
 	TObjectPtr<USplineComponent> Spline;
-
+	UPROPERTY(EditDefaultsOnly)
+	TObjectPtr<UNiagaraSystem> ClickedNiagaraSystem;
+	
 	void AutoRun();
 
 	/* Damage Text Show */

@@ -38,6 +38,7 @@ public:
 	bool bStartupAbilityGiven = false;
 
 	// PlayerController激活能力
+	void AbilityInputTagPressed(const FGameplayTag InputTag);
 	void AbilityInputTagHeld(const FGameplayTag InputTag);
 	void AbilityInputTagReleased(const FGameplayTag InputTag);
 

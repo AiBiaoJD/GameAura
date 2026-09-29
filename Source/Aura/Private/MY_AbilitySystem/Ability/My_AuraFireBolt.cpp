@@ -85,21 +85,21 @@ void UMy_AuraFireBolt::SpawnProjectiles(const FVector& ProjectileTargetLocation,
 		Projectile->DamageEffectParams = MakeDamageEffectParamsFromClassDefaults(nullptr);
 
 		// ========== 远近全部开启追踪 ==========
-		if (HomingTarget && HomingTarget->Implements<UMy_CombatInterface>())
-		{
-			// 追踪敌人根组件
-			Projectile->ProjectileMovement->HomingTargetComponent = HomingTarget->GetRootComponent();
-		}
-		else
-		{
-			// 地面目标：创建虚拟SceneComponent作为追踪点
-			Projectile->HomingTargetSceneComponent = NewObject<USceneComponent>(Projectile);
-			Projectile->HomingTargetSceneComponent->SetWorldLocation(ProjectileTargetLocation);
-			Projectile->ProjectileMovement->HomingTargetComponent = Projectile->HomingTargetSceneComponent;
-		}
-		// 开启追踪 + 设置追踪加速度
-		Projectile->ProjectileMovement->bIsHomingProjectile = bLaunchHomingProjectile;
-		Projectile->ProjectileMovement->HomingAccelerationMagnitude = FMath::FRandRange(HomingAccelerationMin, HomingAccelerationMax);
+		// ★ 这里【不再直接设 ProjectileMovement】——原因见 My_ProjectileActor.h 里那段说明：
+		//   UProjectileMovementComponent 一个属性都不复制，而本函数开头就
+		//   if (!HasAuthority()) return; → 客户端根本收不到追踪设置 → 那边是直线飞。
+		//
+		//   现在改成：只把"追踪所需要的信息"交给投射物（这些是复制属性），
+		//             由 AMy_ProjectileActor::ApplyHomingSetup() 在两端各自组装。
+		const bool bTrackActor = HomingTarget && HomingTarget->Implements<UMy_CombatInterface>();
+
+		Projectile->HomingTargetActor    = bTrackActor ? HomingTarget : nullptr;
+		Projectile->HomingTargetLocation = bTrackActor ? FVector::ZeroVector : ProjectileTargetLocation;
+		Projectile->bHomingEnabled       = bLaunchHomingProjectile;
+
+		// ★ 加速度是随机的（FRandRange）：必须在【服务器这里骰一次】，然后把结果复制过去。
+		//   如果让客户端自己再骰一次，两端得到的值不同 → 轨迹还是对不上。
+		Projectile->HomingAcceleration   = FMath::FRandRange(HomingAccelerationMin, HomingAccelerationMax);
 
 		Projectile->FinishSpawning(SpawnTransform);
 	}

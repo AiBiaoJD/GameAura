@@ -296,6 +296,31 @@ void FMy_AuraGameplayTags::InitializeNativeGameplayTags()
 		FString("Montage Attack 4")
 	);
 
+	/*
+	* Player Tag
+	*/
+	GameplayTagsInstance.My_Player_Block_InputPressed = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("My_Player.Block.InputPressed"),
+		FString("Block Input Press Callback For Input")
+	);
+	GameplayTagsInstance.My_Player_Block_InputHeld = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("My_Player.Block.InputHeld"),
+		FString("Block Input Held Callback For Input")
+	);
+	GameplayTagsInstance.My_Player_Block_InputReleased = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("My_Player.Block.InputReleased"),
+		FString("Block Input Release Callback For Input")
+	);
+	GameplayTagsInstance.My_Player_Block_CursorTrace = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("My_Player.Block.CursorTrace"),
+		FString("Block Tracing Under Cursor")
+	);
+	GameplayTagsInstance.My_Player_Status_ShockLoop = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("My_Player.Status.ShockLoop"),
+		FString("Be ShockLoop Status When using Electrocute Ability")
+	);
+
+	
 	// Map: DamageType To  Resistance
 	GameplayTagsInstance.DamageToResistance.Add(GameplayTagsInstance.My_DamageType_Fire, GameplayTagsInstance.My_Attribute_Secondary_Resistance_Fire);
 	GameplayTagsInstance.DamageToResistance.Add(GameplayTagsInstance.My_DamageType_Lighting, GameplayTagsInstance.My_Attribute_Secondary_Resistance_Lighting);

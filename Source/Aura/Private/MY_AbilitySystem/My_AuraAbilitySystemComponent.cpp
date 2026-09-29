@@ -81,10 +81,100 @@ void UMy_AuraAbilitySystemComponent::OnRep_ActivateAbilities()
 }
 
 
-/*
- * 当PlayerController 按下/放开 按键会激活下面的函数
- * 根据inputTag激活对应的能力
- */
+/* ==========================================================================================
+ * 输入 → 能力 的三个入口：Pressed / Held / Released
+ * ------------------------------------------------------------------------------------------
+ * 【谁在什么时候调】（绑定见 My_AuraEnhancedInputComponent / AuraInputComponent::BindAbilityActions）
+ *     ETriggerEvent::Started   → AbilityInputTagPressed     按下那一瞬间，只调【一次】
+ *     ETriggerEvent::Triggered → AbilityInputTagHeld        按住期间，【每帧】调一次
+ *     ETriggerEvent::Completed → AbilityInputTagReleased    松开那一瞬间，只调【一次】
+ *
+ * 【为什么"激活"写在 Held 里，而不是 Pressed 里】
+ *     Pressed 只有一次机会。而技能激活【可能失败】，原因大多是【暂时】的：
+ *       冷却还没走完 / 蓝不够 / 被 BlockedTags 挡住 / 正在播别的技能
+ *     写在 Held 里 = 每帧重试一次 → "按住不放，冷却一结束就自动放出来"。
+ *     `if (!IsActive())` 这个守卫保证技能进入激活后不会重复激活。
+ *
+ * 【底层就两个机制，一定要分清 —— 它们是两回事】
+ *
+ *   ① 标记 Spec.InputPressed（电平 / 状态："按键现在按着没有"）
+ *        AbilitySpecInputPressed  → true
+ *        AbilitySpecInputReleased → false
+ *      谁读：WaitInputPress / WaitInputRelease 的 bTestAlreadyXxx 检测
+ *            （对应蓝图节点上的 Test Already Pressed / Test Already Released 勾选框）
+ *      ★ 注意：Task 只在【自己 Activate() 的那一刻】读一次这个标记（快照），之后不再读！
+ *      解决："Task 开始等的时候，按键【已经】是按住状态了"
+ *
+ *   ② 事件 InvokeReplicatedEvent（边沿 / 一次性："刚刚按/松了一下"）
+ *        把 InputPressed / InputReleased 广播给注册了委托的 AbilityTask
+ *        （AbilityTask_WaitInputPress / _WaitInputRelease 内部监听的就是它）
+ *      解决："Task 开始等【之后】，按键才按/松"
+ *
+ * 【Task 内部的两条路】（看 AbilityTask_WaitInputPress::Activate 即可确认）
+ *     Task 创建时 → 勾了 bTestAlreadyXxx → 先读一次 ① 的标记
+ *                      命中 → 立刻回调并 return（不注册委托）
+ *                      没命中 → 继续下面
+ *                 → 注册委托，等 ② 的事件来触发
+ *
+ * 【为什么 Held 里【不】广播事件】
+ *     InvokeReplicatedEvent 是"一次性事件"语义，而 Held 每帧调用：
+ *       - 每帧广播 → WaitInputPress 的委托每帧触发一次，逻辑全乱
+ *       - 其中的 ServerSetReplicatedEvent 是 Reliable RPC，每帧发一个会把网络打爆
+ *     "按住"这个【持续状态】已经由 ① 的标记表达了，不需要重复发事件。
+ *
+ * 【Pressed 里那句广播到底什么时候有用】
+ *     首次按下时（Pressed → 下一帧 Held 才激活），IsActive() 为 false，广播【不执行】——
+ *     这是正常的，因为技能激活时按键已经按住，靠 ① 的标记就够了（引擎头文件原话：
+ *     "Will return 0 if input was already down"）。
+ *     它真正生效的场景是【按下发生在技能激活之后】：
+ *       - 技能被别的方式激活（被动 / 别的技能 / GameplayEvent）之后，才等玩家按一下
+ *       - 技能还活着时玩家松开再按（二段输入）
+ *     这两种情况下 Held 帮不上忙（它从不广播），只有 Pressed 这一条路能通知到 Task。
+ *
+ * 【⚠️ 已知缺失】教程在三个函数里都加了 FScopedAbilityListLock（防止遍历期间列表被改，
+ *     Held 里调 TryActivateAbility 尤其危险）。目前本文件这三处还没有，恢复时记得补：
+ *         FScopedAbilityListLock ActiveScopeLock(*this);
+ * ========================================================================================== */
+
+/* 【按下瞬间，只调一次】
+ * 职责：① 记下"按键按住了"（标记 = true）
+ *       ② 如果技能【已经在跑】，把"又按了一次"这个事件广播出去 */
+void UMy_AuraAbilitySystemComponent::AbilityInputTagPressed(const FGameplayTag InputTag)
+{
+	if (!InputTag.IsValid()) return;
+
+	for (FGameplayAbilitySpec& AbilitySpec : GetActivatableAbilities())
+	{
+		// 用 HasTagExact 精确匹配：DynamicAbilityTags 是技能被赋予时打到 Spec 上的输入 Tag
+		// （同一个 InputTag 可能挂着多个技能，所以这里是循环处理全部匹配项）
+		if (AbilitySpec.DynamicAbilityTags.HasTagExact(InputTag))
+		{
+			// 引擎内部做【两件事】（见 AbilitySystemComponent_Abilities.cpp:2575-2594）：
+			//   ① Spec.InputPressed = true  —— 标记，给 WaitInputXxx 的 bTestAlreadyXxx 读
+			//   ② 若技能已激活 → 转发 InputPressed() 钩子给技能实例
+			//      （UGameplayAbility::InputPressed 默认是【空实现】，留给 C++ 子类 override；
+			//        引擎自己的 UGameplayAbility_CharacterJump 就 override 了 InputReleased
+			//        —— 松开跳跃键就 CancelAbility，实现"可变高度跳跃"）
+			AbilitySpecInputPressed(AbilitySpec);
+
+			if (AbilitySpec.IsActive())
+			{
+				// 只有"技能已经在跑"时才广播：告诉正在等输入的 AbilityTask"玩家又按了一次"。
+				// 首次按下时技能还没激活，走不到这里 —— 那一次靠上面那句【标记】兜住。
+				// 引擎原注释：This is not replicated here. If someone is listening,
+				//             they may replicate the InputPressed event to the server.
+				InvokeReplicatedEvent(EAbilityGenericReplicatedEvent::InputPressed, AbilitySpec.Handle, AbilitySpec.ActivationInfo.GetActivationPredictionKey());
+			}
+		}
+	}
+}
+
+
+/* 【按住期间，每帧调一次】
+ * 职责：① 每帧同步"按键按住了"（标记 = true）
+ *       ② 每帧把"按住中"转发给技能实例的 InputPressed() 钩子（技能激活之后才开始真正转发）
+ *       ③ 技能没激活就尝试激活 —— 失败不用管，下一帧自动再试
+ * 注意：这里【不广播事件】—— 原因见上方说明 */
 void UMy_AuraAbilitySystemComponent::AbilityInputTagHeld(const FGameplayTag InputTag)
 {
 	if (!InputTag.IsValid()) return;
@@ -93,7 +183,15 @@ void UMy_AuraAbilitySystemComponent::AbilityInputTagHeld(const FGameplayTag Inpu
 	{
 		if (AbilitySpec.DynamicAbilityTags.HasTagExact(InputTag))
 		{
+			// ① 标记（其实 Pressed 那一帧已经设过了，这句是"每帧维持一次状态"）
+			//    技能激活之后，它还会顺带把 InputPressed() 钩子转发给技能实例 ——
+			//    蓄力/持续型技能就是靠这个拿到"每帧按住"的信号。
+			//    （本项目目前没有任何 C++ 技能 override 这个钩子，所以这部分实际上是空转）
 			AbilitySpecInputPressed(AbilitySpec);
+
+			// ② 没激活就试着激活。失败不需要处理：
+			//    冷却中 / 蓝不够 / 被 Tag 挡 —— 下一帧会自动重试，冷却一结束就放出来。
+			//    ★ 这就是"激活写在 Held 而不是 Pressed"的意义所在。
 			if (!AbilitySpec.IsActive())
 			{
 				TryActivateAbility(AbilitySpec.Handle);
@@ -102,15 +200,30 @@ void UMy_AuraAbilitySystemComponent::AbilityInputTagHeld(const FGameplayTag Inpu
 	}
 }
 
+/* 【松开瞬间，只调一次】—— ★ 把标记设回 false 的是这里，不是 Held
+ * 职责：① 标记 = false
+ *       ② 转发 InputReleased() 钩子给技能实例
+ *       ③ 广播 InputReleased 事件 —— 按住型技能（如电击）"松手生效"全靠它 */
 void UMy_AuraAbilitySystemComponent::AbilityInputTagReleased(const FGameplayTag InputTag)
 {
 	if (!InputTag.IsValid()) return;
 
 	for (FGameplayAbilitySpec& AbilitySpec : GetActivatableAbilities())
 	{
-		if (AbilitySpec.DynamicAbilityTags.HasTagExact(InputTag))
+		// 注意比 Pressed/Held 多了一个 IsActive() 条件：
+		//   只有"技能还活着"才有必要告诉它"松手了"。
+		//   瞬发技能（如火球）松手时早已结束，整段都不会进来 —— 标记也不用改，
+		//   反正下次按下会重新设成 true。
+		if (AbilitySpec.DynamicAbilityTags.HasTagExact(InputTag) && AbilitySpec.IsActive())
 		{
+			// ① 标记 = false（给 WaitInputXxx 的 bTestAlreadyXxx 用）
+			//    ② 同时转发 InputReleased() 钩子给技能实例（C++ override 用）
+			//    （注：这个函数本身【不广播任何委托】，广播在下面那句）
 			AbilitySpecInputReleased(AbilitySpec);
+
+			// ③ 广播"松开"事件 —— 这是 WaitInputRelease 的【唯一】触发途径。
+			//    按住型技能（电击等）松手就生效，靠的就是这一句。
+			InvokeReplicatedEvent(EAbilityGenericReplicatedEvent::InputReleased, AbilitySpec.Handle, AbilitySpec.ActivationInfo.GetActivationPredictionKey());
 		}
 	}
 }

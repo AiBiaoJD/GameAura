@@ -8,6 +8,7 @@
 #include "My_AuraGamePlayTags_Singleton.h"
 #include "NavigationPath.h"
 #include "NavigationSystem.h"
+#include "NiagaraFunctionLibrary.h"
 #include "GameFramework/Character.h"
 #include "My_Input/My_AuraEnhancedInputComponent.h"
 #include "My_Interraction/My_Enemy_Interface.h"
@@ -30,7 +31,7 @@ void AMy_Aura_Controller::ClientShowDamageNum_Implementation(float DamageAmount,
 {
 	UE_LOG(LogTemp, Warning, TEXT("4. Client RPC actually executing on client"));
 	// 防御性检查：确保目标有效、组件类有效，且是本地客户端
-	if (IsValid(TargetCharacter) && DamageTextComponentClass && IsLocalController()) 
+	if (IsValid(TargetCharacter) && DamageTextComponentClass && IsLocalController())
 	{
 		UMy_DamageTextComponent* DamageText = NewObject<UMy_DamageTextComponent>(TargetCharacter, DamageTextComponentClass);
 		DamageText->RegisterComponent(); //必须注册显示Widget
@@ -64,6 +65,15 @@ void AMy_Aura_Controller::AutoRun()
 //检查鼠标点击物体的一些函数
 void AMy_Aura_Controller::CursorTrace()
 {
+	if (GetAuraASC() && GetAuraASC()->HasMatchingGameplayTag(FMy_AuraGameplayTags::GetInstance().My_Player_Block_CursorTrace))
+	{
+		if (LastActor) LastActor->UnHighlightActor();
+		if (ThisActor) ThisActor->UnHighlightActor();
+		LastActor = nullptr;
+		ThisActor = nullptr;
+		return;
+	}
+
 	GetHitResultUnderCursor(ECC_Visibility, false, CursorHit);
 	if (!CursorHit.bBlockingHit) return;
 
@@ -121,6 +131,10 @@ void AMy_Aura_Controller::SetupInputComponent()
 
 void AMy_Aura_Controller::Move(const FInputActionValue& InputActionValue)
 {
+	if (GetAuraASC() && GetAuraASC()->HasMatchingGameplayTag(FMy_AuraGameplayTags::GetInstance().My_Player_Block_InputPressed))
+	{
+		return;
+	}
 	bAutoRunning = false;
 	const FVector2D InputAxisVector = InputActionValue.Get<FVector2D>();
 
@@ -142,16 +156,26 @@ void AMy_Aura_Controller::Move(const FInputActionValue& InputActionValue)
 
 void AMy_Aura_Controller::AbilityInputTagPressed(FGameplayTag InputTag)
 {
+	if (GetAuraASC() && GetAuraASC()->HasMatchingGameplayTag(FMy_AuraGameplayTags::GetInstance().My_Player_Block_InputPressed))
+	{
+		return;
+	}
 	if (InputTag.MatchesTagExact(FMy_AuraGameplayTags::GetInstance().My_InputTag_LMB))
 	{
-		bTargeting = ThisActor ? true : false;  // 废弃：改为LMB统一攻击
+		bTargeting = ThisActor ? true : false; // 废弃：改为LMB统一攻击
 		bAutoRunning = false;
 	}
+	if (GetAuraASC()) GetAuraASC()->AbilityInputTagPressed(InputTag);
 }
 
 
 void AMy_Aura_Controller::AbilityInputTagHeld(FGameplayTag InputTag)
 {
+	if (GetAuraASC() && GetAuraASC()->HasMatchingGameplayTag(FMy_AuraGameplayTags::GetInstance().My_Player_Block_InputHeld))
+	{
+		return;
+	}
+
 	// 不是左键点击
 	if (!InputTag.MatchesTagExact(FMy_AuraGameplayTags::GetInstance().My_InputTag_LMB))
 	{
@@ -181,14 +205,16 @@ void AMy_Aura_Controller::AbilityInputTagHeld(FGameplayTag InputTag)
 
 void AMy_Aura_Controller::AbilityInputTagReleased(FGameplayTag InputTag)
 {
+	if (GetAuraASC() && GetAuraASC()->HasMatchingGameplayTag(FMy_AuraGameplayTags::GetInstance().My_Player_Block_InputReleased))
+	{
+		return;
+	}
 	// 不是左键点击
 	if (!InputTag.MatchesTagExact(FMy_AuraGameplayTags::GetInstance().My_InputTag_LMB))
 	{
 		if (GetAuraASC()) GetAuraASC()->AbilityInputTagReleased(InputTag);
 		return;
 	}
-
-	// if (GetAuraASC()) GetAuraASC()->AbilityInputTagReleased(InputTag); // 【测试注释：恢复点击移动】
 
 	// 左键松手不是点击敌人,也不是按Shift — 点击移动寻路 【废弃：改为LMB统一攻击】
 	if (!bTargeting && !bShiftKeyDown)
@@ -199,20 +225,20 @@ void AMy_Aura_Controller::AbilityInputTagReleased(FGameplayTag InputTag)
 			// 获取导航系统
 			UNavigationSystemV1* NavSystem = FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld());
 			if (!NavSystem) return;
-	
+
 			// 查找路径
 			if (UNavigationPath* NavigationPath = UNavigationSystemV1::FindPathToLocationSynchronously(this, ControlledPawn->GetActorLocation(), CachedDestination))
 			{
 				// 清除旧的 Spline 点
 				Spline->ClearSplinePoints();
-	
+
 				// 遍历路径点并添加到 Spline
 				for (const FVector& PathLoc : NavigationPath->PathPoints)
 				{
 					Spline->AddSplinePoint(PathLoc, ESplineCoordinateSpace::World);
 					//DrawDebugSphere(GetWorld(), PathLoc, 8.f, 8.f, FColor::Blue, false, 1.0f); // 绘制路径点
 				}
-	
+
 				// 更新目标点为路径的最后一个点
 				if (NavigationPath->PathPoints.Num() > 0)
 				{
@@ -223,6 +249,10 @@ void AMy_Aura_Controller::AbilityInputTagReleased(FGameplayTag InputTag)
 			else
 			{
 				UE_LOG(LogTemp, Warning, TEXT("No valid path found!"));
+			}
+			if (GetAuraASC() && !GetAuraASC()->HasMatchingGameplayTag(FMy_AuraGameplayTags::GetInstance().My_Player_Block_InputPressed))
+			{
+				UNiagaraFunctionLibrary::SpawnSystemAtLocation(this, ClickedNiagaraSystem, CachedDestination);
 			}
 		}
 		FollowTime = 0.0f;

@@ -54,6 +54,8 @@
 - [五十一、灼烧期间不播 HitReact：Activation Blocked Tags 机制](#五十一灼烧期间不播-hitreactactivation-blocked-tags-机制)
 - [五十二、三条链路总览：Debuff / DeathImpulse / Knockback](#五十二三条链路总览debuff--deathimpulse--knockback)
 - [五十三、FireBolt 多火球生成 + 追踪（Homing）](#五十三firebolt-多火球生成--追踪homing)
+- [五十四、网络复制实战：从「服务器对、客户端不对」到 Homing 修复](#五十四网络复制实战从服务器对客户端不对到-homing-修复)
+- [五十五、ASC 输入三入口（Pressed / Held / Released）与任务回调时序](#五十五asc-输入三入口pressed--held--released与任务回调时序)
 
 ---
 
@@ -7377,3 +7379,603 @@ Projectile->DamageEffectParams = MakeDamageEffectParamsFromClassDefaults(nullptr
 
 **给投射物传 `MakeDamageEffectParamsFromClassDefaults(nullptr)`** ——
 方向和击退骰留到撞人时再算（`OnSphereOverlap`），近战则在参数生成时就算。
+
+---
+
+## 五十四、网络复制实战：从「服务器对、客户端不对」到 Homing 修复
+
+> **症状**：ListenServer 下服务器自己射的火球正常拐弯追踪，
+> 但**客户端看到的火球是一条直线**；而且"服务器明明击中了，客户端看着像没击中"
+> —— **伤害是对的，表现是错的**。
+>
+> 这一章把定位过程和最终方案完整记下来，这类问题以后还会遇到。
+
+### 54.1 ★ 三步定位法（通用套路）
+
+遇到「服务器对、客户端不对」，按顺序问三个问题：
+
+| 步骤 | 问自己 | 这次的结果 |
+|---|---|---|
+| **① 这段代码两端都执行吗？** | 有没有 `HasAuthority()` 提前 return？ | ✅ `SpawnProjectiles` 开头就 `if (!HasAuthority()) return;` |
+| **② 我改的那个东西是 `Replicated` 属性吗？** | 找 `UPROPERTY(Replicated)` / `DOREPLIFETIME` | ❌ `UProjectileMovementComponent` **一个属性都不复制** |
+| **③ 里面有没有"随机 / 算出来"的值？** | `FRandRange` / `RandRange` / 时间戳 / 指针 | ✅ `FRandRange` → 必须服务器算一次再复制 |
+
+**三条都中 = 就是这个 bug。**
+
+### 54.2 根因 ①：`UProjectileMovementComponent` 一个属性都不复制
+
+引擎 `ProjectileMovementComponent.cpp` **没有重写 `GetLifetimeReplicatedProps`**
+→ 组件上所有属性都是**纯本地**的：
+
+```cpp
+// ProjectileMovementComponent.h
+:84   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Homing)
+      uint8 bIsHomingProjectile:1;                             // ← 没有 Replicated
+:186  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Homing)
+      float HomingAccelerationMagnitude;                       // ← 没有 Replicated
+:193  UPROPERTY(VisibleInstanceOnly, BlueprintReadWrite, Category=Homing)
+      TWeakObjectPtr<USceneComponent> HomingTargetComponent;   // ← 没 Replicated，还是弱指针
+```
+
+而追踪设置只在服务器的 `SpawnProjectiles` 里做过（客户端开局就 `return`）
+→ 客户端那份投射物：`bIsHomingProjectile = false`、`HomingTargetComponent = nullptr` → **直线飞**。
+
+### 54.3 根因 ②：`bReplicates` 和 `bReplicateMovement` 是【两层独立开关】
+
+| 层级 | 开关 | 管什么 |
+|---|---|---|
+| **① Actor 级** | `bReplicates = true` | 这个 **Actor** 会不会被复制到客户端（**客户端能不能看到它**） |
+| **② 属性级** | `UPROPERTY(Replicated)` + `DOREPLIFETIME` | 这个**属性**会不会跟着走 |
+
+```
+bReplicates = false                        → 客户端【根本看不到】火球
+bReplicates = true，属性没标 Replicated      → 客户端看得到火球，但属性全是默认值  ← ★ 原来的状态
+bReplicates = true，属性标了 Replicated      → 客户端看得到 + 拿到正确数据          ← ★ 修好后
+```
+
+引擎里 `AActor::InitializeDefaults()`（`Actor.cpp:116-136`）只设了 `bReplicates = false`，
+**通篇没有给 `bReplicateMovement` 赋默认值**（`Actor.h:251` 的声明也没有初始化器）
+→ 位域默认 0 = **false**。
+
+> ★ **`bReplicates = true` 只让 Actor 被创建出来，并不代表它的"位置 / 属性"会同步。**
+
+（`bReplicateMovement` 是"位置同步"的开关，方案 A 是"客户端本地也模拟"，**两者不要同时开**，会打架抖动。）
+
+### 54.4 方案 A：复制「能重建状态的信息」，而不是「重建好的对象」
+
+**核心思想：**
+
+```
+❌ 服务器把对象调好，指望复制过去      → 对象本身不可复制 → 失败
+✅ 复制"能重建状态的数据" → 两端跑同一段组装逻辑 → 两端状态一致
+```
+
+**`My_ProjectileActor.h` 加 4 个复制属性：**
+
+```cpp
+	UPROPERTY(ReplicatedUsing = OnRep_HomingSetup) TObjectPtr<AActor> HomingTargetActor;  // 敌人
+	UPROPERTY(ReplicatedUsing = OnRep_HomingSetup) FVector           HomingTargetLocation; // 地面点
+	UPROPERTY(ReplicatedUsing = OnRep_HomingSetup) bool              bHomingEnabled;
+	UPROPERTY(ReplicatedUsing = OnRep_HomingSetup) float             HomingAcceleration;  // ★ 服务器骰好的值
+```
+
+**`GetLifetimeReplicatedProps` 里注册这 4 个（`DOREPLIFETIME`）。**
+
+**`ApplyHomingSetup()` —— 幂等的组装函数：**
+
+```cpp
+void AMy_ProjectileActor::ApplyHomingSetup()
+{
+	if (!ProjectileMovement) return;
+
+	USceneComponent* TargetComp = nullptr;
+	if (IsValid(HomingTargetActor))
+	{
+		TargetComp = HomingTargetActor->GetRootComponent();        // ① 敌人 → 根组件
+	}
+	else if (!HomingTargetLocation.IsNearlyZero())
+	{
+		if (!HomingTargetSceneComponent)                           // ★ 守卫：只创建一次
+		{
+			HomingTargetSceneComponent = NewObject<USceneComponent>(this);
+		}
+		HomingTargetSceneComponent->SetWorldLocation(HomingTargetLocation);
+		TargetComp = HomingTargetSceneComponent;                   // ② 地面点 → 自建组件
+	}
+
+	ProjectileMovement->HomingTargetComponent = TargetComp;
+	ProjectileMovement->bIsHomingProjectile = bHomingEnabled && (TargetComp != nullptr);
+	ProjectileMovement->HomingAccelerationMagnitude = HomingAcceleration;
+}
+```
+
+**`SpawnProjectiles`（服务器）只交"信息"，不再直接设组件：**
+
+```cpp
+	const bool bTrackActor = HomingTarget && HomingTarget->Implements<UMy_CombatInterface>();
+
+	Projectile->HomingTargetActor    = bTrackActor ? HomingTarget : nullptr;
+	Projectile->HomingTargetLocation = bTrackActor ? FVector::ZeroVector : ProjectileTargetLocation;
+	Projectile->bHomingEnabled       = bLaunchHomingProjectile;
+	// ★ 加速度是随机的：必须在服务器骰【一次】，把结果复制过去（客户端绝不要重骰）
+	Projectile->HomingAcceleration   = FMath::FRandRange(HomingAccelerationMin, HomingAccelerationMax);
+
+	Projectile->FinishSpawning(SpawnTransform);
+```
+
+**为什么"组件指针"不能直接复制？** 三个原因：
+
+| 原因 | 说明 |
+|---|---|
+| ① 字段没标 `Replicated` | 引擎根本不会打包它 |
+| ② 就算标了也是**弱指针** | `TWeakObjectPtr` 不能作为复制目标 |
+| ③ **客户端根本没有这个对象** | `NewObject<USceneComponent>` 那行只在服务器跑 → 客户端不存在对应物 |
+
+**所以复制"目标是谁 / 在哪"（`AActor*` + `FVector`），客户端自己造。**
+
+### 54.5 ★ 客户端的调用时序：`OnRep` 与 `BeginPlay`（引擎证据）
+
+| 端 | 时序 |
+|---|---|
+| **服务器** | `SpawnActorDeferred`（创建，**不** BeginPlay）→ 设属性 → `FinishSpawning` → `BeginPlay` → `ApplyHomingSetup()` **（1 次）** |
+| **客户端** | 网络通道**重建** Actor → 填初始属性 → `PostReceivedBunch` → `OnRep` → `ApplyHomingSetup()` → `PostNetInit` → `BeginPlay` → `ApplyHomingSetup()` **（又 1 次）** |
+
+**三条引擎证据：**
+
+| # | 位置 | 内容 |
+|---|---|---|
+| ① | `DataReplication.cpp:1513-1531` | `PostReceivedBunch()` **无条件**调 `CallRepNotifies(true)` → **初始包也会触发 `OnRep`** |
+| ② | `DataChannel.cpp:3181` → `:3195` | `PostReceivedBunch()` 在 **3181**，`PostNetInit()` 在 **3195** → **`OnRep` 一定在 `BeginPlay` 之前** |
+| ③ | `DataChannel.cpp:3191` 注释 | *"After all properties have been initialized, call PostNetInit. **This should call BeginPlay() so initialization can be done with proper starting values.**"* |
+
+**`AActor::PostNetInit()`（`Actor.cpp`）：**
+```cpp
+void AActor::PostNetInit()
+{
+	if (!HasActorBegunPlay())
+	{
+		const UWorld* MyWorld = GetWorld();
+		if (MyWorld && MyWorld->HasBegunPlay())
+		{
+			DispatchBeginPlay();        // ← ★ 复制属性【应用完之后】才派发 BeginPlay
+		}
+	}
+}
+```
+
+> ★ **记住这条引擎约定**：**动态生成的 Actor，客户端的 `BeginPlay` 在初始属性应用之后。**
+> （但**关卡里摆放的** Actor 不走这条路 —— 客户端直接加载关卡。）
+
+### 54.6 ★ 为什么 `OnRep` 会触发 3 次（而不是 1 次）
+
+**`OnRep` 是按「发生变化的属性个数」触发的**（`RepLayout.cpp:4423` 逐属性 `AddUnique`，
+`CallRepNotifies` 再逐个调它的 `RepNotifyFunc`）。
+你 4 个属性**共用同一个回调函数** → 就按变化的个数调。
+
+| 属性 | CDO 默认 | 追**地面点**时 | 变了？ | 追**敌人**时 | 变了？ |
+|---|---|---|---|---|---|
+| `HomingTargetActor` | `nullptr` | `nullptr` | ❌ | `Enemy` | ✅ |
+| `HomingTargetLocation` | `(0,0,0)` | 地面点（非零） | ✅ | `(0,0,0)` | ❌ |
+| `bHomingEnabled` | `false` | `true` | ✅ | `true` | ✅ |
+| `HomingAcceleration` | `0.f` | `6500.f` | ✅ | `6500.f` | ✅ |
+| | | | **3 次** | | **3 次** |
+
+**两种分支都恰好 3 次**（这次实测日志也正好是 3 行 `OnRep`）。
+
+### 54.7 组装函数必须【幂等】
+
+客户端会跑 **4 次**（3 次 `OnRep` + 1 次 `BeginPlay`），服务器 1 次。
+
+| 第几次 | 谁触发 | `ApplyHomingSetup` 做什么 |
+|---|---|---|
+| **1** | `OnRep_HomingSetup` | `if (!HomingTargetSceneComponent)` → **新建**组件 → 定位 → 设 3 个字段 |
+| **2/3/4** | 其余 `OnRep` + `BeginPlay` | `if` 挡住 → **复用**同一组件 → 再用**同样的值**设一遍 |
+
+**没有累加、没有副作用** → 跑 1 次和跑 4 次结果完全一样。
+
+> ⚠️ **如果 `ApplyHomingSetup` 里有 `++`、`Add`、`NewObject` 而没有守卫，
+> 多次调用就会出事**（比如造出 4 个追踪点组件）。
+>
+> **这就是为什么把它抽成一个"幂等"函数，让 `BeginPlay` + `OnRep` 都调它** ——
+> 不管引擎在哪个时机回调、回调几次，结果都对。
+
+### 54.8 ⚠️ 踩到的编译坑：`ENetMode` **不是 UENUM**
+
+写诊断日志时想这样写：
+
+```cpp
+*UEnum::GetValueAsString(A->GetNetMode()),      // ❌ 编译报错
+```
+
+`UEnum::GetValueAsString(const EnumType)` 是个静态模板，里面有：
+
+```cpp
+template<typename EnumType>
+FORCEINLINE static FString GetValueAsString(const EnumType EnumeratorValue)
+{
+	static_assert(TIsEnum<EnumType>::Value, "Should only call this with enum types");
+	...
+}
+```
+
+需要 `TIsEnum<T>` —— 也就是**必须是 UENUM**。
+而 `ENetMode` 在 `EngineBaseTypes.h` 里是**裸的 `enum ENetMode`**（前面没有 `UENUM()`）
+→ `TIsEnum<ENetMode>` 为 false → **`static_assert` 直接报错**。
+
+**✅ 正确做法：手写 `switch`：**
+
+```cpp
+	const TCHAR* ModeStr = TEXT("?");
+	switch (P->GetNetMode())
+	{
+	case NM_Standalone:      ModeStr = TEXT("Standalone");      break;
+	case NM_DedicatedServer: ModeStr = TEXT("DedicatedServer"); break;
+	case NM_ListenServer:    ModeStr = TEXT("ListenServer");    break;
+	case NM_Client:          ModeStr = TEXT("Client");          break;
+	default: break;
+	}
+```
+
+（`ENetMode` 只用于 `AActor::GetNetMode()` 这类地方，**没有反射信息**。）
+
+### 54.9 `#if ENABLE_DRAW_DEBUG` 与 `UKismetSystemLibrary::DrawDebugXxx` 的区别
+
+| | **全局函数版**（`DrawDebugHelpers.h`） | **蓝图库版**（`UKismetSystemLibrary`） |
+|---|---|---|
+| 写法 | `DrawDebugSphere(GetWorld(), Center, ...)` | `UKismetSystemLibrary::DrawDebugSphere(this, Center, ...)` |
+| 声明 | `DrawDebugHelpers.h:17-231`，**被 `#if ENABLE_DRAW_DEBUG` 包着** | `KismetSystemLibrary.h`，**永久存在，没包** |
+| **调用处要 `#if` 吗** | ✅ **必须** | ❌ **不用** |
+| Shipping 里 | 符号**不存在** → 不加宏就 **LNK2019** | 函数**存在但是空实现** → 什么都不画 |
+| 要 include | `DrawDebugHelpers.h` | `Kismet/KismetSystemLibrary.h` |
+| 蓝图能用 | ❌ | ✅（`BlueprintCallable` + `meta=(DevelopmentOnly)`） |
+
+**引擎证据**（`KismetSystemLibrary.cpp`）—— 宏搬进了**函数体内部**：
+
+```cpp
+void UKismetSystemLibrary::DrawDebugLine(const UObject* WorldContextObject, ...)
+{
+#if ENABLE_DRAW_DEBUG                       // ★ 宏在函数体内，不在声明处
+	if (UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull))
+	{
+		::DrawDebugLine(World, LineStart, LineEnd, Color.ToFColor(true), false, LifeTime, SDPG_World, Thickness);
+	}                                      // ↑ :: 就是在调全局版
+#endif
+}
+```
+
+> **一句话**：全局版**声明本身被裁掉** → 调用处必须自己加 `#if`；
+> 蓝图库版把 `#if` 藏进函数体 → **调用处不用管**。
+
+### 54.10 诊断日志模板（可直接抄）
+
+**一条日志看清「哪个端 / 哪个实例 / 追踪生效没有」：**
+
+```cpp
+static void LogHomingState(const AMy_ProjectileActor* P, const TCHAR* Phase)
+{
+	if (!P) return;
+	// ENetMode 不是 UENUM → 手写 switch（见 54.8）
+	const TCHAR* RoleStr = TEXT("?");
+	switch (P->GetLocalRole())
+	{
+	case ROLE_Authority:       RoleStr = TEXT("Authority");       break;
+	case ROLE_AutonomousProxy: RoleStr = TEXT("AutonomousProxy"); break;
+	case ROLE_SimulatedProxy:  RoleStr = TEXT("SimulatedProxy");  break;
+	default: break;
+	}
+	// ... ModeStr 同理 ...
+
+	const UProjectileMovementComponent* PM = P->ProjectileMovement;
+	UE_LOG(LogAura, Warning,
+		TEXT("[Homing] %-9s | %-6s %-14s Role=%-15s | %-26s | Homing=%d Accel=%7.1f Sim=%d | TgtActor=%-18s TgtComp=%-24s TgtLoc=%s MyLoc=%s"),
+		Phase, P->HasAuthority() ? TEXT("SERVER") : TEXT("CLIENT"), ModeStr, RoleStr, *P->GetName(),
+		PM ? (PM->bIsHomingProjectile ? 1 : 0) : -1,
+		PM ? PM->HomingAccelerationMagnitude : -1.f,
+		PM ? (PM->bSimulationEnabled ? 1 : 0) : -1,
+		*GetNameSafe(P->HomingTargetActor.Get()),
+		*GetNameSafe(PM ? PM->HomingTargetComponent.Get() : nullptr),
+		*P->HomingTargetLocation.ToCompactString(),
+		*P->GetActorLocation().ToCompactString());
+}
+```
+
+**调用点故意放在 `ApplyHomingSetup()`【之后】** —— 这样日志里的状态才是**组装完成后**的真实状态。
+
+另外可以画个红球做**可视化**验证（在追踪点画，两端应该重合）：
+
+```cpp
+#if ENABLE_DRAW_DEBUG
+	if (TargetComp)
+	{
+		DrawDebugSphere(GetWorld(), TargetComp->GetComponentLocation(), 60.f, 12, FColor::Red, false, 5.f);
+	}
+#endif
+```
+
+### 54.11 实测日志解读（修复成功的样子）
+
+```
+[Homing] BeginPlay | SERVER ListenServer Role=Authority       | My_BP_FireBoltActor_C_0 | Homing=1 Accel=6500.0 Sim=1 | TgtActor=None TgtComp=SceneComponent_0 TgtLoc=...
+[Homing] OnRep     | CLIENT Client       Role=SimulatedProxy  | My_BP_FireBoltActor_C_0 | Homing=1 Accel=6500.0 Sim=1 | TgtActor=None TgtComp=SceneComponent_0 TgtLoc=...
+[Homing] OnRep     | CLIENT Client       Role=SimulatedProxy  | ... 同上 ...
+[Homing] OnRep     | CLIENT Client       Role=SimulatedProxy  | ... 同上 ...
+[Homing] BeginPlay | CLIENT Client       Role=SimulatedProxy  | ... 同上 ...
+```
+
+| 检查项 | 预期 | 说明 |
+|---|---|---|
+| 服务器行数 | **1**（只有 `BeginPlay`） | ✅ |
+| 客户端行数 | **4**（`OnRep`×3 → `BeginPlay`） | ✅ 见 54.6 / 54.5 |
+| **客户端 `Homing`** | **`1`** | ★ **这次修复的核心** |
+| **两端 `Accel`** | **必须相同**（如都是 `6500.0`） | ★ 证明随机值复制成功、客户端没重骰 |
+| `TgtActor=None` | 追地面点分支 | `TgtComp` 会是各自 `NewObject` 的 `SceneComponent_0`（**两端同名只是巧合**） |
+| `TgtActor=BP_EnemyBase_C_0` | 追敌人分支 | `TgtComp` 是敌人的根组件 |
+
+> ⚠️ **名字分不出端** —— 实测服务器那行也是 `..._C_0`。
+> **必须看 `NM_ListenServer` / `NM_Client` 和 `Role`。**
+
+### 54.12 一句话总结
+
+**网络复制的是「属性的值」，不是「你执行过的代码」。**
+
+> 你原来的写法：服务器**直接改组件的运行时状态** →
+> 那段代码客户端不执行、改出来的状态也从不会被发过去。
+>
+> 正确的写法：**复制"能重建状态的数据"（`AActor*` + `FVector` + 骰好的数值），
+> 让两端跑同一段幂等的组装逻辑。**
+
+**三步定位法**：① 两端都执行吗 → ② 是 `Replicated` 属性吗 → ③ 有随机值吗。
+
+**时序**：服务器 `BeginPlay` 1 次；客户端 `OnRep`×N（N = 变化的属性个数）→ `BeginPlay` 1 次。
+**`OnRep` 一定在 `BeginPlay` 之前**（`DataChannel.cpp:3181 → 3195`）。
+
+**随机值（`FRandRange`）必须服务器算一次再复制** —— 否则两端轨迹不同，这跟"同步"是两回事。
+
+---
+
+## 五十五、ASC 输入三入口（Pressed / Held / Released）与任务回调时序
+
+> 起因：`AbilityInputTagPressed/Held/Released` 这三个函数为什么这么写？
+> 为什么激活写在 `Held` 里？`InvokeReplicatedEvent` 到底干什么？
+> `if (IsActive())` 在首次按下时不是永远为假吗？
+
+### 55.1 三个入口的触发时机
+
+绑定见 `AuraInputComponent.h:31-44`（`BindAbilityActions`）：
+
+| Enhanced Input 事件 | 语义 | 绑定函数 | 调用次数 |
+|---|---|---|---|
+| `ETriggerEvent::Started` | **按下瞬间**（边沿） | `AbilityInputTagPressed` | **一次** |
+| `ETriggerEvent::Triggered` | **按住期间**（电平） | `AbilityInputTagHeld` | **每帧一次** |
+| `ETriggerEvent::Completed` | **松开瞬间**（边沿） | `AbilityInputTagReleased` | **一次** |
+
+**记住"边沿 vs 电平"，后面所有问题都从这里解释。**
+
+### 55.2 每个函数实际做什么
+
+| 教程函数 | 调用的引擎函数 | `Spec.InputPressed` | 转发钩子 | 广播事件 |
+|---|---|---|---|---|
+| `AbilityInputTagPressed` | `AbilitySpecInputPressed` | → **true** | 仅 `IsActive()` 时 | `InputPressed`（仅 `IsActive()` 时） |
+| `AbilityInputTagHeld` | `AbilitySpecInputPressed` | → **true**（**不是 false**！） | 仅 `IsActive()` 时（**每帧**） | ❌ **不广播** |
+| `AbilityInputTagReleased` | `AbilitySpecInputReleased` | → **false** | 仅 `IsActive()` 时 | `InputReleased`（仅 `IsActive()` 时） |
+
+> ★ **把标记设回 `false` 的是 `Released`，不是 `Held`。**
+> `Pressed` 和 `Held` 调的是**同一个函数** `AbilitySpecInputPressed`。
+
+### 55.3 底层就两个机制，一定要分清
+
+```
+① 标记 Spec.InputPressed（电平 / 状态："按键现在按着没有"）
+     AbilitySpecInputPressed  → true
+     AbilitySpecInputReleased → false
+   谁读：WaitInputPress / WaitInputRelease 的 bTestAlreadyXxx 检测
+         （蓝图节点上的 Test Already Pressed / Test Already Released 勾选框）
+   ★ Task 只在【自己 Activate() 的那一刻】读一次这个标记（快照），之后不再读！
+   解决："Task 开始等的时候，按键【已经】是按住状态了"
+
+② 事件 InvokeReplicatedEvent（边沿 / 一次性："刚刚按/松了一下"）
+     广播给注册了委托的 AbilityTask
+     （AbilityTask_WaitInputPress / _WaitInputRelease 内部监听的就是它）
+   解决："Task 开始等【之后】，按键才按/松"
+```
+
+**它们解决的是两个不同时间窗的问题，不是"谁补谁"。**
+
+### 55.4 AbilityTask 内部的两条路
+
+`AbilityTask_WaitInputPress.cpp:55-80`：
+
+```cpp
+void UAbilityTask_WaitInputPress::Activate()
+{
+	// ★ 路径 A：只在【这一刻】读一次标记（快照）
+	if (bTestInitialState && IsLocallyControlled())
+	{
+		FGameplayAbilitySpec* Spec = Ability->GetCurrentAbilitySpec();
+		if (Spec && Spec->InputPressed)
+		{
+			OnPressCallback();      // 立刻回调
+			return;                 // ★ 直接结束，【不注册委托】
+		}
+	}
+
+	// ★ 路径 B：注册委托，之后一直等事件
+	DelegateHandle = ASC->AbilityReplicatedEventDelegate(InputPressed, ...)
+	                    .AddUObject(this, &UAbilityTask_WaitInputPress::OnPressCallback);
+}
+```
+
+| 条件 | 走哪条 |
+|---|---|
+| 蓝图勾了 **`Test Already Pressed` / `Test Already Released`** | 先走 A（命中就结束），**没命中才**走 B |
+| **没勾** | **只走 B**（标记完全不参与） |
+
+> `WaitInputPress` 头文件原话：*"**Will return 0 if input was already down.**"*
+
+### 55.5 为什么"激活"写在 `Held` 里，不写在 `Pressed` 里
+
+**`Pressed` 只有一次机会；`Held` 每帧都有机会。**
+
+技能激活**可能失败**，原因大多是**暂时**的：
+
+| 失败原因 | 持续多久 |
+|---|---|
+| 冷却还没走完 | 剩几秒 |
+| 蓝 / 血不够 | 等到回蓝 |
+| 被 `ActivationBlockedTags` 挡住 | 状态持续期间 |
+| 正在播别的技能 | 动画时长 |
+
+**只在 `Pressed` 激活 → 那一次失败就得松手重按**；
+**写在 `Held` → 每帧重试 → "按住不放，冷却一结束就自动放出来"。**
+
+而 `if (!IsActive())` 这个守卫保证技能进入激活后**不会重复激活**。
+
+> **火球实测**：按住 LMB，冷却一结束就自动再射一发。
+
+### 55.6 为什么 `Held` 里【不】广播事件
+
+`InvokeReplicatedEvent` 是**一次性事件**语义，而 `Held` 每帧调用：
+
+- 每帧广播 → `WaitInputPress` 的委托每帧触发一次，逻辑全乱
+- 其中的 `ServerSetReplicatedEvent` 是 **Reliable RPC**，每帧发一个**会把网络打爆**
+
+而"按住"这个**持续状态**已经由 ① 的标记表达了，不需要重复发事件。
+
+### 55.7 `Held` 里为什么也要调 `AbilitySpecInputPressed`？
+
+引擎实现（`AbilitySystemComponent_Abilities.cpp:2575-2594`）：
+
+```cpp
+void UAbilitySystemComponent::AbilitySpecInputPressed(FGameplayAbilitySpec& Spec)
+{
+	Spec.InputPressed = true;                       // ① 打标记
+	if (Spec.IsActive())
+	{
+		// The ability is active, so just pipe the input event to it
+		if (NonInstanced) { Spec.Ability->InputPressed(...); }
+		else { for (Instance : Spec.GetAbilityInstances()) Instance->InputPressed(...); }   // ② 转发
+	}
+}
+```
+
+**它干两件事：① 打标记 ② 转发钩子。**
+
+| 场景 | 效果 |
+|---|---|
+| 普通流程（`Pressed` 已设过标记） | **对标记冗余** |
+| 技能激活后每帧 | ★ **每帧把"按住"喂给技能实例的 `InputPressed()` 钩子** |
+| `Pressed` 被 `Player.Block.InputPressed` 挡掉 | 只有 `Held` 能补上标记 |
+
+> **教程把三个入口都写成"先同步输入状态，再决定动作"** —— 统一、防御式，代价是每帧一个 bool 赋值。
+
+### 55.8 【转发钩子】是干什么的 —— 引擎自己的例子
+
+`GameplayAbility.h:385-389`：
+
+```cpp
+/** Input binding stub. */
+virtual void InputPressed(...) {};
+/** Input binding stub. */
+virtual void InputReleased(...) {};
+```
+
+**空实现，留给 C++ 子类 override。** 引擎自己就 override 了一个
+（`GameplayAbility_CharacterJump.cpp:36-42`）：
+
+```cpp
+void UGameplayAbility_CharacterJump::InputReleased(...)
+{
+	if (ActorInfo != NULL && ActorInfo->AvatarActor != NULL)
+	{
+		CancelAbility(Handle, ActorInfo, ActivationInfo, true);   // ★ 松开跳跃键 → 取消技能
+	}
+}
+```
+
+→ **可变高度跳跃：按住跳得高，松手就停。**
+
+> ⚠️ **这是普通 C++ `virtual`，不是 `UFUNCTION`** → 不需要 `_Implementation`，蓝图中也 **override 不了**。
+
+### 55.9 `Pressed` 里 `if (IsActive())` 什么时候才为真 —— 通道 A / B 的关系
+
+**首次按下时它确实是 `false`**（激活发生在下一帧的 `Held`），所以那次广播不执行 —— **这是正常的**。
+
+它真正生效的场景是：**「按下」发生在技能激活【之后】**
+
+| 场景 | 说明 |
+|---|---|
+| 技能被别的方式激活（被动 / 别的技能 / GameplayEvent）之后，才等玩家按一下 | 那次按下就是"技能的第二次按键周期" |
+| 技能还活着时玩家**松开再按**（二段输入） | 蓄力技 / 持续施法 |
+
+> **为什么非它不可**：`Held` 从不广播，`Spec.InputPressed` 标记 Task 又只在创建时读一次
+> → **第二次按下没有任何其他机制能通知到 Task**。
+
+### 55.10 引擎的"标准答案"：`AbilityLocalInputPressed`
+
+`AbilitySystemComponent_Abilities.cpp:2483-2511`（**一个函数干完所有事**）：
+
+```cpp
+ABILITYLIST_SCOPE_LOCK();
+for (FGameplayAbilitySpec& Spec : ActivatableAbilities.Items)
+{
+	if (Spec.InputID == InputID)
+	{
+		if (Spec.Ability)
+		{
+			Spec.InputPressed = true;                       // ① 【无条件】设标记
+			if (Spec.IsActive())
+			{
+				if (Spec.Ability->bReplicateInputDirectly && IsOwnerActorAuthoritative() == false)
+				{
+					ServerSetInputPressed(Spec.Handle);
+				}
+				AbilitySpecInputPressed(Spec);              // ② 已激活 → 转发钩子
+				InvokeReplicatedEvent(InputPressed, ...);   // ③ 已激活 → 广播事件
+			}
+			else
+			{
+				TryActivateAbility(Spec.Handle);            // ④ 未激活 → 激活
+			}
+		}
+	}
+}
+```
+
+**教程就是把引擎这一个函数，按"边沿 / 电平"拆成了两个入口**
+（`Pressed` 拿走 ①②③，`Held` 拿走 ①②④ 并去掉 ③）。
+
+> 注意引擎把 `Spec.InputPressed = true` **单独写成一行（①）**，
+> 而 `AbilitySpecInputPressed`（②）放在 `IsActive()` 里 ——
+> **说明引擎认为 ② 的主要价值是"转发钩子"，不是设置标记。**
+
+### 55.11 ⚠️ 三个函数漏了 `FScopedAbilityListLock`
+
+教程 `AuraAbilitySystemComponent.cpp:81 / 98 / 115` 三个函数都有：
+
+```cpp
+	FScopedAbilityListLock ActiveScopeLoc(*this);
+```
+
+**而 `My_AuraAbilitySystemComponent.cpp` 这三处没有**（文件里其它地方有，`:394` 还写着
+"FScopedAbilityListLock 是遍历 ActivatableAbilities 时必须加的锁"）。
+
+**为什么这里也需要**：`Held` 的循环体里调了 `TryActivateAbility`，
+它会改动 `ActivatableAbilities` 数组（`InstancedPerExecution` 会往 Spec 的实例数组里加东西）
+→ **迭代器失效 / 数组重分配 → 崩溃或跳过**。
+
+**建议补上（3 行）。**
+
+### 55.12 一句话总结
+
+> **三个函数各干一件事：**
+> - **`Pressed`** → 标记 `true`（+ 已激活时广播 `InputPressed` 事件）
+> - **`Held`** → 标记 `true`（+ 已激活时每帧转发钩子）；**不广播事件**
+> - **`Released`** → 标记 **`false`**（+ 已激活时广播 `InputReleased` 事件）
+>
+> **Task 两条路：**
+> - **① 标记路** —— 只在 `Activate()` **那一刻读一次**（快照），要勾 `Test Already *` 才走
+> - **② 委托路** —— 注册委托，之后靠 `InvokeReplicatedEvent` 广播触发
+>
+> **标记管"你开始等的时候按键是什么状态"，事件管"你等的过程中按键发生了什么"。**
+>
+> **激活写在 `Held`** 是为了"每帧重试 → 按住不放，一能放就放"。

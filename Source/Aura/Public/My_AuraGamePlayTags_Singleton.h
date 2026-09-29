@@ -121,7 +121,14 @@ public:
 	FGameplayTag My_Montage_Attack3;
 	FGameplayTag My_Montage_Attack4;
 
+	// Player 
+	FGameplayTag My_Player_Block_InputPressed;
+	FGameplayTag My_Player_Block_InputReleased;
+	FGameplayTag My_Player_Block_InputHeld;
+	FGameplayTag My_Player_Block_CursorTrace;
+	FGameplayTag My_Player_Status_ShockLoop;
 
+	
 	TMap<FGameplayTag, FGameplayTag> DamageToResistance;
 	TMap<FGameplayTag, FGameplayTag> DamageToDebuff;
 
