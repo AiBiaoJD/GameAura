@@ -103,6 +103,11 @@ FMy_DeathSignature& AMyCharacter_Base::GetOnDeath()
 	return OnDeath;
 }
 
+USkeletalMeshComponent* AMyCharacter_Base::GetWeapon_Implementation()
+{
+	return Weapon;
+}
+
 
 void AMyCharacter_Base::Die(const FVector& DeathImpulse)
 {

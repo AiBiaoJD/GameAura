@@ -56,6 +56,7 @@
 - [五十三、FireBolt 多火球生成 + 追踪（Homing）](#五十三firebolt-多火球生成--追踪homing)
 - [五十四、网络复制实战：从「服务器对、客户端不对」到 Homing 修复](#五十四网络复制实战从服务器对客户端不对到-homing-修复)
 - [五十五、ASC 输入三入口（Pressed / Held / Released）与任务回调时序](#五十五asc-输入三入口pressed--held--released与任务回调时序)
+- [五十六、GameplayCue 的网络模型：预测与广播的双触发陷阱](#五十六gameplaycue-的网络模型预测与广播的双触发陷阱)
 
 ---
 
@@ -7979,3 +7980,481 @@ for (FGameplayAbilitySpec& Spec : ActivatableAbilities.Items)
 > **标记管"你开始等的时候按键是什么状态"，事件管"你等的过程中按键发生了什么"。**
 >
 > **激活写在 `Held`** 是为了"每帧重试 → 按住不放，一能放就放"。
+
+---
+
+## 五十六、GameplayCue 的网络模型：预测与广播的双触发陷阱
+
+> **背景**：Electrocute（电磁炮）用了一个 GameplayCue `GameplayCue.My_ShockLoop`。
+> `On Active` 里 `Spawn System Attached` 生成一个 **Infinite 的 Niagara 光束**，`On Remove` 里 `Destroy Component` 销毁它。
+>
+> **现象**：
+> - **服务器（主机）施法** → 光束正常消失 ✅
+> - **客户端施法** → **客户端画面上光束永久残留** ❌，但服务器画面上消失了
+>
+> **直觉猜测**：「是不是 Niagara 没复制？」
+>
+> **结论**：**不是。Niagara 本来就不该复制，这是设计。**
+> 真正的 bug 是 —— **客户端跑了 2 次 `On Active`，却只跑了 1 次 `On Remove`**。
+
+---
+
+### 56.1 ★ 核心结论：复制的是「事件」，不是「特效」
+
+先纠正一个最根本的认知：
+
+> **GameplayCue 复制的不是 Niagara 组件，而是「cue 事件」。**
+> **每一台机器各自在本地 spawn 自己的一份特效。**
+
+所以：
+
+```
+服务器看到的 Niagara  ≠  客户端看到的 Niagara
+         ↑                        ↑
+    服务器本地 spawn          客户端本地 spawn
+```
+
+**这是两个完全不同的对象。服务器那个消失了，跟客户端那个没有任何关系。**
+
+#### 源码证据 ①：Cue Actor 是各端【本地 Spawn】的
+
+```cpp
+// GameplayCueManager.cpp:498
+SpawnedCue = World->SpawnActor<AGameplayCueNotify_Actor>(CueClass,
+                TargetActor->GetActorLocation(), TargetActor->GetActorRotation(), SpawnParams);
+```
+
+不是复制过来的 Actor，是**每台机器的 `UWorld` 自己造出来的**。
+
+#### 源码证据 ②：cue 列表会复制给所有人
+
+```cpp
+// AbilitySystemComponent.cpp:1609-1614
+FDoRepLifetimeParams Params;                       // Condition 默认 COND_None
+Params.bIsPushBased = true;
+DOREPLIFETIME_WITH_PARAMS_FAST(UAbilitySystemComponent, ActiveGameplayCues, Params);   // ← 所有人
+...
+Params.Condition = COND_SkipOwner;
+DOREPLIFETIME_WITH_PARAMS_FAST(UAbilitySystemComponent, MinimalReplicationGameplayCues, Params);
+```
+
+#### 源码证据 ③：服务器 Add 时广播一个「多播事件」
+
+```cpp
+// AbilitySystemComponent.cpp:1310  AddGameplayCue_Internal
+if (IsOwnerActorAuthoritative())
+{
+    bool bWasInList = HasMatchingGameplayTag(GameplayCueTag);
+
+    bIsNetDirty = true;
+    ForceReplication();
+    GameplayCueContainer.AddCue(GameplayCueTag, ScopedPredictionKey, GameplayCueParameters);  // 只入数组，不播事件
+
+    {
+        FPredictionKey PredictionKeyForRPC = ScopedPredictionKey;
+        ...
+        // 调用多播 RPC，让所有客户端【本地】跑一次 OnActive
+        if (IAbilitySystemReplicationProxyInterface* ReplicationInterface = GetReplicationInterface())
+        {
+            ReplicationInterface->Call_InvokeGameplayCueAdded_WithParams(GameplayCueTag, PredictionKeyForRPC, GameplayCueParameters);
+        }
+    }
+
+    if (!bWasInList)
+    {
+        InvokeGameplayCueEvent(GameplayCueTag, EGameplayCueEvent::WhileActive, GameplayCueParameters);
+    }
+}
+```
+
+⚠️ **注意 `FActiveGameplayCueContainer::AddCue` 本身【不播任何事件】**（`GameplayCueInterface.cpp:220-237`），它只做两件事：把 cue 塞进数组 + `UpdateTagMap(Tag, 1)`。
+
+**所以服务器端 `OnActive` 的唯一来源，就是那个多播 RPC 在服务器本地也执行了一次。**
+
+---
+
+### 56.2 ★ 客户端的 `OnRemove` 只有【一条路】能走到
+
+这是整个问题的关键。
+
+```cpp
+// AbilitySystemComponent.cpp:1378
+void UAbilitySystemComponent::RemoveGameplayCue_Internal(const FGameplayTag GameplayCueTag, FActiveGameplayCueContainer& GameplayCueContainer)
+{
+    if (IsOwnerActorAuthoritative())                       // ← 只有服务器进得来
+    {
+        bool bWasInList = HasMatchingGameplayTag(GameplayCueTag);
+
+        bIsNetDirty = true;
+        ForceReplication();
+        GameplayCueContainer.RemoveCue(GameplayCueTag);    // 数组变化 → 复制给客户端
+
+        if (bWasInList)
+        {
+            FGameplayCueParameters Parameters;
+            InitDefaultGameplayCueParameters(Parameters);
+            InvokeGameplayCueEvent(GameplayCueTag, EGameplayCueEvent::Removed, Parameters);   // :1395 服务器本地
+        }
+        // Don't need to multicast broadcast this, ActiveGameplayCues replication handles it   :1397
+    }
+    else if (ScopedPredictionKey.IsLocalClientKey())       // ← 客户端几乎永远进不来
+    {
+        GameplayCueContainer.PredictiveRemove(GameplayCueTag);
+    }
+}
+```
+
+⚠️⚠️ **客户端在 `EndAbility` 里调用的 `RemoveGameplayCue` 是【空操作】** —— 因为 `EndAbility` 时没有预测窗口，`ScopedPredictionKey.IsLocalClientKey()` 为假。
+
+那客户端靠什么触发 `OnRemove`？**只有 FastArray 的复制删除通知**：
+
+```cpp
+// GameplayCueInterface.cpp:182
+void FActiveGameplayCue::PreReplicatedRemove(const struct FActiveGameplayCueContainer &InArray)
+{
+    if (!InArray.Owner) { return; }
+
+    // We don't check the PredictionKey here like we do in PostReplicatedAdd. PredictionKey tells us
+    // if we were predictely created, but this doesn't mean we will predictively remove ourselves.
+    if (bPredictivelyRemoved == false)                     // ← ⚠️ 这个标志会让复制删除被【整个跳过】
+    {
+        InArray.Owner->UpdateTagMap(GameplayCueTag, -1);
+        InArray.Owner->InvokeGameplayCueEvent(GameplayCueTag, EGameplayCueEvent::Removed, Parameters);
+    }
+}
+```
+
+#### 还有一道「一次性闸门」
+
+```cpp
+// GameplayCueNotify_Actor.cpp:195-212   HandleGameplayCue 开头
+// Handle multiple event gating
+{
+    if (EventType == EGameplayCueEvent::OnActive && !bAllowMultipleOnActiveEvents && bHasHandledOnActiveEvent)
+    {
+        return;
+    }
+    ...
+    if (EventType == EGameplayCueEvent::Removed && bHasHandledOnRemoveEvent)
+    {
+        return;                                            // ← 每个 Cue 实例的 OnRemove 只跑一次
+    }
+}
+```
+
+> `bAutoDestroyOnRemove = false`、`bAllowMultipleOnActiveEvents = true` 是构造函数默认值（`:29` / `:33`）。
+
+**结论：无论 `On Active` 跑了多少次，`On Remove` 永远只跑一次。**
+→ **`On Active` 跑了 N 次，就有 N-1 个对象永远没人销毁。**
+
+---
+
+### 56.3 ★ 实测数据：一次客户端施法，客户端 `On Active` 跑了 2 次
+
+在 `My_GC_ShockLoop` 的 `On Active` / `On Remove` 开头各加一个 `Print String`：
+
+```
+[ON ACTIVE] IsServer={0}  HasAuth={1}
+[ON REMOVE] IsServer={0}  HasAuth={1}  BeamValid={2}
+```
+
+在 **Listen Server + 1 Client** 下从客户端放 Electrocute，屏幕输出（PIE 会自动加 `Server:` / `Client 1:` 前缀）：
+
+```
+Server:   [ON Remove]  IsServer=true   HasAuth=true
+Client 1: [ON Remove]  IsServer=false  HasAuth=true
+Client 1: [ON ACTIVE]  IsServer=false  HasAuth=true
+Server:   [ON ACTIVE]  IsServer=true   HasAuth=true
+Client 1: [ON ACTIVE]  IsServer=false  HasAuth=true
+```
+
+#### 把循环展开就看明白了
+
+每次客户端施法产生的固定序列（5 条消息）：
+
+```
+① Ca  Client  [ON ACTIVE]   ← 客户端【预测】路径
+② Sa  Server  [ON ACTIVE]   ← 服务器权威 Add，多播在本地也执行一次
+③ Ca  Client  [ON ACTIVE]   ← 服务器多播到达客户端   ⚠️ 多出来的这一次
+        ...技能持续期间...
+④ Sr  Server  [ON Remove]
+⑤ Cr  Client  [ON Remove]   ← 只销毁了 ③ 那个 Niagara
+   ↑ ① 那个永久残留 ❌
+```
+
+**循环串**：`Ca Sa Ca Sr Cr | Ca Sa Ca Sr Cr | …`
+
+| 截到的 5 行窗口 | 对应位置 |
+|---|---|
+| `Sa Ca Ca Sa Ca`（只打了 Active 时） | 位置 2–6 ✅ |
+| `Sr Cr Ca Sa Ca`（加上 Remove 后） | 位置 4–8 ✅ |
+
+两次截图都严丝合缝 —— **诊断成立。**
+
+#### 每次客户端施法的统计
+
+| 端 | `On Active` | `On Remove` | Niagara 结果 |
+|---|---|---|---|
+| **Server** | 1 | 1 | ✅ 干净 |
+| **Client 1** | **2** ⚠️ | **1** | ❌ **剩一个** |
+
+---
+
+### 56.4 为什么会多出 ③：多播 RPC 的「吸收」机制失效了
+
+多播 RPC 在客户端执行时，本来有一道「吸收」判断，避免和本地预测重复播放：
+
+```cpp
+// AbilitySystemComponent.cpp:1468
+void UAbilitySystemComponent::NetMulticast_InvokeGameplayCueAdded_WithParams_Implementation(
+    const FGameplayTag GameplayCueTag, FPredictionKey PredictionKey, FGameplayCueParameters Parameters)
+{
+    // If server generated prediction key and auto proxy, skip this message.
+    bool bIsMixedReplicationFromServer = (ReplicationMode == EGameplayEffectReplicationMode::Mixed
+                                          && PredictionKey.IsServerInitiatedKey()
+                                          && AbilityActorInfo->IsLocallyControlledPlayer());
+
+    if (IsOwnerActorAuthoritative() || (PredictionKey.IsLocalClientKey() == false && !bIsMixedReplicationFromServer))
+    {
+        InvokeGameplayCueEvent(GameplayCueTag, EGameplayCueEvent::OnActive, Parameters);   // ← 认领失败就再跑一次
+    }
+}
+```
+
+**客户端要被"吸收"掉，必须 `PredictionKey.IsLocalClientKey() == true`** —— 也就是广播里带的 key 必须能被客户端认出「这是我自己的预测 key」。
+
+而这个 key 在服务器发出前会被改写：
+
+```cpp
+// AbilitySystemComponent.cpp:1323-1343
+FPredictionKey PredictionKeyForRPC = ScopedPredictionKey;
+if (ReplicationMode == EGameplayEffectReplicationMode::Mixed)
+{
+    if (GameplayCueContainer.bMinimalReplication)
+    {
+        PredictionKeyForRPC = FPredictionKey::CreateNewServerInitiatedKey(this);
+    }
+    else
+    {
+        // Its ok to just throw out a server replicated prediction key ...
+        if (ScopedPredictionKey.IsServerInitiatedKey())
+        {
+            PredictionKeyForRPC = FPredictionKey();        // ← 清成【无效 key】
+        }
+    }
+}
+```
+
+> **失效条件**：只要 cue 是在**预测窗口之外**添加的（例如放在 `WaitGameplayEvent` 的回调里 —— 本项目 `My_GA_Electrocute` 正是用 `My_Event.Montage.Electrocute` 事件触发），
+> 服务器那边的 `ScopedPredictionKey` 已经不是客户端激活时那个 key（或是服务器发起的 key）→ 发出去的是**无效 key**
+> → 客户端 `IsLocalClientKey()` 为假 → **吸收失败 → 第二次 `On Active`**。
+
+---
+
+### 56.5 为什么「服务器施法」就正常？
+
+因为 **服务器施法时，客户端没有预测路径**：
+
+| 谁施法 | 客户端有没有预测 | 客户端的 `On Active` 次数 |
+|---|---|---|
+| **服务器（主机）** | ❌ 没有（不是它的能力） | **1**（只收到广播） |
+| **客户端** | ✅ 有（`LocalPredicted`） | **2**（预测 1 + 广播 1） |
+
+**只有客户端自己施法时才会走预测路径 → 才会多一次 → 才会残留。**
+这正是现象"服务器施法没事、客户端施法就残留"的根本原因。
+
+---
+
+### 56.6 ⚠️ 踩坑：`Has Authority` 对 Cue Actor **恒为 `true`**
+
+调试图里客户端那几行 `HasAuth=true` 不是 bug，是**必然**：
+
+```cpp
+// Actor.h:4297
+FORCEINLINE_DEBUGGABLE bool AActor::HasAuthority() const
+{
+    return (GetLocalRole() == ROLE_Authority);
+}
+```
+
+`AGameplayCueNotify_Actor` 是各端 **`World->SpawnActor` 本地造**的（`GameplayCueManager.cpp:498`）。
+**本地 Spawn 出来的 Actor，在它自己的世界里 `Role == ROLE_Authority`。**
+
+> ⚠️ **所以 `Has Authority` 对 GameplayCue Actor 完全没有区分能力，在每一台机器上都是 `true`。**
+
+✅ **正确的判据是 `Is Server`**（世界级，不是 Actor 级）：
+
+| 机器 | `Is Server` | `Has Authority`（Cue Actor 上） |
+|---|---|---|
+| Listen Server 主机 | `true` | `true` |
+| 远程客户端 | `false` | **`true`** ⚠️ 陷阱 |
+| 专用服务器 | `true` | `true` |
+
+---
+
+### 56.7 ⚠️ 踩坑：蓝图里**没有** `Get Net Mode` / `Get Local Role`
+
+这两个名字是 **C++ 侧**的叫法，蓝图里**不存在**：
+
+```cpp
+// EngineBaseTypes.h:827  —— 注意：上面【没有】 UENUM()
+enum ENetMode { NM_Standalone, NM_DedicatedServer, NM_ListenServer, NM_Client, NM_MAX, };
+
+// Actor.h:2809  —— 注意：上面【没有】 UFUNCTION()
+ENetMode GetNetMode() const;
+
+// Actor.h:684-687  —— Role 在 private 区，且没有 BlueprintReadOnly
+private:
+    UPROPERTY(Replicated, VisibleInstanceOnly, Category=Networking)
+    TEnumAsByte<enum ENetRole> Role;
+```
+
+- `ENetMode` 不是 `UENUM` → 蓝图没有这个类型 → **没有 `Get Net Mode` 节点**
+- `GetNetMode()` 没有 `UFUNCTION` → 不反射进蓝图
+- `Role` 是 `private` 且无 `BlueprintReadOnly` → **没有 `Get Local Role` 节点**
+
+#### 蓝图里【真正能用】的网络判断节点
+
+| 节点名 | 出处 |
+|---|---|
+| **`Is Server`** | `KismetSystemLibrary.h:213` `UFUNCTION(BlueprintPure)` |
+| **`Has Authority`** | `Actor.h:1648` `UFUNCTION(BlueprintCallable, Category="Networking")` |
+| `Is Dedicated Server` | `KismetSystemLibrary.h:217` |
+| `Is Standalone` | `KismetSystemLibrary.h:221` |
+
+---
+
+### 56.8 调试打印的正确姿势
+
+> 目的：回答两个问题 —— **「这台机器是哪个端？」** 和 **「这个事件跑了几次？」**
+
+在 `My_GC_ShockLoop` 的 `On Active` / `On Remove` 开头插 `Print String`：
+
+```
+On Active 执行输出 ──► Print String ──► (原来的 Spawn System Attached)
+```
+
+字符串用 **`Format Text`** 节点拼（`Format` 框里写模板，`{0}` `{1}` 会自动长出引脚）：
+
+| 事件 | 模板 | 引脚接什么 |
+|---|---|---|
+| `On Active` | `[ON ACTIVE] IsServer={0}  HasAuth={1}` | `0`←`Is Server`；`1`←`Has Authority` |
+| `On Remove` | `[ON REMOVE] IsServer={0}  HasAuth={1}  BeamValid={2}` | `0`←`Is Server`；`1`←`Has Authority`；`2`←`Is Valid`(输入接 `Beam System` 变量) |
+
+`Format Text` 的输出（`Text`）拖到 `Print String` 的 `In String`（`String`）时，UE 会自动插一个 `To String (Text)` 转换节点。
+
+`Print String` 上记得把 **`Duration` 调成 5.0**（默认 2 秒容易看漏）。
+
+#### 读法
+
+| 读数 | 含义 |
+|---|---|
+| `IsServer=true` | 这一行来自**服务器**世界 |
+| `IsServer=false` | 这一行来自**客户端**世界 |
+| 同一个世界里 `[ON ACTIVE]` 出现 **2 次** | ⚠️ 特效被 spawn 了两次 |
+| `[ON REMOVE]` 只出现 **1 次** | `bHasHandledOnRemoveEvent` 闸门 → 只销毁一个 |
+| `BeamValid=true` | `On Remove` 时成员变量还有效（但**不代表场景里没别的残留**）|
+
+> **PIE 提示**：Listen Server 模式下，两端的 `Print String` 都会打到同一个屏幕缓冲区，引擎会自动加 `Server:` / `Client 1:` 前缀，所以**一张截图就能看到两端的全部输出**。
+
+---
+
+### 56.9 修复：让 `On Active` 幂等
+
+**核心思路：不要假设 `On Active` 只跑一次。每次进 `On Active`，先把上一轮的产物清掉。**
+
+```
+On Active
+  │
+  ├─► Branch ( Condition = Is Valid (Beam System) )
+  │        └─ True ──► Destroy Component ( Target = Beam System )
+  │
+  ├─► (汇合) Spawn System Attached ──► SET Beam System
+  │
+  └─► Set Niagara Variable (Vectors) ...
+```
+
+**走一遍**：
+
+| 步骤 | 发生什么 |
+|---|---|
+| ① 客户端 `On Active` | `Beam System` 空 → 直接 Spawn → `Beam System` = Niagara ① |
+| ③ 客户端 `On Active`（第二次） | `Is Valid(Beam System)` 为真 → **先销毁 ①** → Spawn ② |
+| ⑤ 客户端 `On Remove` | 销毁 ② |
+| 结果 | **无残留** ✅ |
+
+---
+
+### 56.10 三种修复方案对比
+
+| 方案 | 改动量 | 稳健性 | 说明 |
+|---|---|---|---|
+| **A. `On Active` 幂等** | ⭐ 最小（加 1 个 Branch + 1 个 Destroy） | 好 | **推荐先做这个**，直击根因 |
+| **B. 用数组存所有 spawned 组件** | 中 | 更好 | 新增 `TArray<NiagaraComponent*> SpawnedBeams`，`On Active` 里 `Add`，`On Remove` 里 `For Each Loop` → `Destroy Component`。**有多少清多少** |
+| **C. 改成「组件式 Cue」** | 较大（重构） | 最好 | 不用运行时 `Spawn`，直接在蓝图 Components 面板加 Niagara 组件；`On Active` → `Activate()`，`On Remove` → `Deactivate()`，Class Defaults 勾 **`Auto Destroy on Remove`**。**结构上不可能产生第二个对象** |
+| **D. 交给 GameplayEffect 管** | 中 | 好 | 建 `GE_ShockLoop`（Infinite），把 cue 填进 `GameplayCues` 数组并勾 `WhileActive`，GA 里 `ApplyGameplayEffect`。加/删 cue 由引擎的 GE 生命周期驱动，网络路径最成熟 |
+
+> ⚠️ **方案 B 有个前提**：`Get Components By Class` 只能找到**挂在 Cue Actor 自己身上**的组件。
+> 本项目的光束是 attach 到**敌人的 Mesh**（`TargetAttachComponent`）上的，所以方案 B 需要改成把组件 attach 到 `self`，或者老实维护数组。
+> 方案 C 天然满足这个前提。
+
+---
+
+### 56.11 验收标准
+
+改完后再从客户端放一次 Electrocute：
+
+| 检查项 | 期望 |
+|---|---|
+| 客户端 `[ON ACTIVE]` 打印次数 | **仍然是 2** —— 这是引擎行为，改不掉也**不用管** |
+| 客户端 `[ON REMOVE]` | 1 |
+| **技能结束后客户端画面** | **光束消失，无残留** ✅ |
+| 服务器画面 | 光束消失 ✅ |
+
+> **别搞错重点**：`On Active` 打印 2 次是**正常的**（预测一次 + 广播一次）。
+> 真正要修的是「两次 spawn 只销毁一次」这个**不对称**。
+
+---
+
+### 56.12 文件 ↔ 源码 速查表
+
+| 概念 | 位置 |
+|---|---|
+| Cue Actor 本地 Spawn | `GameplayCueManager.cpp:498` |
+| `AddGameplayCue_Internal`（权威端 3 条路） | `AbilitySystemComponent.cpp:1310` |
+| 多播 RPC 发出点 | `AbilitySystemComponent.cpp:1348` |
+| 多播 RPC 实现（吸收判断） | `AbilitySystemComponent.cpp:1468` |
+| `RemoveGameplayCue_Internal` | `AbilitySystemComponent.cpp:1378` |
+| "removal 靠复制，不发多播" 注释 | `AbilitySystemComponent.cpp:1397` |
+| cue 容器复制条件 | `AbilitySystemComponent.cpp:1614 / 1632` |
+| `AddCue`（不播事件） | `GameplayCueInterface.cpp:220` |
+| `PredictiveRemove` / `PredictiveAdd` | `GameplayCueInterface.cpp:276 / 301` |
+| `PreReplicatedRemove`（客户端 OnRemove 唯一来源） | `GameplayCueInterface.cpp:182` |
+| `PostReplicatedAdd`（播 WhileActive） | `GameplayCueInterface.cpp:199` |
+| `OnRemove` 一次性闸门 | `GameplayCueNotify_Actor.cpp:208` |
+| `bAutoDestroyOnRemove` / `bAllowMultipleOnActiveEvents` 默认值 | `GameplayCueNotify_Actor.cpp:29 / 33` |
+| `HasAuthority()` | `Actor.h:4297` |
+| `ENetMode` 非 UENUM | `EngineBaseTypes.h:827` |
+| `GetNetMode()` 非 UFUNCTION | `Actor.h:2809` |
+| `Is Server` 蓝图节点 | `KismetSystemLibrary.h:213` |
+| `Has Authority` 蓝图节点 | `Actor.h:1648` |
+
+---
+
+### 56.13 一句话总结
+
+> **GameplayCue 的网络模型是「广播事件 + 各端本地实例化」—— 特效从来不复制，也不该复制。**
+>
+> **所以「特效消失」这件事，服务器和客户端是各管各的：**
+> - **服务器**：`RemoveGameplayCue` 权威分支 → 本地播 `OnRemove`
+> - **客户端**：**只能等 `ActiveGameplayCues` 复制删除** → `PreReplicatedRemove` → `OnRemove`
+> - 客户端自己调 `RemoveGameplayCue` 是**空操作**
+>
+> **本次 bug 的完整链条：**
+> 1. 客户端施法 → 走 `LocalPredicted` 预测路径 → **`On Active` 第 1 次**（spawn Niagara ①）
+> 2. 服务器权威 Add → 多播 RPC → 客户端认领失败（key 无效）→ **`On Active` 第 2 次**（spawn Niagara ②，覆盖 `Beam System`）
+> 3. 技能结束 → 复制删除到达 → **`On Remove` 只跑 1 次**（`bHasHandledOnRemoveEvent` 闸门）→ 只销毁 ②
+> 4. **① 永久残留**
+>
+> **教训：写 GameplayCue 的 `On Active` 时，永远假设它可能被调用多次 —— 先清旧的，再 spawn 新的。**
+> **凡是「申请资源」的代码，配对的「释放资源」代码也必须能处理「申请了多次」的情况。**

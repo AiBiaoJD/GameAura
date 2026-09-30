@@ -43,6 +43,7 @@ public:
 	virtual EMy_CharacterClass GetCharacterClass_Implementation() override;
 	virtual FMy_ASCRegisteredSignature& GetOnASCRegistered() override;
 	virtual FMy_DeathSignature& GetOnDeath() override;
+	virtual USkeletalMeshComponent* GetWeapon_Implementation() override;
 	/** end Combat interface **/
 	FMy_ASCRegisteredSignature OnASCRegistered;
 	FMy_DeathSignature OnDeath;

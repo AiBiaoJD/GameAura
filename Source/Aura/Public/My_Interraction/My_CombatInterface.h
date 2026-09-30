@@ -50,6 +50,9 @@ class AURA_API IMy_CombatInterface
 public:
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable)
 	FVector GetWeaponSockLocation(const FGameplayTag& MontageTag);
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable)
+	USkeletalMeshComponent* GetWeapon();
+	
 
 	UFUNCTION(BlueprintImplementableEvent, BlueprintCallable)
 	void My_UpdateFacingTarget(const FVector& TargetLoc);
