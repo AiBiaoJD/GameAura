@@ -2,6 +2,8 @@
 
 
 #include "MY_AbilitySystem/AbilityTask/My_TargetDateUnderMouse.h"
+
+#include "Aura/Aura.h"
 #include "My_Controler/My_Aura_Controller.h"
 
 UMy_TargetDateUnderMouse* UMy_TargetDateUnderMouse::CreateMyTargetDateUnderMouse(UGameplayAbility* OwningAbility)
@@ -46,7 +48,7 @@ void UMy_TargetDateUnderMouse::SendMouseCursurData()
 
 	APlayerController* PC = Ability->GetCurrentActorInfo()->PlayerController.Get();
 	FHitResult CursorHit;
-	PC->GetHitResultUnderCursor(ECC_Visibility, false, CursorHit);
+	PC->GetHitResultUnderCursor(ECC_MyTarget, false, CursorHit);
 
 	FGameplayAbilityTargetDataHandle DataHandle;
 	FGameplayAbilityTargetData_SingleTargetHit* Data = new FGameplayAbilityTargetData_SingleTargetHit;

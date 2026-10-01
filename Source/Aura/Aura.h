@@ -12,3 +12,4 @@
 #define ECC_Target ECollisionChannel::ECC_GameTraceChannel2
 #define ECC_ExcludePlayers ECollisionChannel::ECC_GameTraceChannel3
 #define ECC_MyProjectile ECollisionChannel::ECC_GameTraceChannel4
+#define ECC_MyTarget ECollisionChannel::ECC_GameTraceChannel5
