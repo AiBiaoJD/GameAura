@@ -326,22 +326,64 @@ void UMy_AuraAbilitySystemLibrary::GetLivePlayersWithRadius(const UObject* World
 			if (Overlap.GetActor()->Implements<UMy_CombatInterface>() && !IMy_CombatInterface::Execute_IsDead(Overlap.GetActor()))
 			{
 				AActor* Avatar = IMy_CombatInterface::Execute_GetAvatar(Overlap.GetActor());
-				UE_LOG(LogTemp, Warning, TEXT("------------1------------"));
-
 				// 关键：添加去重检查
 				if (Avatar && !OutOverLappingActors.Contains(Avatar))
 				{
 					OutOverLappingActors.Add(Avatar);
-					UE_LOG(LogTemp, Warning, TEXT("Add new Character: %s"), *Avatar->GetName());
 				}
 				else if (Avatar)
 				{
 					UE_LOG(LogTemp, Warning, TEXT("Ignore same Character: %s"), *Avatar->GetName());
 				}
-
-				UE_LOG(LogTemp, Warning, TEXT("------------2------------"));
 			}
 		}
+	}
+}
+
+void UMy_AuraAbilitySystemLibrary::GetClosestTargets(int32 MaxTargetNum, const TArray<AActor*>& OverlapActors, TArray<AActor*>& OutClosestTargets, const FVector& Origin)
+{
+	// 统一成「覆盖」语义：先清空，避免调用者带进来的旧内容影响结果
+	OutClosestTargets.Reset();
+
+	if (MaxTargetNum <= 0 || OverlapActors.Num() == 0)
+	{
+		return;
+	}
+
+	// 数量本来就够，不需要筛选
+	if (OverlapActors.Num() <= MaxTargetNum)
+	{
+		OutClosestTargets = OverlapActors;
+		return;
+	}
+
+	// ① 每个 Actor 的距离只算一次（用平方距离，只比大小不用开方）
+	TArray<TPair<double, AActor*>> Distances;
+	Distances.Reserve(OverlapActors.Num());
+	for (AActor* Actor : OverlapActors)
+	{
+		if (!IsValid(Actor)) continue;
+
+		Distances.Emplace((Actor->GetActorLocation() - Origin).SizeSquared(), Actor);
+	}
+
+	const int32 NumToTake = FMath::Min(MaxTargetNum, Distances.Num());
+	if (NumToTake <= 0)
+	{
+		return;
+	}
+
+	// ② 一次排序 O(n log n)
+	Distances.Sort([](const TPair<double, AActor*>& A, const TPair<double, AActor*>& B)
+	{
+		return A.Key < B.Key;
+	});
+
+	// ③ 只取前 k 个
+	OutClosestTargets.Reserve(NumToTake);
+	for (int32 Index = 0; Index < NumToTake; ++Index)
+	{
+		OutClosestTargets.Add(Distances[Index].Value);
 	}
 }
 

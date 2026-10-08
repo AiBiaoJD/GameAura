@@ -8721,3 +8721,80 @@ Target=self / `On Owner` 那条路，客户端确实预测了。**所以 56.3 �
 > - **能不能预测，取决于 cue 加在谁的 ASC 上**：加在自己身上 → 客户端能预测（可能 double）；加在敌人身上 → 客户端进不了预测分支（每端各 1 次，服务器先播）。
 >
 > **教训：调 GameplayCue 的网络表现之前，先问一句「这个 cue 是加在谁身上的」，再问「这个 GA 的 NetExecutionPolicy 是什么」。这两个问题的答案基本就决定了你会看到几次、谁先。**
+---
+
+### 57.10 ★★ 速查：`To Owner` vs `On Actor` × 窗口内 / 窗口外
+
+先记住两个节点族的**本质差别**：
+
+| 节点族 | 出处 | 关键实现 | 客户端调用会怎样 |
+|---|---|---|---|
+| `Add / Execute / Remove GameplayCue ... **To Owner**` | `UGameplayAbility`（`K2_*`） | 直接 `GetAbilitySystemComponentFromActorInfo()->AddGameplayCue(...)` | **会执行** → 能预测 |
+| `... **On Actor** (Looping / Burst)` | `UGameplayCueFunctionLibrary` | 先判断 `Target->GetLocalRole() == ROLE_Authority`；目标没有 ASC 时退化成 `*_NonReplicated`（纯本地） | **直接不执行**（自己的角色在客户端是 `AutonomousProxy`） |
+
+⚠️ **`On Actor` 那道 `ROLE_Authority` 门槛就是分水岭**：客户端调用它等于没调用。
+
+| 节点 | 放在**预测窗口内**（`ActivateAbility` 同步段 / TargetData 回调） | 放在**窗口外**（`WaitGameplayEvent` / Montage 回调） |
+|---|---|---|
+| **`To Owner`** | 你先播 → 广播被认领跳过 → **1 次、零延迟** ✅ | 你先播 + 广播再播 → **2 次** ❌ |
+| **`On Actor`** | 服务器带**你的 key** → 广播被你跳过 → **你看不到** ❌ | key 为空 → 人人各播一次 → **1 次、都看得见** ✅ |
+
+---
+
+### 57.11 已经踩过的三个坑（都有实测日志）
+
+#### 坑 1：`To Owner` + 窗口外 → 客户端双播
+
+`Add GameplayCueWithParams To Owner` 放在 `Wait Gameplay Event` 的 `Event Received` 之后，
+3 人 Listen Server、Client 1 施法，屏幕输出（**最下面一行是最早的**）：
+
+```
+Client 2: OnRemove
+Server  : OnRemove
+Client 1: OnRemove
+Client 2: OnActivate
+Client 1: OnActivate     ← 服务器之前 = 客户端本地播的那一次
+Server  : OnActivate
+Client 1: OnActivate     ← 服务器之后 = 收到 multicast 又播的那一次
+```
+
+**判定方法**：同一个客户端的两条 `OnActivate` 被 `Server` 那条**夹在中间** → 一条在服务器执行之前、一条在之后 → 只能是「本地那一次 + 广播那一次」。**这个判断与打印顺序怎么读无关。**
+
+**根因**：两端 key 不对称 —— 客户端那一刻有 key（走了预测分支），而服务器加 cue 时手上是**空的 key** → 广播对所有人有效 → 客户端又播一次。
+
+#### 坑 2：`On Actor` + 窗口内 → 施法者完全看不到
+
+同样 3 人、cue 加在自己身上，放在 TargetData 的 `Valid Data` 回调里（窗口内）：
+
+1. 客户端：`GetLocalRole()` 不是 `ROLE_Authority` → **节点直接不执行**
+2. 服务器：在「接收 target data 的作用域」里执行（`ServerSetReplicatedTargetData` 会开窗，key = 客户端传来的那个）→ cue 带**客户端的 key**
+3. 客户端收到广播 → `IsLocalClientKey()` 为真 → **跳过**
+4. ⇒ 施法者**既没有 `OnActive` 也没有 `OnRemove`**（连 cue 实例都没生成过，`Removed` 到达时无实例可通知）
+
+#### 坑 3：单参数 `FScopedPredictionWindow` 只在客户端开窗
+
+```cpp
+FScopedPredictionWindow ScopedPrediction(AbilitySystemComponent.Get());   // 单参数版本
+```
+
+源码里它**只在客户端生效**（服务器上 `IsNetSimulating() == false` 直接 return，注释原话：*"On the server, this will do nothing since it is authoritative"*）。
+→ 如果 cue 的调用点落在这样一个「只有客户端开窗」的位置，就会出现**客户端有 key、服务器没有** → 预测播 1 次 + 广播播 1 次 = **双播**。
+（对比：`WaitTargetData` / 自定义 target-data 任务会**两端都开窗**，那种位置是安全的。）
+
+---
+
+### 57.12 选型建议（以后照这个选）
+
+| 需求 | 怎么做 |
+|---|---|
+| **循环/持续型特效，最省心**（推荐） | **窗口外 + `On Actor`**（`WaitGameplayEvent` / Montage 回调里加）：服务器权威驱动，每端 1 次、不重复、都能看到。代价：施法者也晚半个 RTT |
+| **施法者零延迟** | **窗口内 + `To Owner`**：放在 `ActivateAbility` 的同步段（第一个异步节点之前）→ 你先播、广播被认领 → 1 次 |
+| **连时机都不想管** | **GE 携带 cue**：`HasDuration` / `Infinite` 的 GE + 在 `GameplayCues` 里填 tag → 应用/持续/移除、复制、预测全由引擎管（注意 **Instant GE 只会给一次 `Executed`**，没有 WhileActive/Removed） |
+
+**别用的组合**（就是上面两个坑）：
+
+- ❌ `To Owner` + 窗口外 → 双播
+- ❌ `On Actor` + 窗口内 → 施法者看不到
+
+> **记忆句**：`To Owner` **能预测**（可能双播，也可能零延迟）；`On Actor` **不能预测**（永远只有服务器那一次）。
+> 决定「几次 / 看不看得到」的，是**放在窗口内还是窗口外**。
