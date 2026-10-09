@@ -8798,3 +8798,82 @@ FScopedPredictionWindow ScopedPrediction(AbilitySystemComponent.Get());   // 单
 
 > **记忆句**：`To Owner` **能预测**（可能双播，也可能零延迟）；`On Actor` **不能预测**（永远只有服务器那一次）。
 > 决定「几次 / 看不看得到」的，是**放在窗口内还是窗口外**。
+---
+
+### 57.13 ★★ `...On Actor` 那一族 = 服务器专属（客户端静默空操作）
+
+`GameplayCueFunctionLibrary` 的三个函数（蓝图显示名 `... On Actor (Looping/Burst)`）内部是同一套逻辑：
+
+```cpp
+void UGameplayCueFunctionLibrary::AddGameplayCueOnActor(AActor* Target, FGameplayTag Tag, const FGameplayCueParameters& Params)
+{
+	if (!Target) return;
+
+	UAbilitySystemComponent* ASC = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Target);
+	if (ASC)
+	{
+		if (Target->GetLocalRole() == ROLE_Authority)      // ← 唯一的入口
+		{
+			ASC->AddGameplayCue(GameplayCueTag, Params);
+		}
+	}
+	else
+	{
+		UGameplayCueManager::AddGameplayCue_NonReplicated(Target, GameplayCueTag, Params);   // 目标没有 ASC 时才走这里（纯本地）
+	}
+}
+```
+（`Remove` / `Execute` 同款门槛）
+
+**两个关键结论：**
+
+1. **客户端调用它 = 执行了，但函数内部什么都没做**（不报错、不警告、静默失效）→ 遇到"明明调了却没效果"，第一反应就是查"这行到底在哪一端跑的"
+2. 它**不经过** `UGameplayAbility::K2_AddGameplayCue*` → **不会被 `TrackedGameplayCues` 记录** → **`Remove on Ability End` 对它完全无效** → 用了它就必须**自己在服务器上配对移除**
+
+| 端 | Add | Remove | 特效从哪来 |
+|---|---|---|---|
+| **服务器** | ✅ 真的加 | ✅ 真的移除 → 本地播 `Removed` + 数组变化复制出去 | 服务器本地 spawn |
+| **客户端** | ❌ 空操作 | ❌ 空操作 | 收到 multicast 后本地 spawn；靠数组删除 → `PreReplicatedRemove` → 本地播 `Removed` 销毁 |
+
+> 补充：`Removed` **没有 multicast RPC**（源码注释原话：*"Don't need to multicast broadcast this, ActiveGameplayCues replication handles it"*）
+> → **数组复制是客户端唯一能收到移除的通道** → **服务器不移除 = 客户端永远残留**。
+
+---
+
+### 57.14 ★★ 服务器必须做的事，不能排在"会被打断的异步链"后面
+
+**事故现象**（3 人 Listen Server，客户端施法）：
+
+| 操作 | 结果 |
+|---|---|
+| 长按（≥ MinSpellTime） | 正常，两端光束都消失 ✅ |
+| 短按（走 `Delay` 补足最短施法时间） | **服务器和客户端的光束都永久残留** ❌ |
+
+**根因链条：**
+
+```
+客户端：Wait Input Release → (TimeHeld < Min) → Delay(2.5s) → 【移除 cue + End Ability(复制版)】
+服务器：也在跑自己的 Delay ……
+        ↑ 客户端的 End Ability 复制到服务器 → 服务器技能被结束 → 服务器那条延迟链被取消
+        ⇒ 服务器分支里的 RemoveGameplayCueOnActor 从没执行
+客户端那边的 Remove 又是空操作（见 57.13）
+⇒ 没有任何一端移除 → 两边光束都残留
+```
+
+**修复（教程写法）：用 `HasAuthority` 把责任拆开**
+
+```
+HasAuthority ?
+ ├─ True （服务器）→ Delay(0.2) → 移除 cue + Commit + End Ability   ← 服务器自己走完，没人打断
+ └─ False（客户端）→ 只做本地准备（鼠标光标 / 移动模式…），不调 End Ability
+```
+
+- 客户端**不再抢先结束** → 服务器的延迟链不会被取消 ✅
+- 服务器是权威，它 `EndAbility` 后会**复制回客户端** → 客户端的能力跟着结束 ✅（**客户端不需要自己 End**）
+
+**提炼成两条规矩：**
+
+1. **服务器必须做的事**（移除 cue、Commit、End）→ 放在**服务器自己的分支**里，不要和客户端共用一条"延迟后执行"的链
+2. **客户端只负责"时机"和"本地表现"**；延迟/输入判断都放客户端，**结束由服务器主导并复制回来**
+
+> **记忆句：延迟里只放客户端的事；服务器的事放在 `HasAuthority → True` 那一条上。**

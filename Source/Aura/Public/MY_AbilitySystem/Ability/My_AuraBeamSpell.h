@@ -23,7 +23,10 @@ public:
 	void TraceFirstTarget(const FVector& BeamTargetLocation);
 	UFUNCTION(BlueprintCallable)
 	void StoreAdditionalTargets(TArray<AActor*>& OutAdditionalTargets);
-
+	UFUNCTION(BlueprintImplementableEvent)
+	void PrimaryTargetDie(AActor* DeadActor);
+	UFUNCTION(BlueprintImplementableEvent)
+	void AdditionalTargetDie(AActor* DeadActor);
 protected:
 	UPROPERTY(BlueprintReadWrite, Category="Beam")
 	FVector MouseHitLocation;

@@ -22,6 +22,9 @@ public:
 	UFUNCTION(BlueprintPure)
 	FMy_DamageEffectParams MakeDamageEffectParamsFromClassDefaults(AActor* TargetActor = nullptr) const;
 
+	UFUNCTION(BlueprintPure)
+	float GetDamageAtLevel();
+
 protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Damage")
 	TSubclassOf<UGameplayEffect> DamageEffectClass;

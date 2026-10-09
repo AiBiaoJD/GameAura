@@ -64,6 +64,15 @@ void UMy_AuraBeamSpell::TraceFirstTarget(const FVector& BeamTargetLocation)
 			MouseHitActor = HitResult.GetActor();
 		}
 	}
+
+	if (IMy_CombatInterface* CombatInterface = Cast<IMy_CombatInterface>(MouseHitActor))
+	{
+		FMy_DeathSignature& OnDeath = CombatInterface->GetOnDeath();          // ① 拿引用
+		if (!OnDeath.IsAlreadyBound(this, &UMy_AuraBeamSpell::PrimaryTargetDie))   // ② 查重
+		{
+			OnDeath.AddDynamic(this, &UMy_AuraBeamSpell::PrimaryTargetDie);        // ③ 绑
+		}
+	}
 }
 
 void UMy_AuraBeamSpell::StoreAdditionalTargets(TArray<AActor*>& OutAdditionalTargets)
@@ -79,4 +88,16 @@ void UMy_AuraBeamSpell::StoreAdditionalTargets(TArray<AActor*>& OutAdditionalTar
 	int32 NumAdditionalTargets = 5;
 
 	UMy_AuraAbilitySystemLibrary::GetClosestTargets(NumAdditionalTargets,OverlappingActors, OutAdditionalTargets, MouseHitActor->GetActorLocation());
+
+	for (AActor* TargetActor : OutAdditionalTargets)
+	{
+		if (IMy_CombatInterface* CombatInterface = Cast<IMy_CombatInterface>(TargetActor))
+		{
+			FMy_DeathSignature& OnDeath = CombatInterface->GetOnDeath();          // ① 拿引用
+			if (!OnDeath.IsAlreadyBound(this, &UMy_AuraBeamSpell::AdditionalTargetDie))   // ② 查重
+			{
+				OnDeath.AddDynamic(this, &UMy_AuraBeamSpell::AdditionalTargetDie);        // ③ 绑
+			}
+		}
+	}
 }
