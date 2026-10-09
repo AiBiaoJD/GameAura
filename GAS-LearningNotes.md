@@ -8877,3 +8877,191 @@ HasAuthority ?
 2. **客户端只负责"时机"和"本地表现"**；延迟/输入判断都放客户端，**结束由服务器主导并复制回来**
 
 > **记忆句：延迟里只放客户端的事；服务器的事放在 `HasAuthority → True` 那一条上。**
+
+## 五十八、C++ 中文编码规矩（从 CLAUDE.md 迁入）
+
+> 本章原文长期放在项目根的 `CLAUDE.md` 里，占了那份文件近一半篇幅。2026-10-10 迁到笔记，
+> `CLAUDE.md` 只留一句话版和指针 —— 起因是会话与成本：`CLAUDE.md` 每轮都要进上下文。
+
+**结论：C++ 源文件统一用 UTF-8 with BOM（带 BOM），不要用 GBK。**
+
+### 58.1 为什么是 UTF-8+BOM 而不是 GBK
+
+UE 会给 MSVC 传这两个开关（可在 `Intermediate/Build/.../*.obj.response` 里看到）：
+
+```
+/source-charset:utf-8
+/execution-charset:utf-8
+```
+
+编译器被强制按 UTF-8 读源码。因此：
+
+| 内容 | GBK 文件会发生什么 |
+|------|--------------------|
+| 中文**注释** | 不参与编译 → 程序能跑，但 IDE 里显示乱码 |
+| 中文**字符串字面量** | 字节非法 → 编译期被替换成 U+FFFD（`���`）→ 运行时必然显示乱码 |
+
+**关键区分：中文在注释里还是字面量里。**
+
+- 中文只在注释 → GBK 也能跑（项目里 5 个 GBK 文件属于这类，所以一直"没事"）
+- 中文进了字符串字面量（如 RichText 文本）→ **必须 UTF-8+BOM**，否则编译出来就是坏的
+
+### 58.2 BOM 为什么必须带
+
+编辑器（Rider/VS）对**不含 BOM** 的文件，在中文 Windows 上保存时可能回退到系统代码页 936(GBK)，
+把 UTF-8 文件改写成 GBK。**BOM（文件头 `EF BB BF`）就是阻止这件事的路标。**
+
+### 58.3 已踩过的真实坑（2026-09-13）
+
+`My_AuraGameplayAbilityBase.cpp` 在 git 里两次提交都是 **UTF-8 无 BOM**（当时全是 ASCII）。
+加中文时被编辑器存成 **GBK**，于是 RichText 描述里的中文显示异常。
+
+诊断命令：
+
+```python
+d = open('file.cpp','rb').read()
+print('BOM:', d[:3] == b'\xef\xbb\xbf')
+for enc in ['utf-8','gbk']:
+    try:
+        d.decode(enc); print(enc, 'OK')
+    except Exception as e:
+        print(enc, 'FAIL', e)
+```
+
+### 58.4 正确的读写方式
+
+⚠️ **必须用 `decode('gbk')` / `decode('utf-8-sig')` 显式读，`bytes` 直写，并保留 CRLF。**
+
+```python
+# 读：当前是 GBK 的文件
+text = open(f, 'rb').read().decode('gbk')
+# 读：已是 UTF-8+BOM 的文件
+text = open(f, 'rb').read().decode('utf-8-sig')
+# 写：UTF-8 + BOM（bytes 直写，不经文本模式，避免换行被改）
+open(f, 'wb').write(b'\xef\xbb\xbf' + text.encode('utf-8'))
+```
+
+**禁止操作**：
+- 不要用 `Edit` 工具直接改含中文的 `.h`/`.cpp`（工具输出的编码不可控，会把 GBK/UTF-8 混着写坏）
+- 不要全局字符串替换 `L"` → `TEXT("`（会误伤作为**结束引号**的 `L"`，破坏语法）
+- 不要用编辑器的"另存为 UTF-8"来处理 GBK 文件（编辑器可能猜错源编码）；用 Python 显式指定
+- 写入必须 `bytes` 直写或用 `newline=''`，否则 Windows 上会变成 `\r\r\n`，编译报 C4335
+
+### 58.5 ⚠️ `edit` 类工具会吞掉 UTF-8 BOM（2026-09-16 实证）
+
+**用 `edit` 工具修改 UTF-8+BOM 的 C++ 文件后，BOM 会消失。**
+
+实测：改前 `前3字节 = 239,187,191`（有 BOM），改后变成 `47,47,32`（即 `//`，BOM 没了）。
+
+**影响**：内容不会坏（中文仍是合法 UTF-8，能编译），但**无 BOM 的 UTF-8 文件在中文
+Windows 上被编辑器保存时可能回退成 GBK** → 又掉进编码坑。
+
+> 注意「有时候会」：同样用 `edit` 改过的文件，有的 BOM 没丢。
+> **所以不能靠运气，每次改完都要验证。**
+
+**改完必须验证（只读命令）**：
+
+```powershell
+$b = [IO.File]::ReadAllBytes('文件路径')
+if ($b[0] -eq 239 -and $b[1] -eq 187 -and $b[2] -eq 191) { '有 BOM' } else { '无 BOM' }
+```
+
+**补回 BOM（只加 3 字节，不动内容）**：
+
+```powershell
+$b = [IO.File]::ReadAllBytes($f)
+[IO.File]::WriteAllBytes($f, [byte[]](239,187,191) + $b)
+```
+
+### 58.6 ⚠️ 中文字符串字面量必须写成一个引号，禁止跨行拼接（2026-09-14 实证）
+
+**这是折腾最久的一个坑，结论是二进制层面验证过的。**
+
+C++ 允许把相邻的字符串字面量自动拼接：
+
+```cpp
+// ❌ 这样写的，只有第一段是对的，后面全变成乱码
+return FString::Printf(TEXT(
+    "<Title>焰矢</>\n\n"
+    "<Small>当前等级 </><Level>1</>\n\n"
+    "<Small>消耗蓝量 </><ManaCost>%.1f</>\n\n"
+    ...
+), ManaCost, Cooldown, Damage);
+```
+
+```cpp
+// ✅ 必须写成一对引号、一行到底
+return FString::Printf(TEXT("<Title>焰矢</>\n\n<Small>当前等级 </><Level>1</>\n\n<Small>消耗蓝量 </><ManaCost>%.1f</>\n\n<Small>冷却时间 </><CoolDown>%.1f</>\n\n<Default>发射 </><Level>1</><Default> 枚焰矢，撞击目标时爆炸，造成 </><Damage>%d</><Default> 点火焰伤害，并有几率使目标灼烧。</>\n\n<Small>升级后可同时发射更多焰矢。</>"), ManaCost, Cooldown, Damage);
+```
+
+**现象**：多段拼接时，UI 里第一段中文正常显示，从第二段起变乱码
+（`当前等级` → `褰撳墠绛夌骇`）。
+
+**已验证的边界**：
+
+| 写法 | 结果 |
+|------|------|
+| 一对外引号 · 单行写满 | ✅ 正常 |
+| 多对外引号 · 跨行拼接 | ❌ 第二段起乱码 |
+| `\uXXXX` 全转义（纯 ASCII 源码） | ✅ 正常（可用作兜底方案） |
+
+**判定方法**（改完编译后直接查二进制，不靠肉眼看 UI）：
+
+```python
+data = open(r'Binaries/Win64/UnrealEditor-Aura-Win64-DebugGame.dll', 'rb').read()
+print('正确:', data.count('当前等级'.encode('utf-16-le')))    # 期望 > 0
+print('乱码:', data.count('褰撳墠绛夌骇'.encode('utf-16-le')))  # 期望 == 0
+```
+
+乱码字 = `正确中文.encode('utf-8').decode('gbk')`，例如
+`焰矢`→`鐒扮煝`、`发射`→`鍙戝皠`、`冷却时间`→`鍐峰嵈鏃堕棿`。
+
+**写中文 RichText 描述时的规矩**（`My_AuraFireBolt.cpp` 等）：
+1. 一个 `TEXT("...")` 里放**全部**内容，`\n\n` 也写在里面
+2. 绝不为了「看着整齐」把字符串拆成多行多对引号
+3. 文件仍是 UTF-8 with BOM + CRLF
+
+### 58.7 检查整个项目
+
+```python
+import os
+for dp,_,fs in os.walk('Source'):
+    for fn in fs:
+        if fn.endswith(('.cpp','.h')):
+            p=os.path.join(dp,fn); d=open(p,'rb').read()
+            if d[:3]!=b'\xef\xbb\xbf':
+                try: d.decode('utf-8')
+                except Exception: print('非UTF8:', p)
+                else:
+                    if any(b>127 for b in d): print('UTF8无BOM(含非ASCII):', p)
+```
+
+### 58.8 澄清：「转成 GBK」的旧思路是误读（2026-09-13）
+
+`CLAUDE.md` 早先的版本写着「C++ 源文件是 GBK 编码」，导致误以为「要把文件转成 GBK」。
+**正确的理解是**：
+
+- 项目里绝大多数文件本来就是 **UTF-8**（228 个 C++ 文件中 222 个是 UTF-8）
+- 早期那条 "用 Python + GBK" 的规则，本意是「**保持文件原有编码**，别被 Edit 工具转坏」，
+  而不是「把文件转成 GBK」
+- **中文注释里的乱码**和**中文字符串的乱码**是两回事：
+  - 注释乱码 → 只是看得难受，不影响程序
+  - 字符串乱码 → 编译期就被破坏，运行时必然错
+- 结论：**统一用 UTF-8 with BOM**，注释和字符串两种情况都是对的
+
+### 58.9 修 C++ 中文文件的三条铁律（血泪）
+
+1. **不要用全局字符串替换**
+   `text.replace('L"', 'TEXT("')` 会误伤作为**结束引号**的 `L"`，破坏语法。
+   要替换就替换**整行**，或用足够长的唯一锚点。
+2. **改完必须做「剥掉字符串字面量后」的括号配对校验**
+   字符串内部含 `<Default>%s, </><Level>%d</>` 这类内容，直接数括号必错。
+3. **改完必须编译验证**
+   脚本校验通过不等于能编译；UE 会明确报出括号/引号不匹配的行号。
+
+### 58.10 `L""` 与 `TEXT("")` 的区别
+
+- `L"..."` 是裸的宽字符串字面量（`wchar_t*`）
+- `TEXT("...")` 是 UE 宏，按平台展开为 `L"..."` 或 `u8"..."`
+- Windows 上两者都能喂给 `FString::Printf` 的 `%s`，但**UE 规范统一用 `TEXT()`**
+- 同一个字面量的**前后引号必须风格一致**：`TEXT("...")` 或 `L"..."`，不能混成 `TEXT("...` + `"`
