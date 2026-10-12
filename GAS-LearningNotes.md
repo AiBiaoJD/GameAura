@@ -9154,6 +9154,11 @@ AbilitySystemComponent->SetReplicationMode(EGameplayEffectReplicationMode::Minim
 > 「动态 GE 不复制」说的是 **GE 对象本身**（Modifier 一定到不了客户端）；
 > **Tag 能不能到，是另一回事，取决于 `ReplicationMode`。**
 
+> 📌 **现状（2026-10-13）**：项目决定**暂时不改**这个框架 ——
+> 先跟着 Aura 教程把整体学完，动态 GE 就保持现状。
+> 由此产生的 `PostReplicatedAdd / PreReplicatedRemove` 报错**已知且接受**（不影响功能，详见 59.5c）。
+> **换资产 GE 属于"重构"，留到教程完成后再说。**
+
 ### 59.3 四种可选修法（按正统程度）
 
 | 方案 | 改资产 | 客户端拿到 Tag | AnimBP 要改 | 适用 |
@@ -9312,6 +9317,50 @@ void AAuraCharacter::OnRep_Stunned()
 > **结论**：**别把「动态 GE 不复制」当成万能解释。**
 > 真正决定行为的是 **ASC 的 `ReplicationMode`**：
 > `Minimal` 只发 Tag → 动态 GE 的 Tag 照样到；`Mixed`/`Full` 要发 GE → 动态 GE 就废了。
+
+### 59.5c 玩家 vs 玩家（2 个客户端）必现的三条报错（★不影响功能）
+
+**场景**：两个客户端、Listen Server，玩家 A 用电击打玩家 B。
+
+**日志**：
+```
+LogNetPackageMap: Warning: FNetGUIDCache::SupportsObject:
+    GameplayEffect /Engine/Transient.DynamicDebuff_My_DamageType.Lighting NOT Supported.
+LogAbilitySystem: Error: FActiveGameplayEffect::PostReplicatedAdd
+    Received ReplicatedGameplayEffect with no UGameplayEffect def. (BP_My_AuraPlayerState_C_1)
+LogAbilitySystem: Error: Received PreReplicatedRemove with no UGameplayEffect def.
+```
+
+**注意括号里的名字变成了 `BP_My_AuraPlayerState_C_1`** —— 因为这次受害者是**玩家**，
+玩家的 ASC 在 `PlayerState` 上（敌人的 ASC 在 Character 上，所以以前日志显示 `BP_Goblin_C_2`）。
+
+**三条日志 = 动态 GE 的三个生命周期：**
+
+| 日志 | 发生时机 |
+|---|---|
+| `SupportsObject ... NOT Supported` | 服务器**打包**时发现 TransientPackage 对象没有稳定路径 |
+| `PostReplicatedAdd ... no def` | 客户端**想挂上**这颗 GE 时，找不到定义 |
+| `PreReplicatedRemove ... no def` | 5 秒后 GE 过期，客户端**想摘掉**时再次失败 |
+
+**为什么打敌人时不会必现、打玩家反而明显：**
+- 敌人 = `Minimal` → **根本不发 GE**，所以永远不会触发这条报错
+- 玩家 = `Mixed` → **会尝试发 GE 给 Owner 客户端** → 每次都失败 → 每次必现
+
+**★ 关键结论：这个 Error 不影响功能，可以无视。**
+
+功能之所以正常，是因为**真正驱动表现的不是那颗 GE**：
+- `bIsStunned` 是 Actor `UPROPERTY` → 走 **Actor 属性复制通道** → 不受 ASC 模式影响 → 照样到客户端
+- 客户端 `OnRep_Stunned` 照样触发 → 本地挂 Block Tag、停移动、停蒙太奇 ✅
+
+> **所以：报错是"复制失败的残骸"，不是"功能失败"。**
+> 学习阶段（跟着教程走）**完全可以不处理**，只在日志里看着脏。
+> 但**要记住它**：将来若想让 Burn 的 DOT / GE 的 Modifier 在客户端真实生效，
+> 就必须换成**资产 GE**（`TSubclassOf<UGameplayEffect>`），那时这三条报错会一起消失。
+
+**为什么玩家 ASC 要设 `Mixed` 而不能图省事改成 `Minimal`：**
+`Mixed` 是给「要在客户端做预测（prediction）的玩家」用的 ——
+技能按下瞬间本地就能响应，不用等服务器回包。
+改成 `Minimal` 报错会消失，但**会破坏玩家的预测能力**（操作变卡顿），不划算。
 
 ### 59.6 Tag 体系总结：Granted Tag vs Loose Tag
 
