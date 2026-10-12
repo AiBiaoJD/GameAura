@@ -9104,12 +9104,55 @@ Effect->InheritableOwnedTagsContainer.AddTag(*DebuffTagPtr);   // ← 这行配�
 | **TransientPackage**（`NewObject` 造的） | ❌ **不能** |
 
 **关键澄清**：不是「`AddTag` 这行客户端没用」，
-而是「**它所在的 GE 整个传不到客户端，导致它携带的一切在客户端等于不存在**」。
-- Tag 挂不上
-- Modifier 不生效 → **Burn 的掉血 DOT 在客户端同样失效**
+而是「**它所在的 GE 整个传不到客户端**」，所以：
+- GE 的 **Modifier（数值修改）** 一定到不了客户端 → 客户端不会自己算这份改变
 - `PostReplicatedAdd` 收到一个"没有 def"的 GE → 报错
+- **但 GE 携带的 `Granted Tag` 能不能到客户端 —— 要看目标 ASC 的 `ReplicationMode`！**
 
-> **动态 `NewObject` GE = 只在服务器有效。** 这是 UE 硬限制，改任何参数都绕不开。
+> ⚠️ **（本节结论重要修正，实测推翻了原先的绝对化说法）**
+> 原来这里写的是「动态 GE = 只在服务器有效，Tag 一定挂不上客户端」。
+> **这是错的**。实测发现：**敌人**被火球打中，**客户端窗口能看到身上的火焰特效** ——
+> 而特效靠的正是动态 GE 挂的 `Debuff.Burn` Tag。
+> 真相是 `ReplicationMode` 分三种，**决定 Tag 能不能到客户端**：
+
+#### ★★★ `EGameplayEffectReplicationMode` 三种模式（本项目最重大发现）
+
+| 模式 | 用在哪（本项目） | 复制什么 | 动态 GE 的 **Granted Tag** 能到客户端吗 |
+|---|---|---|---|
+| `Full` | 单人 / 专用服务器 | GE + Tag + Attribute 全量 | ✅ 能 |
+| `Mixed` | **玩家**（`My_AuraPlayerState.cpp:15`） | GE **只发给 Owner** | ❌ **不能**（要复制 GE 本体，动态 GE 无定义 → 失败） |
+| `Minimal` | **敌人**（`Enemy_Characte.cpp:76`） | **只复制 GameplayTag + GameplayCue**，不复制 GE 本体 | ✅ **能**（压根不需要 GE 的定义！） |
+
+**源码位置**：
+```cpp
+// 玩家 PlayerState —— My_AuraPlayerState.cpp:15
+AbilitySystemComponent->SetReplicationMode(EGameplayEffectReplicationMode::Mixed);
+
+// 敌人 Character —— Enemy_Characte.cpp:75-76
+AbilitySystemComponent->SetIsReplicated(true);
+AbilitySystemComponent->SetReplicationMode(EGameplayEffectReplicationMode::Minimal);
+```
+
+**为什么 `Minimal` 反而能行？**
+`Minimal` 的设计初衷是「AI / 小怪这种不需要在客户端跑完整 GAS 逻辑的单位」，
+它**只把 Tag 变化和 GameplayCue 广播出去**，**根本不打算把 GE 对象本身发过去**。
+所以哪怕 GE 是 `TransientPackage` 里的动态对象、客户端找不到定义，
+**Tag 照样会随着 ASC 的 `GameplayTagCountContainer` 复制过去** ✅。
+
+而 `Mixed` 是给「要在客户端跑预测的玩家」用的，
+它**真的会去复制 GE 本体**（因为要做预测回滚），
+动态 GE 没有稳定路径 → `SupportsObject` 返回 NOT Supported → **复制失败，Tag 也一起没了** ❌。
+
+**这就完美解释了之前的"矛盾现象"：**
+
+| 现象 | 目标 | ASC 模式 | 结果 |
+|---|---|---|---|
+| 火球打敌人，**客户端能看到燃烧特效** | 敌人 | `Minimal` | Tag 复制成功 ✅ |
+| 电击打玩家，**客户端 Stun 不触发** | 玩家 | `Mixed` | Tag 复制失败 ❌ |
+
+> **一句话总结**：
+> 「动态 GE 不复制」说的是 **GE 对象本身**（Modifier 一定到不了客户端）；
+> **Tag 能不能到，是另一回事，取决于 `ReplicationMode`。**
 
 ### 59.3 四种可选修法（按正统程度）
 
@@ -9124,6 +9167,15 @@ Effect->InheritableOwnedTagsContainer.AddTag(*DebuffTagPtr);   // ← 这行配�
 `TSubclassOf<UGameplayEffect>` 引用。这样 Duration / Modifiers / Granted Tags
 全配在资产里，**能复制、可编辑、改数值不用改代码**。
 （Aura 教程用动态 GE 只是教学简化。）
+
+> ⚠️ **补充（结合 59.2 的修正）**：
+> 如果目标是 **`Minimal` 模式**（如敌人），方案 ③ 里的「客户端挂 Loose Tag」其实是**多余的** ——
+> 因为动态 GE 的 Granted Tag 本来就会复制过去，客户端直接读 Tag 即可（敌人的燃烧特效就是这么工作的）。
+> **但玩家是 `Mixed` 模式，Tag 到不了**，所以玩家这条路径**必须**用 ③（或改成 ①）。
+>
+> 顺带：**Modifier（掉血等数值）** 无论如何都不会复制到客户端 ——
+> 客户端看到的「掉血」其实是 **`Health` 属性本身在复制**（`FOnAttributeChangeData`），
+> 不是客户端自己算的伤害。**不要把这两件事混为一谈。**
 
 ### 59.4 采用的方案：复制 bool + OnRep（教程模式）
 
@@ -9188,11 +9240,16 @@ void AAuraCharacter::OnRep_Stunned()
 **三层递进理解：**
 
 1. **为什么不能用 `StunTagChanged` 挂？**
-   它靠 **Tag 回调**触发，而客户端 Tag 挂不上 → **客户端的 `StunTagChanged` 根本不触发**。
+   玩家是 **`Mixed` 模式**，动态 GE 的 Tag 到不了客户端
+   → **客户端的 `StunTagChanged` 根本不触发**。
+   （反例：敌人是 `Minimal` 模式，Tag 能到，所以敌人的 `StunTagChanged` 在客户端**是会触发的**。）
 
 2. **为什么 `OnRep_Stunned` 能行？**
    它靠 **bool 复制**触发，必定能到客户端。
    → **服务器只发"你被晕了"这个信号，客户端自己动手挂 Tag。**
+   而且 **`bIsStunned` 是 `AMyCharacter_Base` 上的 Actor `UPROPERTY`**，
+   走的是 **Actor 属性复制通道**，**完全不受 ASC 的 `ReplicationMode` 影响** ——
+   这是它比 Tag 更可靠的根本原因。
 
 3. **为什么用 Loose Tag？**
    因为它是**本地开关**。`My_Aura_Controller` 检查的是**本地 ASC**，
@@ -9208,6 +9265,53 @@ void AAuraCharacter::OnRep_Stunned()
 > ⚠️ 因此**不要在服务器挂这几个 Block Tag**：
 > 服务器不需要屏蔽玩家输入，且客户端会自己挂。
 > **只在 OnRep 里挂**（OnRep 只在客户端跑）。
+
+### 59.5b ★两个 Debuff 的完整流程对比（敌人 Burn vs 玩家 Stun）
+
+这是本次排查最有价值的一张图 —— 同样是「 `Debuff()` 造动态 GE、挂 Tag 」，
+**敌人 Burn 两端都正常、玩家 Stun 客户端失效**，差别只在 `ReplicationMode`。
+
+**共同起点（都在服务器执行）：**
+```
+火球/电击命中 → ExecCalc 算伤害 → ApplyDamageEffect(资产 GE) → 触发 Debuff()
+  → Debuff() 里 NewObject 造动态 GE → InheritableOwnedTagsContainer.AddTag(Burn/Stun)
+  → TargetASC->ApplyGameplayEffectSpecToSelf(Spec)
+```
+（诊断日志铁证：`[Debuff诊断]` **全程只有「端=服务器」** → 客户端从未执行 `Debuff()`）
+
+**分支 A —— 敌人 Burn（`Minimal`）：**
+```
+服务器 Apply 动态 GE → 挂上 Debuff.Burn
+  → ASC(Minimal) 复制「GameplayTag」给客户端（不发 GE 本体）
+  → 客户端 ASC 收到 Tag → RegisterGameplayTagEvent 触发
+  → My_DebuffNiagaraComponent::DebuffTagChanged → 播火焰特效 ✅
+```
+- 掉血靠 **`Health` 属性复制** → 客户端 OnRep_Health → 血条变化 ✅
+- **客户端不需要 GE 的定义**，所以动态 GE 也没关系
+
+**分支 B —— 玩家 Stun（`Mixed`）：**
+```
+服务器 Apply 动态 GE → 挂上 Debuff.Stun + 4 个 Block Tag
+  → ASC(Mixed) 尝试复制「GE 本体」→ TransientPackage 无路径 → NOT Supported ❌
+  → Tag 跟着 GE 一起丢失 → 客户端 ASC 没有 Debuff.Stun
+  → 客户端 StunTagChanged 不触发、AnimBP 读不到 Tag → 无反应 ❌
+```
+- **补救（教程方案）**：`StunTagChanged` 里设 `bIsStunned = true`
+  → Actor 属性复制 → 客户端 `OnRep_Stunned`
+  → 客户端本地 `AddLooseGameplayTags(4 个 Block Tag)` + 停蒙太奇 → ✅
+
+**一句话对比：**
+
+| | 敌人 Burn | 玩家 Stun |
+|---|---|---|
+| ASC 模式 | `Minimal` | `Mixed` |
+| 动态 GE 的 Tag 到客户端？ | ✅ 到（只发 Tag） | ❌ 不到（要发 GE） |
+| 客户端驱动源 | 复制的 **Tag** | 复制的 **bool** + 本地挂 Tag |
+| 掉血/特效 | Tag→特效；Health 复制→掉血 | 不需要掉血，只要动画停 |
+
+> **结论**：**别把「动态 GE 不复制」当成万能解释。**
+> 真正决定行为的是 **ASC 的 `ReplicationMode`**：
+> `Minimal` 只发 Tag → 动态 GE 的 Tag 照样到；`Mixed`/`Full` 要发 GE → 动态 GE 就废了。
 
 ### 59.6 Tag 体系总结：Granted Tag vs Loose Tag
 
