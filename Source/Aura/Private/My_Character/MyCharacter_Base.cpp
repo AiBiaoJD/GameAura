@@ -5,10 +5,11 @@
 
 #include "My_AuraGamePlayTags_Singleton.h"
 #include "Aura/Aura.h"
-#include "Chaos/ChaosPerfTest.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "MY_AbilitySystem/My_AuraAbilitySystemComponent.h"
+#include "Net/UnrealNetwork.h"
 
 // Sets default values
 AMyCharacter_Base::AMyCharacter_Base()
@@ -122,14 +123,14 @@ void AMyCharacter_Base::MulticastHandleDeath_Implementation(const FVector& Death
 	Weapon->SetSimulatePhysics(true);
 	Weapon->SetEnableGravity(true);
 	Weapon->SetCollisionEnabled(ECollisionEnabled::PhysicsOnly);
-	Weapon->AddImpulse(DeathImpulse * 0.04f, NAME_None, true);   // ★ 武器冲量（0.1 倍，因为轻）
-	
+	Weapon->AddImpulse(DeathImpulse * 0.04f, NAME_None, true); // ★ 武器冲量（0.1 倍，因为轻）
+
 	GetMesh()->SetSimulatePhysics(true);
 	GetMesh()->SetEnableGravity(true);
 	GetMesh()->SetCollisionEnabled(ECollisionEnabled::PhysicsOnly);
 	GetMesh()->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);
-	GetMesh()->AddImpulse(DeathImpulse, NAME_None, true);       // ★ 身体冲量（全量）
-	
+	GetMesh()->AddImpulse(DeathImpulse, NAME_None, true); // ★ 身体冲量（全量）
+
 	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
 	Dissolve();
@@ -160,6 +161,23 @@ void AMyCharacter_Base::Dissolve()
 void AMyCharacter_Base::BeginPlay()
 {
 	Super::BeginPlay();
+}
+
+void AMyCharacter_Base::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	DOREPLIFETIME(AMyCharacter_Base, bIsStunned);
+}
+
+void AMyCharacter_Base::StunTagChanged(const FGameplayTag CallBackTag, int32 NewCount)
+{
+	bIsStunned = NewCount > 0;
+	GetCharacterMovement()->MaxWalkSpeed = bIsStunned ? 0.f : BaseWalkSpeed;
+}
+
+void AMyCharacter_Base::OnRep_Stunned()
+{
 }
 
 FVector AMyCharacter_Base::GetWeaponSockLocation_Implementation(const FGameplayTag& MontageTag)

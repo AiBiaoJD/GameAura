@@ -7,6 +7,8 @@
 #include "BehaviorTree/BehaviorTree.h"
 #include "BehaviorTree/BlackboardComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "Animation/AnimInstance.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "MY_AbilitySystem/My_AuraAbilitySystemComponent.h"
 #include "MY_AbilitySystem/My_AuraAbilitySystemLibrary.h"
 #include "MY_AbilitySystem/My_AuraAttributeSet.h"
@@ -30,7 +32,7 @@ void AEnemy_Characte::HighlightActor()
 void AEnemy_Characte::UnHighlightActor()
 {
 	// 不启用 Custom Depth
-	GetMesh()->SetRenderCustomDepth(false);	
+	GetMesh()->SetRenderCustomDepth(false);
 	Weapon->SetRenderCustomDepth(false);
 }
 
@@ -80,6 +82,8 @@ AEnemy_Characte::AEnemy_Characte()
 	GetCharacterMovement()->bOrientRotationToMovement = true; //移动使用
 	GetCharacterMovement()->bUseControllerDesiredRotation = false; //攻击使用
 	GetCharacterMovement()->RotationRate = FRotator(0.0f, 540.0f, 0.0f);
+
+	BaseWalkSpeed = 250.f;
 
 	AttributeSet = CreateDefaultSubobject<UMy_AuraAttributeSet>("AttributeSet");
 
@@ -155,6 +159,43 @@ void AEnemy_Characte::HitReatTagChanged(const FGameplayTag Tag, int32 NewCount)
 	}
 }
 
+void AEnemy_Characte::StunTagChanged(const FGameplayTag CallBackTag, int32 NewCount)
+{
+	Super::StunTagChanged(CallBackTag, NewCount);
+
+	// 服务器：进入眩晕时打断正在播的受击蒙太奇
+	if (bIsStunned)
+	{
+		StopStunMontages();
+	}
+
+	if (AuraAIController && AuraAIController->GetBlackboardComponent())
+	{
+		AuraAIController->GetBlackboardComponent()->SetValueAsBool(FName("bStunned"), NewCount > 0);
+	}
+}
+
+void AEnemy_Characte::OnRep_Stunned()
+{
+	// 客户端：bIsStunned 复制过来后，本地也要打断正在播的蒙太奇
+	// （动画表现只归客户端管，服务器那边的 Montage_Stop 不会同步过来）
+	if (bIsStunned)
+	{
+		StopStunMontages();
+	}
+}
+
+void AEnemy_Characte::StopStunMontages()
+{
+	if (USkeletalMeshComponent* MeshComp = GetMesh())
+	{
+		if (UAnimInstance* AnimInst = MeshComp->GetAnimInstance())
+		{
+			AnimInst->Montage_Stop(0.1f);
+		}
+	}
+}
+
 void AEnemy_Characte::My_InitAbilityActorInfo()
 {
 	AbilitySystemComponent->InitAbilityActorInfo(this, this);
@@ -162,6 +203,7 @@ void AEnemy_Characte::My_InitAbilityActorInfo()
 
 	InitializeDefaultAttribute();
 
+	AbilitySystemComponent->RegisterGameplayTagEvent(FMy_AuraGameplayTags::GetInstance().My_Debuff_Stun, EGameplayTagEventType::NewOrRemoved).AddUObject(this, &AEnemy_Characte::StunTagChanged);
 	// ★ 广播"ASC 已就绪"（和玩家一致，见 Aura_Character.cpp:My_InitAbilityActorInfo 的说明）
 	//   敌人的 ASC 在构造函数里就创建了，通常组件 BeginPlay 时已经就绪，
 	//   但两条路径都覆盖更稳妥 —— 组件那边是 if/else，不会重复注册。

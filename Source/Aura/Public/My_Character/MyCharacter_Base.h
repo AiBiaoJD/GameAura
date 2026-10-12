@@ -30,6 +30,19 @@ public:
 	UFUNCTION(NetMulticast, Reliable)
 	virtual void MulticastHandleDeath(const FVector& DeathImpulse);
 
+
+	/*
+	 * Stun 状态：动态 GE 无法复制到客户端，
+	 * 所以用复制的 bool 让客户端也能知道"是否眩晕"（AnimBP 读这个，不读 Tag）
+	*/
+	UPROPERTY(ReplicatedUsing = OnRep_Stunned, BlueprintReadOnly, Category = "My_Combat")
+	bool bIsStunned = false;
+
+	UFUNCTION()
+	virtual void OnRep_Stunned();
+	virtual void StunTagChanged(const FGameplayTag CallBackTag, int32 NewCount);
+
+	
 	/** Combat interface **/
 	virtual FVector GetWeaponSockLocation_Implementation(const FGameplayTag& MontageTag) override;
 	virtual void Die(const FVector& DeathImpulse) override;
@@ -71,6 +84,8 @@ protected:
 	
 	bool bDead = false;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "My_Combat")
+	float BaseWalkSpeed = 600.f;
 	/*
 	 * GAS
 	 * Aura：实现下面在controler/playerstater中

@@ -9065,3 +9065,250 @@ for dp,_,fs in os.walk('Source'):
 - `TEXT("...")` 是 UE 宏，按平台展开为 `L"..."` 或 `u8"..."`
 - Windows 上两者都能喂给 `FString::Printf` 的 `%s`，但**UE 规范统一用 `TEXT()`**
 - 同一个字面量的**前后引号必须风格一致**：`TEXT("...")` 或 `L"..."`，不能混成 `TEXT("...` + `"`
+
+---
+
+## 五十九、动态 GE 的致命缺陷：无法网络复制（★重要）
+
+### 59.1 现象：服务器一切正常，客户端毫无反应
+
+玩家被电击触发 Stun Debuff 后：
+- **服务器**：Tag 挂上、`StunTagChanged` 触发、动画正常 ✅
+- **客户端**：没有任何反应 ❌
+
+PIE（Listen Server）日志暴露了真凶：
+
+```
+LogNetPackageMap: Warning: FNetGUIDCache::SupportsObject:
+    GameplayEffect /Engine/Transient.DynamicDebuff_My_DamageType.Lighting NOT Supported.
+LogAbilitySystem: Error: FActiveGameplayEffect::PostReplicatedAdd
+    Received ReplicatedGameplayEffect with no UGameplayEffect def. (BP_Goblin_C_2)
+```
+
+### 59.2 根因：`NewObject` 出来的 GE 传不过去
+
+`My_AuraAttributeSet::Debuff()` 里的写法（第 47 章实现）：
+
+```cpp
+const FString DebuffName = FString::Printf(TEXT("DynamicDebuff_%s"), *DamageType.ToString());
+UGameplayEffect* Effect = NewObject<UGameplayEffect>(GetTransientPackage(), FName(DebuffName));
+...
+Effect->InheritableOwnedTagsContainer.AddTag(*DebuffTagPtr);   // ← 这行配的 Tag 传不过去
+```
+
+**硬性限制（URule，无法绕开）：**
+
+| 对象所在位置 | 能否网络复制 |
+|---|---|
+| 资产包（`/Game/...`），有稳定路径 | ✅ 能（NetGUIDCache 找得到） |
+| **TransientPackage**（`NewObject` 造的） | ❌ **不能** |
+
+**关键澄清**：不是「`AddTag` 这行客户端没用」，
+而是「**它所在的 GE 整个传不到客户端，导致它携带的一切在客户端等于不存在**」。
+- Tag 挂不上
+- Modifier 不生效 → **Burn 的掉血 DOT 在客户端同样失效**
+- `PostReplicatedAdd` 收到一个"没有 def"的 GE → 报错
+
+> **动态 `NewObject` GE = 只在服务器有效。** 这是 UE 硬限制，改任何参数都绕不开。
+
+### 59.3 四种可选修法（按正统程度）
+
+| 方案 | 改资产 | 客户端拿到 Tag | AnimBP 要改 | 适用 |
+|---|---|---|---|---|
+| ① **GE 资产 + `TSubclassOf`** | 是 | ✅ | 不用 | 一切（含 DOT）**工业标准** |
+| ② `AddReplicatedLooseGameplayTag` + Timer | 否 | ✅ | 不用 | 纯状态型（Stun） |
+| ③ **复制 bool + OnRep** | 否 | ❌ | 要改 | 单状态查询（本次采用） |
+| ④ GameplayCue | 是 | — | — | 纯特效 |
+
+工业界主流是 **①**：在 Content 里做 `GE_xx` 蓝图资产，代码用
+`TSubclassOf<UGameplayEffect>` 引用。这样 Duration / Modifiers / Granted Tags
+全配在资产里，**能复制、可编辑、改数值不用改代码**。
+（Aura 教程用动态 GE 只是教学简化。）
+
+### 59.4 采用的方案：复制 bool + OnRep（教程模式）
+
+教程版 `AAuraCharacterBase` 的做法：
+
+```cpp
+UPROPERTY(ReplicatedUsing = OnRep_Stunned, BlueprintReadOnly)
+bool bIsStunned = false;
+
+UFUNCTION()
+virtual void OnRep_Stunned();
+```
+
+```cpp
+// .cpp
+void AMyCharacter_Base::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+    Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+    DOREPLIFETIME(AMyCharacter_Base, bIsStunned);
+}
+
+void AMyCharacter_Base::StunTagChanged(const FGameplayTag CallBackTag, int32 NewCount)
+{
+    bIsStunned = NewCount > 0;
+    GetCharacterMovement()->MaxWalkSpeed = bIsStunned ? 0.f : BaseWalkSpeed;
+}
+```
+
+**精髓**：
+- **服务器**靠 Tag 判断 → 设 `bIsStunned = true`
+- **bool 是普通 UPROPERTY，必定复制** → 客户端 `OnRep_Stunned` 被调用
+- **客户端完全不依赖 Tag** → 绕开动态 GE 不复制的问题
+
+`OnRep_Stunned()` 本身可以是空的（教程版就是空的），
+它的作用是「**提供一个"值变了"的回调触发点**」，AnimBP 直接读 `bIsStunned` 变量。
+
+### 59.5 为什么 Loose Tag 要挂在 OnRep 里（★★核心洞察）
+
+玩家的 Stun 需要挂 4 个「输入屏蔽」Tag：
+`Player_Block_CursorTrace / InputHeld / InputPressed / InputReleased`
+（消费点：`My_Aura_Controller.cpp` 里 `HasMatchingGameplayTag` → 直接 return 吞掉输入）
+
+教程的 `AAuraCharacter::OnRep_Stunned()`：
+
+```cpp
+void AAuraCharacter::OnRep_Stunned()
+{
+    if (UAuraAbilitySystemComponent* AuraASC = Cast<...>(AbilitySystemComponent))
+    {
+        FGameplayTagContainer BlockedTags;
+        BlockedTags.AddTag(Player_Block_CursorTrace);
+        BlockedTags.AddTag(Player_Block_InputHeld);
+        BlockedTags.AddTag(Player_Block_InputPressed);
+        BlockedTags.AddTag(Player_Block_InputReleased);
+
+        if (bIsStunned) { AuraASC->AddLooseGameplayTags(BlockedTags); }
+        else            { AuraASC->RemoveLooseGameplayTags(BlockedTags); }
+    }
+}
+```
+
+**三层递进理解：**
+
+1. **为什么不能用 `StunTagChanged` 挂？**
+   它靠 **Tag 回调**触发，而客户端 Tag 挂不上 → **客户端的 `StunTagChanged` 根本不触发**。
+
+2. **为什么 `OnRep_Stunned` 能行？**
+   它靠 **bool 复制**触发，必定能到客户端。
+   → **服务器只发"你被晕了"这个信号，客户端自己动手挂 Tag。**
+
+3. **为什么用 Loose Tag？**
+   因为它是**本地开关**。`My_Aura_Controller` 检查的是**本地 ASC**，
+   客户端挂了就本地生效，**根本不需要复制**。
+
+**分工总结：**
+
+| 角色 | 负责 |
+|---|---|
+| `bIsStunned`（bool UPROPERTY） | **同步**：「该开灯了」 |
+| `AddLooseGameplayTag` | **本地生效**：「自己按开关」 |
+
+> ⚠️ 因此**不要在服务器挂这几个 Block Tag**：
+> 服务器不需要屏蔽玩家输入，且客户端会自己挂。
+> **只在 OnRep 里挂**（OnRep 只在客户端跑）。
+
+### 59.6 Tag 体系总结：Granted Tag vs Loose Tag
+
+| | **Granted Tags**（GE 给的） | **Loose Tags**（手工挂的） |
+|---|---|---|
+| 怎么加 | GE 资产配 `Granted Tags`，或 `Effect->InheritableOwnedTagsContainer.AddTag()` | `ASC->AddLooseGameplayTag()` |
+| **生命周期** | **跟 GE 绑定**，GE 结束自动移除 | **手动管**，自己加自己删 |
+| Duration | ✅ GE 有，自动过期 | ❌ 没有，要自己 Timer |
+| 复制 | ✅ 随 GE 复制 | ⚠️ 看接口 |
+| 适合 | 有持续时间的效果（Burn 5s、Stun 3s） | 持久状态、**本地开关** |
+
+**一句话：**
+> **Granted Tag = "由效果产生的状态"，效果没了 Tag 就没了。**
+> **Loose Tag = "我手动挂的标记"，只有我自己手动摘。**
+
+### 59.7 三个 Loose Tag 接口的区别
+
+| 接口 | 会复制吗 | 要求 |
+|---|---|---|
+| `AddLooseGameplayTag(Tag)` | ⚠️ 取决于 ASC 的 `GameplayTagCountContainer` 复制配置 | 无 |
+| `AddLooseGameplayTags(Container)` | 同上（**只是复数形式，一次加一组**） | 无 |
+| `AddReplicatedLooseGameplayTag(Tag)` | ✅ **明确复制** | **必须在服务器调用** |
+
+- `AddLooseGameplayTag` vs `AddLooseGameplayTags` → **只是参数形式不同**（单个 vs 容器）
+- `AddLooseGameplayTag` vs `AddReplicatedLooseGameplayTag` → **复制行为不同**
+  （后者把 Tag 额外记到 `ReplicatedLooseTags`，该容器有 `DOREPLIFETIME`）
+
+> **客户端 `OnRep` 里必须用非复制版** —— 复制版要求 Authority，客户端调用会失败。
+
+### 59.8 敌人的 Stun 动画打断：两端都要做
+
+之前的问题：电击松手触发 Stun 后，敌人**先播 HitReact 再切 Stun**。
+
+**根因回顾（第 51 章）**：`Activation Blocked Tags` 只在**激活那一刻**检查，
+**无法打断已经在播的蒙太奇**（按住电击时循环伤害反复激活 HitReact，松手时它正在播）。
+
+**本次实现（两端都停）：**
+
+```cpp
+// 服务器
+void AEnemy_Characte::StunTagChanged(const FGameplayTag CallBackTag, int32 NewCount)
+{
+    Super::StunTagChanged(CallBackTag, NewCount);
+    if (bIsStunned) { StopStunMontages(); }       // ← 服务器停一次
+    ...Blackboard...
+}
+
+// 客户端
+void AEnemy_Characte::OnRep_Stunned()
+{
+    if (bIsStunned) { StopStunMontages(); }       // ← 客户端也停一次
+}
+
+void AEnemy_Characte::StopStunMontages()
+{
+    if (USkeletalMeshComponent* MeshComp = GetMesh())
+        if (UAnimInstance* AnimInst = MeshComp->GetAnimInstance())
+            AnimInst->Montage_Stop(0.1f);
+}
+```
+
+**为什么两端都要停：**
+- **动画蒙太奇的表现只归客户端管**，服务器调 `Montage_Stop` **不会同步**给客户端
+- 服务器侧停是为了逻辑干净；客户端侧停才是**真正能看到的效果**
+
+**踩坑记录**：
+- `UAbilitySystemComponent` **没有** `StopAllMontages()` —— 那是 `UAnimInstance` 的接口。
+  ASC 侧叫 `CurrentMontageStop()`，或者直接操作 `GetMesh()->GetAnimInstance()->Montage_Stop(0.1f)`。
+- 辅助函数命名避开引擎接口名（用 `StopStunMontages` 而不是 `StopAllMontages`），防止混淆。
+
+### 59.9 AI 只应修改 `My_` 开头的文件（项目铁律）
+
+项目里存在**两套代码**：
+- **教程原版**：`AuraCharacterBase` / `AuraAttributeSet` / `AuraAbilitySystemComponent` 等
+- **自己的实现**：`My` / `MY_` 前缀
+
+**规矩：非 `My_`/`MY_` 开头的文件 = 教程源码，只读，禁止修改。**
+要加逻辑就在 `My_` 子类里 override / 新增。
+
+### 59.10 顺带清理：BTTask 里的刷屏日志
+
+`My_BTTask_MoveTo::ExecuteTask()` 里曾有一句
+`UE_LOG(... "AcceptableRadius from BB: %f" ...)`。
+`ExecuteTask` **每次 BTTask 节点开始执行都会调用**（敌人追人时高频重复），
+多个敌人一起就刷爆日志。**调试打印排查完要清掉。**
+
+### 59.11 Stun 动画时长的调整
+
+「眩晕动画太久」有两种含义，改的地方不同：
+
+| 想达到 | 改哪里 |
+|---|---|
+| **眩晕状态持续短一点** | 技能蓝图 Class Defaults 里的 **`DebuffDuration`**（默认 5s） |
+| 动画动作本身太慢 | AnimBP 的 Sequence Player **Play Rate** |
+| 动画播完还在循环抽动 | 资产名带 `_Loop` 的是循环动画，需关 Loop 或换资产 |
+
+**链路**（`DebuffDuration` 决定一切）：
+```
+DebuffDuration = 5s
+  → 动态 GE 持续 5s
+  → 5s 后 GE 结束 → Tag 移除 → StunTagChanged(NewCount=0)
+  → bIsStunned = false → 动画切走
+```
+`DebuffDuration` 标了 `EditDefaultsOnly` → **可在 `My_GA_Electrocute` 蓝图里直接改，不用动 C++。**

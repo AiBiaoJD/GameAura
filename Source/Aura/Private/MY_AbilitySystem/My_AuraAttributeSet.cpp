@@ -253,14 +253,13 @@ void UMy_AuraAttributeSet::Debuff(const FMy_EffectProperties& Props)
 		ModifierInfo.ModifierMagnitude = FScalableFloat(DebuffDamage);
 		Effect->Modifiers.Add(ModifierInfo);
 	}
-	// 以后要加新 Debuff 就在这里续 else if。例如眩晕（教程的做法，见 AuraAttributeSet.cpp:226-232）：
-	// else if (DebuffTagPtr->MatchesTagExact(GameplayTags.My_Debuff_Stun))
-	// {
-	//     Effect->InheritableOwnedTagsContainer.AddTag(GameplayTags.My_Player_Block_CursorTrace);
-	//     Effect->InheritableOwnedTagsContainer.AddTag(GameplayTags.My_Player_Block_InputHeld);
-	//     Effect->InheritableOwnedTagsContainer.AddTag(GameplayTags.My_Player_Block_InputPressed);
-	//     Effect->InheritableOwnedTagsContainer.AddTag(GameplayTags.My_Player_Block_InputReleased);
-	// }
+	else if (DebuffTagPtr->MatchesTagExact(GameplayTags.My_Debuff_Stun))
+	{
+		Effect->InheritableOwnedTagsContainer.AddTag(GameplayTags.My_Player_Block_CursorTrace);
+		Effect->InheritableOwnedTagsContainer.AddTag(GameplayTags.My_Player_Block_InputHeld);
+		Effect->InheritableOwnedTagsContainer.AddTag(GameplayTags.My_Player_Block_InputPressed);
+		Effect->InheritableOwnedTagsContainer.AddTag(GameplayTags.My_Player_Block_InputReleased);
+	}
 
 	// ④ 造 Context + Spec 并应用
 	FGameplayEffectContextHandle Context = Props.SourceASC->MakeEffectContext(); // ← 必需

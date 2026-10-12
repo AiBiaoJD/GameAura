@@ -44,12 +44,15 @@ public:
 	FMy_OnAttributeChangedSignature OnMaxHealthChanged;
 
 	void HitReatTagChanged(const FGameplayTag Tag, int32 NewCount);
+	virtual void StunTagChanged(const FGameplayTag CallBackTag, int32 NewCount) override;
+
+	// 客户端靠复制的 bIsStunned 触发：本地停掉正在播的蒙太奇
+	virtual void OnRep_Stunned() override;
 
 	UPROPERTY(BlueprintReadOnly, Category = "My_Combat")
 	bool bHitReacting = false;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "My_Combat")
-	float BaseWalkSpeed = 250.f;
+
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "My_Combat")
 	float LifeSpan = 5.f;
@@ -59,6 +62,9 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
+
+	// 停掉正在播放的蒙太奇（服务器 StunTagChanged / 客户端 OnRep_Stunned 共用）
+	void StopStunMontages();
 	virtual void My_InitAbilityActorInfo() override;
 	virtual void InitializeDefaultAttribute() const;
 

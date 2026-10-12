@@ -25,7 +25,6 @@ EBTNodeResult::Type UMy_BTTask_MoveTo::ExecuteTask(UBehaviorTreeComponent& Owner
 	{
 		const float BBValue = OwnerComp.GetBlackboardComponent()->GetValueAsFloat(AcceptableRadiusKey.SelectedKeyName);
 		AcceptableRadius = BBValue;
-		UE_LOG(LogTemp, Warning, TEXT("[My_BTTask_MoveTo] AcceptableRadius from BB: %f"), BBValue);
 	}
 	else
 	{

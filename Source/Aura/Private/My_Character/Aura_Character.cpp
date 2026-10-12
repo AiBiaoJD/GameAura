@@ -5,6 +5,7 @@
 
 #include "GameFramework/CharacterMovementComponent.h"
 #include "MY_AbilitySystem/My_AuraAbilitySystemComponent.h"
+#include "My_AuraGamePlayTags_Singleton.h"
 #include "MY_AbilitySystem/Data/My_LevelUpInfo.h"
 #include "My_Controler/My_AuraPlayerState.h"
 #include "My_Controler/My_Aura_Controller.h"
@@ -178,6 +179,7 @@ void AAura_Character::My_InitAbilityActorInfo()
 	AbilitySystemComponent = AuraPlayerState->GetAbilitySystemComponent();
 	AttributeSet = AuraPlayerState->GetAttributeSet();
 
+	AbilitySystemComponent->RegisterGameplayTagEvent(FMy_AuraGameplayTags::GetInstance().My_Debuff_Stun, EGameplayTagEventType::NewOrRemoved).AddUObject(this, &AAura_Character::StunTagChanged);
 
 	//3.调用Initlayout(),在AMy_AuraHUD类中
 	//因为这时候服务器和客户端的四个参数都为真
@@ -200,4 +202,26 @@ void AAura_Character::My_InitAbilityActorInfo()
 	//  所以它们会先挂在 OnASCRegistered 上，等这一行广播之后再去注册 Tag 监听。
 	//  ⚠️ 不广播的话，那些组件永远收不到通知 —— 不报错、不崩，只是特效永远不出现。
 	OnASCRegistered.Broadcast(AbilitySystemComponent);
+}
+
+void AAura_Character::OnRep_Stunned()
+{
+	if (UMy_AuraAbilitySystemComponent* AuraASC = Cast<UMy_AuraAbilitySystemComponent>(AbilitySystemComponent))
+	{
+		const FMy_AuraGameplayTags& GameplayTags = FMy_AuraGameplayTags::GetInstance();
+		FGameplayTagContainer BlockedTags;
+		BlockedTags.AddTag(GameplayTags.My_Player_Block_CursorTrace);
+		BlockedTags.AddTag(GameplayTags.My_Player_Block_InputHeld);
+		BlockedTags.AddTag(GameplayTags.My_Player_Block_InputPressed);
+		BlockedTags.AddTag(GameplayTags.My_Player_Block_InputReleased);
+
+		if (bIsStunned)
+		{
+			AuraASC->AddLooseGameplayTags(BlockedTags);
+		}
+		else
+		{
+			AuraASC->RemoveLooseGameplayTags(BlockedTags);
+		}
+	}
 }
