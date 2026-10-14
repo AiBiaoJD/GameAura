@@ -180,6 +180,7 @@ void AAura_Character::My_InitAbilityActorInfo()
 	AttributeSet = AuraPlayerState->GetAttributeSet();
 
 	AbilitySystemComponent->RegisterGameplayTagEvent(FMy_AuraGameplayTags::GetInstance().My_Debuff_Stun, EGameplayTagEventType::NewOrRemoved).AddUObject(this, &AAura_Character::StunTagChanged);
+	AbilitySystemComponent->RegisterGameplayTagEvent(FMy_AuraGameplayTags::GetInstance().My_Debuff_Burn, EGameplayTagEventType::NewOrRemoved).AddUObject(this, &AAura_Character::BurnTagChanged);
 
 	//3.调用Initlayout(),在AMy_AuraHUD类中
 	//因为这时候服务器和客户端的四个参数都为真
@@ -218,10 +219,30 @@ void AAura_Character::OnRep_Stunned()
 		if (bIsStunned)
 		{
 			AuraASC->AddLooseGameplayTags(BlockedTags);
+			StunDebuffComponent->Activate();
 		}
 		else
 		{
 			AuraASC->RemoveLooseGameplayTags(BlockedTags);
+			StunDebuffComponent->Deactivate();
 		}
+	}
+}
+
+/*
+ * Burn 特效同 Stun：
+ * Debuff 的 Tag 走 ASC 的 minimal 复制，而 minimal 数据带 COND_SkipOwner，
+ * owner 自己那台机器永远收不到 Tag（只剩一条坏掉的 GE 列表通道）。
+ * 所以 owner 端改由复制的 bIsBurned 驱动特效，服务器和其他客户端照旧走 Tag。
+ */
+void AAura_Character::OnRep_Burned()
+{
+	if (bIsBurned)
+	{
+		BurnDebuffComponent->Activate();
+	}
+	else
+	{
+		BurnDebuffComponent->Deactivate();
 	}
 }

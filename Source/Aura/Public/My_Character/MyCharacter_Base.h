@@ -32,15 +32,23 @@ public:
 
 
 	/*
-	 * Stun 状态：动态 GE 无法复制到客户端，
-	 * 所以用复制的 bool 让客户端也能知道"是否眩晕"（AnimBP 读这个，不读 Tag）
+	 * Stun / Burn 状态：动态 GE 无法复制到客户端，
+	 * 且 ASC 的 minimal 复制 Tag 带 COND_SkipOwner —— owner 自己收不到。
+	 * 所以用复制的 bool 让 owner 客户端也能知道状态（AnimBP 读这个，不读 Tag）
 	*/
 	UPROPERTY(ReplicatedUsing = OnRep_Stunned, BlueprintReadOnly, Category = "My_Combat")
 	bool bIsStunned = false;
 
+	UPROPERTY(ReplicatedUsing = OnRep_Burned, BlueprintReadOnly, Category = "My_Combat")
+	bool bIsBurned = false;
+
 	UFUNCTION()
 	virtual void OnRep_Stunned();
 	virtual void StunTagChanged(const FGameplayTag CallBackTag, int32 NewCount);
+
+	UFUNCTION()
+	virtual void OnRep_Burned();
+	virtual void BurnTagChanged(const FGameplayTag CallBackTag, int32 NewCount);
 
 	
 	/** Combat interface **/
@@ -144,6 +152,9 @@ protected:
 	/* Debuff*/
 	UPROPERTY(VisibleAnywhere)
 	TObjectPtr<UMy_DebuffNiagaraComponent> BurnDebuffComponent;
+
+	UPROPERTY(VisibleAnywhere)
+	TObjectPtr<UMy_DebuffNiagaraComponent> StunDebuffComponent;
 	
 private:
 	/* 这些变量刚好没被Enemy使用,只是给Aura的

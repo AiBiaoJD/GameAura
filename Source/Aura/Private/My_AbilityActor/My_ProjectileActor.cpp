@@ -10,7 +10,6 @@
 #include "Components/AudioComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "MY_AbilitySystem/My_AuraAbilitySystemLibrary.h"
-#include "Net/UnrealNetwork.h"
 
 AMy_ProjectileActor::AMy_ProjectileActor()
 {
@@ -33,81 +32,27 @@ AMy_ProjectileActor::AMy_ProjectileActor()
 	ProjectileMovement->ProjectileGravityScale = 0.f;
 }
 
-/* ==========================================================================================
- * 追踪（Homing）的网络同步
- * ------------------------------------------------------------------------------------------
- * 【问题】UProjectileMovementComponent 没有重写 GetLifetimeReplicatedProps
- *         → 它一个属性都不复制。而追踪设置只在服务器的 SpawnProjectiles 里做过
- *           （那个函数开头就 if (!HasAuthority()) return;）
- *         → 客户端那份投射物 bIsHomingProjectile = false、HomingTargetComponent = nullptr
- *           → 客户端看到火球【直线飞】，而服务器上它是拐弯命中的。
- *
- * 【解决】复制"追踪所需要的信息"（在投射物上），客户端收到后自己组装出同样的追踪。
- * ========================================================================================== */
-void AMy_ProjectileActor::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
-{
-	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-
-	DOREPLIFETIME(AMy_ProjectileActor, HomingTargetActor);
-	DOREPLIFETIME(AMy_ProjectileActor, HomingTargetLocation);
-	DOREPLIFETIME(AMy_ProjectileActor, bHomingEnabled);
-	DOREPLIFETIME(AMy_ProjectileActor, HomingAcceleration);
-}
-
-void AMy_ProjectileActor::OnRep_HomingSetup()
-{
-	// 客户端收到/更新追踪数据 → 重新组装一次
-	ApplyHomingSetup();
-}
-
-/**
- * 把复制过来的追踪信息组装成 ProjectileMovement 的设置。
- * 服务器在 BeginPlay 时用初始值调一次；客户端靠 BeginPlay + OnRep_HomingSetup 调。
- * 这个函数是幂等的，重复调用没关系。
- */
-void AMy_ProjectileActor::ApplyHomingSetup()
-{
-	if (!ProjectileMovement) return;
-
-	USceneComponent* TargetComp = nullptr;
-
-	if (IsValid(HomingTargetActor))
-	{
-		// ① 目标是敌人 Actor → 直接用它的根组件
-		TargetComp = HomingTargetActor->GetRootComponent();
-	}
-	else if (!HomingTargetLocation.IsNearlyZero())
-	{
-		// ② 目标是地面上的一个点 → 自己造一个虚拟组件放在那里当追踪点
-		//    ★ 必须存进 HomingTargetSceneComponent（UPROPERTY 强引用）保住它，
-		//      因为 ProjectileMovement->HomingTargetComponent 是 TWeakObjectPtr，
-		//      不构成强引用 —— 不自己持有就会被 GC 回收，表现为"飞一会儿突然不追踪了"。
-		if (!HomingTargetSceneComponent)
-		{
-			HomingTargetSceneComponent = NewObject<USceneComponent>(this);
-		}
-		HomingTargetSceneComponent->SetWorldLocation(HomingTargetLocation);
-		TargetComp = HomingTargetSceneComponent;
-	}
-
-	ProjectileMovement->HomingTargetComponent = TargetComp;
-	// 没有有效目标就不要开追踪，否则 ProjectileMovement 会每帧去追一个空指针
-	ProjectileMovement->bIsHomingProjectile = bHomingEnabled && (TargetComp != nullptr);
-	// ★ 用服务器复制过来的值，客户端不要自己 FRandRange 重骰
-	ProjectileMovement->HomingAccelerationMagnitude = HomingAcceleration;
-}
-
 void AMy_ProjectileActor::BeginPlay()
 {
 	Super::BeginPlay();
 
 	SetLifeSpan(LifeSpan);
+
+	/*
+	 * ★ 打开"移动复制"。
+	 *
+	 * UProjectileMovementComponent 一个属性都不复制（bIsHomingProjectile /
+	 * HomingTargetComponent / HomingAccelerationMagnitude 全是纯本地的），
+	 * 而追踪只在服务器的 SpawnProjectiles 里设置（那边开头就 HasAuthority 返回）。
+	 *
+	 * 打开这个之后，服务器算出来的位置会随 FRepMovement 复制到客户端
+	 * （引擎 Actor.cpp: DOREPLIFETIME_ACTIVE_OVERRIDE_FAST(AActor, ReplicatedMovement, ...)），
+	 * 客户端跟着服务器的轨迹走即可 —— 不需要自己知道追踪目标是谁。
+	 */
+	SetReplicateMovement(true);
+
 	Sphere->OnComponentBeginOverlap.AddDynamic(this, &AMy_ProjectileActor::OnSphereOverlap);
 	LoopingSoundComponent = UGameplayStatics::SpawnSoundAttached(LoopingSound, GetRootComponent());
-
-	// 服务器：用 SpawnProjectiles 在 FinishSpawning 之前设好的值组装
-	// 客户端：PostNetInit() 会先把复制的属性应用上，再派发 BeginPlay → 这里也能拿到正确数据
-	ApplyHomingSetup();
 }
 
 void AMy_ProjectileActor::OnSphereOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
@@ -175,9 +120,6 @@ void AMy_ProjectileActor::Destroyed()
 		LoopingSoundComponent->DestroyComponent();
 	}
 	Super::Destroyed();
-
-	// 主动切断强引用
-	HomingTargetSceneComponent = nullptr;
 }
 
 void AMy_ProjectileActor::MulticastPlayImpactEffects_Implementation()

@@ -58,6 +58,10 @@
 - [五十五、ASC 输入三入口（Pressed / Held / Released）与任务回调时序](#五十五asc-输入三入口pressed--held--released与任务回调时序)
 - [五十六、GameplayCue 的网络模型：预测与广播的双触发陷阱](#五十六gameplaycue-的网络模型预测与广播的双触发陷阱)
 - [五十七、GameplayCue 的预测去重与回滚：key「只回原主」+ 回执对账](#五十七gameplaycue-的预测去重与回滚key只回原主-回执对账)
+- [五十八、C++ 中文编码规矩（从 CLAUDE.md 迁入）](#五十八c-中文编码规矩从-claudemd-迁入)
+- [五十九、动态 GE 的致命缺陷：无法网络复制（★重要）](#五十九动态-ge-的致命缺陷无法网络复制重要)
+- [六十、ASC 复制的两套过滤机制（★修正第 59 章）](#六十asc-复制的两套过滤机制修正第-59-章)
+- [六十一、投射物追踪的复制方案简化（SetReplicateMovement）](#六十一投射物追踪的复制方案简化setreplicatemovement)
 
 ---
 
@@ -9465,3 +9469,282 @@ DebuffDuration = 5s
   → bIsStunned = false → 动画切走
 ```
 `DebuffDuration` 标了 `EditDefaultsOnly` → **可在 `My_GA_Electrocute` 蓝图里直接改，不用动 C++。**
+
+---
+
+## 六十、ASC 复制的两套过滤机制（★修正第 59 章）
+
+### 60.1 起因：59 章的解释不够准确
+
+59.2 / 59.5c 的结论是「玩家是 `Mixed` → 要复制 GE 本体 → 动态 GE 无路径 → 失败」。
+方向对，但**没说到根子上**，也解释不了一个关键现象：
+
+> **为什么「旁观者客户端」能看到 Debuff 特效，而「受害者本人的客户端」看不到？**
+
+按 59 章的说法，玩家 ASC 是 `Mixed`，那"所有客户端"都应该拿不到 Tag 才对。
+实测却是一半一半。说明真正的机制不是「Mixed 会复制 GE 本体」这么简单。
+
+### 60.2 真正的原因：`MinimalReplicationTags` 带 `COND_SkipOwner`
+
+ASC 上跟 GE 有关的复制属性**不止一个**，各自有各自的收件人规则
+（`AbilitySystemComponent.cpp:1605-1636`）：
+
+```cpp
+FDoRepLifetimeParams Params;
+Params.bIsPushBased = true;          // 默认 Condition = COND_None（谁都发）
+
+DOREPLIFETIME_WITH_PARAMS_FAST(UAbilitySystemComponent, ActiveGameplayEffects, Params);
+...
+Params.Condition = COND_SkipOwner;   // ★ 写死，和 ReplicationMode 无关
+DOREPLIFETIME_WITH_PARAMS_FAST(UAbilitySystemComponent, MinimalReplicationGameplayCues, Params);
+DOREPLIFETIME_WITH_PARAMS_FAST(UAbilitySystemComponent, MinimalReplicationTags, Params);
+```
+
+| 复制属性 | 注册时的 Condition | 实际发给谁 |
+|---|---|---|
+| `ActiveGameplayEffects`（GE 列表，全量） | **`COND_None`**（默认，谁都发） | ← 靠序列化内部**再被 `ReplicationMode` 过滤一次** |
+| `MinimalReplicationTags`（精简 Tag） | **`COND_SkipOwner`** | 除 owner 外所有人 |
+| `MinimalReplicationGameplayCues`（精简 Cue） | `COND_SkipOwner` | 除 owner 外所有人 |
+| `ReplicatedLooseTags` | `COND_None` | 所有人 |
+| `SpawnedAttributes`（属性） | `COND_None` | 所有人 |
+| `ActivatableAbilities`（技能列表） | `COND_ReplayOrOwner` | 只有 owner |
+| `BlockedAbilityBindings` | `COND_OwnerOnly` | 只有 owner |
+
+**注意 `ActiveGameplayEffects` 的 Condition 是 `COND_None`（谁都发）** ——
+它之所以最终"只发给 owner"，**完全是靠 `ReplicationMode` 在序列化函数里二次过滤**。
+而 `MinimalReplicationTags` 的 `COND_SkipOwner` 是**注册时写死的，`ReplicationMode` 碰不到它**。
+
+### 60.3 ★ 两套过滤机制（理解整个问题的钥匙）
+
+| | 机制 | 在哪执行 | 由谁决定 |
+|---|---|---|---|
+| ① | **`Condition`（复制条件）** | 注册 `DOREPLIFETIME` 时指定，**网络引擎**遍历属性时执行 | 代码里写死 |
+| ② | **自定义序列化内部过滤** | 属性自己实现的 `NetDeltaSerialize` 里**再筛一遍** | 变量（如 `ReplicationMode`） |
+
+- `ActiveGameplayEffects` 用 **②**（`GameplayEffect.cpp:4037` `NetDeltaSerialize`）→ 受 `ReplicationMode` 控制
+- `MinimalReplicationTags` 用 **①**（写死 `COND_SkipOwner`）
+
+**所以「改 `ReplicationMode`」永远动不了 Tag 通道 —— 它们走的是两套完全不同的机制。**
+
+### 60.4 两条通道 + 谁走哪条
+
+| 通道 | 内容 | 收件人由谁决定 |
+|---|---|---|
+| ① `MinimalReplicationTags` | **只有 Tag**（`{Tag: 计数}`） | `COND_SkipOwner` → 除 owner 外 |
+| ② `ActiveGameplayEffects` | **完整 GE 列表** | `ReplicationMode` |
+
+玩家 ASC = `Mixed`，于是：
+
+| 收件人 | 通道 ①（SkipOwner） | 通道 ②（Mixed） | 最终收到 |
+|---|---|---|---|
+| **受害者本人（owner）** | 跳过 ❌ | 发 ✅ | **只有 GE 列表** |
+| **旁观者客户端** | 发 ✅ | 跳过 ❌ | **只有 minimal Tag** |
+
+**旁观者拿到 Tag → 特效正常 ✅；owner 只能走 GE 列表 → 动态 GE 无 Def → 整颗 GE 被丢弃 → Tag 挂不上 → 特效不显示 ❌**
+
+旁观者收到 Tag 后是怎么"挂上"的（`GameplayEffectTypes.cpp`）：
+
+```cpp
+// FMinimalReplicationTagCountMap::NetSerialize（读分支）
+while (Count-- > 0)
+{
+    FGameplayTag Tag;
+    Tag.NetSerialize(Ar, Map, bOutSuccess);
+    TagMap.FindOrAdd(Tag) = 1;      // ← Tag 写进本地 map
+}
+...
+UpdateOwnerTagMap();                 // :1327-1334
+
+// → Owner->SetTagMapCount(Tag, Count)  → 本地 ASC 的 Tag 计数真的变了
+//   → RegisterGameplayTagEvent 回调触发 → DebuffTagChanged → Activate() → 特效 ✅
+```
+
+### 60.5 为什么「把玩家改成 `Minimal`」是死路
+
+一个很容易想到的"修法"：既然 `Mixed` 让 owner 走坏掉的 GE 列表，
+那改成 `Minimal`（谁都不发 GE 列表）不就好了？
+
+**不行。** 因为：
+
+- 通道 ② 的收件人由 `ReplicationMode` 决定
+- 通道 ① 的收件人由**写死的 `COND_SkipOwner`** 决定
+- **两者不联动** —— 关了 ②，① 依然跳过 owner
+
+| 模式 | 通道 ② | 通道 ① | owner 实际拿到 |
+|---|---|---|---|
+| `Full` | 发给所有人 | 不启用 | ② → 动态 GE 无 Def → **丢弃** ❌ |
+| `Mixed`（现状） | 只发给 owner | 跳过 owner | ② → 坏 ❌ |
+| `Minimal` | 谁都不发 | 跳过 owner | **两条都没有** ❌ |
+
+三种模式 owner 全是 ❌，只是坏法不同。
+
+**而且 `Full` 也救不了** —— 有通道 ≠ 有货：
+
+```cpp
+// GameplayEffect.cpp:1825-1829  FActiveGameplayEffect::PostReplicatedAdd
+if (Spec.Def == nullptr)
+{
+    ABILITY_LOG(Error, TEXT("...Received ReplicatedGameplayEffect with no UGameplayEffect def."));
+    return;                          // ← 直接返回
+}
+...
+// GameplayEffect.cpp:1888 —— 加 Tag / 加 Modifier 在这一行，永远执行不到
+InternalOnActiveGameplayEffectAdded(*this);
+```
+
+**引擎自己也劝退**（`AbilitySystemComponent.h:81-89`）：
+
+> `Minimal` —— *Note: this does not work for Owned AbilitySystemComponents (Use Mixed instead).*
+> `Mixed` —— *Only replicate minimal gameplay effect info to simulated proxies but full info to owners and autonomous proxies*
+
+> **修正 59.5c**：那里写的「改成 Minimal 会破坏玩家的预测能力」方向对，
+> 但更准确的原因是 —— **`COND_SkipOwner` 与 `ReplicationMode` 无关，
+> 改 Minimal 后 owner 两条通道都没有**。
+> 报错消失只是因为"不再尝试发 GE"，不是修好了。
+
+### 60.6 `ReplicationMode` 是「服务器端的逐连接发送策略」
+
+它**不是客户端的属性，也不是"角色"的属性**。
+
+**证据一：它不复制。**
+```cpp
+// AbilitySystemComponent.h:245-246
+/** How gameplay effects are replicated */
+EGameplayEffectReplicationMode ReplicationMode;   // ← 没有 UPROPERTY(Replicated)
+```
+只存在于**拥有权威的那一份 ASC（服务器）**上。
+
+**证据二：判断只在发包时、且针对当前连接执行。**
+```cpp
+// GameplayEffect.cpp:4039-4041
+// these tests are only necessary when sending     ← 只在发送时
+if (DeltaParms.Writer != nullptr && Owner != nullptr)
+{
+    ...
+    // 判定「当前这一条连接」是不是 owner 的
+    if (!ParentOwner->IsOwnedBy(Connection->OwningActor) && (ParentOwnerNetConnection != Connection))
+        return false;
+}
+```
+
+服务器上只有**一份** B 的 ASC（`Mixed`），给 N 个客户端发 B 的数据时，**对每条连接各跑一遍**：
+
+| 服务器正在往谁发 | 判定 | 结果 |
+|---|---|---|
+| B 自己的连接 | 是 owner | 发 ②；① 跳过它 |
+| A 的连接 | 不是 owner | 不发 ②；① 发给它 |
+
+**「Mixed」这个名字的意思就是「两种发法混合使用」**：对 owner 发全量，对其他人发精简。
+旁观者客户端（B 在它机器上只是 simulated proxy）**没有任何选择权**，只是被动收到服务器挑给它的那一份。
+
+**设在哪**：它是 ASC 的成员，所以在"能拿到 ASC 的地方"设 ——
+玩家 ASC 在 PlayerState 上 → `My_AuraPlayerState.cpp:15`；
+敌人 ASC 在 Character 上 → `Enemy_Characte.cpp:76`。
+
+**区分标准不是「角色 vs 敌人」，而是「这个 ASC 有没有 owner」**：
+
+| 情况 | 该用 | 理由 |
+|---|---|---|
+| 有 owner（玩家） | `Mixed` | owner 要完整信息做预测/UI；其他人只看状态 |
+| 无 owner（AI/敌人） | `Minimal` | 没有"本人"概念，所有人都只看状态 |
+| 不差带宽（单人/开发期） | `Full` | 全发最简单（引擎默认值，`AbilitySystemComponent.cpp:62`） |
+
+> 顺带：对**无 owner** 的 ASC，`Minimal` 和 `Mixed` 在两条通道上效果**一致**
+> （GE 列表对谁都不发、minimal 对谁都发）。差别只在 GameplayCue 预测键的细节
+> （`AbilitySystemComponent.cpp:1326`），而那是给"有 owner 的客户端"防重复播放用的，对 NPC 无意义。
+> 所以敌人用 `Minimal` 主要是**语义正确**。
+
+**★ `ReplicationMode` 只在「复制/发包阶段」起作用**：
+GE 的**应用阶段**（`ApplyGameplayEffectSpecToSelf` → 进容器 / 改属性 / 挂 Tag）**完全不看它**。
+
+### 60.7 本次修复：特效改由复制 bool 驱动
+
+**问题**：`OnRep_Stunned()` 里漏了 `StunDebuffComponent->Activate()/Deactivate()`；
+`AMyCharacter_Base` 里**只有 `bIsStunned`，没有 `bIsBurned`** → 玩家自己的燃烧特效也看不到。
+
+**思路**：把特效挂到「一定送得到」的信道上 —— **角色自身的属性复制**，与 ASC 的 `ReplicationMode` 完全无关。
+
+| 文件 | 改动 |
+|---|---|
+| `My_Character/MyCharacter_Base.h` | 新增 `bIsBurned`（`ReplicatedUsing = OnRep_Burned`）、`OnRep_Burned()`、`BurnTagChanged()` |
+| `My_Character/MyCharacter_Base.cpp` | `DOREPLIFETIME(..., bIsBurned)`；`BurnTagChanged()` 里 `bIsBurned = NewCount > 0`；空 `OnRep_Burned()` |
+| `My_Character/Aura_Character.h` | `virtual void OnRep_Burned() override;` |
+| `My_Character/Aura_Character.cpp` | ① `My_InitAbilityActorInfo` 注册 `My_Debuff_Burn` 监听；② `OnRep_Stunned` 补 `StunDebuffComponent->Activate()/Deactivate()`；③ 新增 `OnRep_Burned()` → `BurnDebuffComponent->Activate()/Deactivate()` |
+
+```cpp
+void AAura_Character::OnRep_Stunned()
+{
+    ...
+    if (bIsStunned) { AuraASC->AddLooseGameplayTags(BlockedTags); StunDebuffComponent->Activate(); }
+    else            { AuraASC->RemoveLooseGameplayTags(BlockedTags); StunDebuffComponent->Deactivate(); }
+}
+
+void AAura_Character::OnRep_Burned()
+{
+    if (bIsBurned) { BurnDebuffComponent->Activate(); }
+    else           { BurnDebuffComponent->Deactivate(); }
+}
+```
+
+**分工**：服务器 + 其他客户端继续走 `DebuffTagChanged`（Tag 通道本来是好的），
+owner 走 `bIsStunned` / `bIsBurned`。两边都调 `Activate()`，幂等，不叠加。
+
+> ⚠️ **两条 `no UGameplayEffect def` 报错仍然会出现** —— 本次没动 GE，
+> 只是让特效改走另一条信道。想消掉必须换**资产 GE**（见 59.3 方案 ①）。
+
+### 60.8 项目约定更新：`My_` 目录下的文件也可改
+
+原规矩：「只改文件名以 `My_` / `MY_` 开头的文件」。
+本次放宽为：**文件名前缀 或 所在目录前缀**满足其一即可。
+
+- ✅ `My_Character/Aura_Character.cpp`（目录带 `My_`，文件名不带）
+- ❌ `Source/Aura/Private/Character/AuraCharacterBase.cpp`（两者都不满足 = 教程源码，只读）
+
+---
+
+## 六十一、投射物追踪的复制方案简化（SetReplicateMovement）
+
+### 61.1 原来的复杂设计
+
+为了修「客户端火球不追踪」，`My_ProjectileActor` 上做了一整套**复制属性**：
+`HomingTargetActor` / `HomingTargetLocation` / `bHomingEnabled` / `HomingAcceleration`
++ `OnRep_HomingSetup` + `ApplyHomingSetup`。
+
+### 61.2 其实一行就够
+
+```cpp
+// My_ProjectileActor::BeginPlay()
+SetReplicateMovement(true);
+```
+
+**原理**：`UProjectileMovementComponent` 的属性**一个都不复制**
+（`bIsHomingProjectile` / `HomingTargetComponent` / `HomingAccelerationMagnitude` 全是纯本地的）。
+而追踪只在服务器的 `SpawnProjectiles` 里设置。
+打开「移动复制」后，**服务器算出来的位置**会随 `FRepMovement` 复制到客户端，客户端跟着走即可。
+
+```cpp
+// Actor.cpp —— 位置复制由 bReplicateMovement 开关控制
+DOREPLIFETIME_ACTIVE_OVERRIDE_FAST(AActor, ReplicatedMovement, IsReplicatingMovement())
+```
+
+**踩坑**：`bReplicateMovement` **默认是 `false`**
+（`AActor::InitializeDefaults()` 里没赋初值，`Actor.h` 里也没有类内初始化器）。
+旁证：`APawn` 构造函数里显式写 `true`，`AInfo` / `AGameStateBase` 显式写 `false`。
+所以**必须自己打开**，否则位置不会复制。
+
+客户端侧的跟随方式：`OnRep_ReplicatedMovement()` → `PostNetReceiveVelocity()`（空实现）
++ `PostNetReceiveLocationAndRotation()` → `SetActorLocationAndRotation(..., bSweep=false)` ——
+**硬拽**到服务器位置。客户端本地 `ProjectileMovement` 照样 tick，只是每帧被拽回去。
+
+### 61.3 改动清单
+
+| 文件 | 改动 |
+|---|---|
+| `My_AbilityActor/My_ProjectileActor.h` | 删掉 4 个复制属性、`GetLifetimeReplicatedProps`、`OnRep_HomingSetup`、`ApplyHomingSetup`；**保留** `HomingTargetSceneComponent` |
+| `My_AbilityActor/My_ProjectileActor.cpp` | 删掉整个 homing 复制段；`BeginPlay` 里加 `SetReplicateMovement(true)` |
+| `MY_AbilitySystem/Ability/My_AuraFireBolt.cpp` | `SpawnProjectiles` 改回「服务器直接设组件」（教程同款） |
+
+**为什么 `HomingTargetSceneComponent` 要保留**：
+`ProjectileMovement->HomingTargetComponent` 是 `TWeakObjectPtr`，**不构成强引用**。
+追踪地面点时临时造的那个虚拟组件，不自己持有就会被 GC 回收 ——
+表现为"飞一会儿突然不追踪了"。所以用 `UPROPERTY() TObjectPtr<USceneComponent>` 强引用住它。

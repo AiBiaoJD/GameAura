@@ -41,8 +41,9 @@ public:
 	virtual int32 GetPlayerLevel_Implementation() override;
 	/** end Combat interface **/
 
-	// 客户端靠复制的 bIsStunned 触发：本地挂/移除输入屏蔽 Tag
+	// 客户端靠复制的 bIsStunned / bIsBurned 触发：本地挂输入屏蔽 Tag、开关 Debuff 特效
 	virtual void OnRep_Stunned() override;
+	virtual void OnRep_Burned() override;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	TObjectPtr<UNiagaraComponent> LevelUpNiagaraComponent;

@@ -4,6 +4,7 @@
 #include "MY_AbilitySystem/Ability/My_AuraFireBolt.h"
 
 #include "Kismet/KismetSystemLibrary.h"
+#include "Components/SceneComponent.h"
 #include "MY_AbilitySystem/My_AuraAbilitySystemLibrary.h"
 #include "My_Interraction/My_CombatInterface.h"
 
@@ -84,22 +85,29 @@ void UMy_AuraFireBolt::SpawnProjectiles(const FVector& ProjectileTargetLocation,
 
 		Projectile->DamageEffectParams = MakeDamageEffectParamsFromClassDefaults(nullptr);
 
-		// ========== 远近全部开启追踪 ==========
-		// ★ 这里【不再直接设 ProjectileMovement】——原因见 My_ProjectileActor.h 里那段说明：
-		//   UProjectileMovementComponent 一个属性都不复制，而本函数开头就
-		//   if (!HasAuthority()) return; → 客户端根本收不到追踪设置 → 那边是直线飞。
-		//
-		//   现在改成：只把"追踪所需要的信息"交给投射物（这些是复制属性），
-		//             由 AMy_ProjectileActor::ApplyHomingSetup() 在两端各自组装。
-		const bool bTrackActor = HomingTarget && HomingTarget->Implements<UMy_CombatInterface>();
+		// ========== 远近全部开启追踪（只在服务器设置） ==========
+		// 追踪只是组件上的本地设置，不需要复制给客户端：
+		// 投射物开了 SetReplicateMovement(true)，位置会由服务器复制过去，
+		// 客户端跟着服务器算出来的轨迹走就行。
+		if (bLaunchHomingProjectile)
+		{
+			if (HomingTarget && HomingTarget->Implements<UMy_CombatInterface>())
+			{
+				// 目标是敌人 Actor → 直接用它的根组件当追踪点
+				Projectile->ProjectileMovement->HomingTargetComponent = HomingTarget->GetRootComponent();
+			}
+			else
+			{
+				// 目标是地面上的一个点 → 造一个虚拟组件放在那里当追踪点。
+				// 必须存进投射物的强引用成员，否则 TWeakObjectPtr 会被 GC 回收。
+				Projectile->HomingTargetSceneComponent = NewObject<USceneComponent>(USceneComponent::StaticClass());
+				Projectile->HomingTargetSceneComponent->SetWorldLocation(ProjectileTargetLocation);
+				Projectile->ProjectileMovement->HomingTargetComponent = Projectile->HomingTargetSceneComponent;
+			}
 
-		Projectile->HomingTargetActor    = bTrackActor ? HomingTarget : nullptr;
-		Projectile->HomingTargetLocation = bTrackActor ? FVector::ZeroVector : ProjectileTargetLocation;
-		Projectile->bHomingEnabled       = bLaunchHomingProjectile;
-
-		// ★ 加速度是随机的（FRandRange）：必须在【服务器这里骰一次】，然后把结果复制过去。
-		//   如果让客户端自己再骰一次，两端得到的值不同 → 轨迹还是对不上。
-		Projectile->HomingAcceleration   = FMath::FRandRange(HomingAccelerationMin, HomingAccelerationMax);
+			Projectile->ProjectileMovement->HomingAccelerationMagnitude = FMath::FRandRange(HomingAccelerationMin, HomingAccelerationMax);
+			Projectile->ProjectileMovement->bIsHomingProjectile = true;
+		}
 
 		Projectile->FinishSpawning(SpawnTransform);
 	}

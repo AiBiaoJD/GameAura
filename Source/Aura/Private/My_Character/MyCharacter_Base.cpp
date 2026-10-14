@@ -29,6 +29,10 @@ AMyCharacter_Base::AMyCharacter_Base()
 	BurnDebuffComponent = CreateDefaultSubobject<UMy_DebuffNiagaraComponent>(TEXT("Burn Debuff"));
 	BurnDebuffComponent->SetupAttachment(GetRootComponent());
 	BurnDebuffComponent->DebuffTag = FMy_AuraGameplayTags::GetInstance().My_Debuff_Burn;
+
+	StunDebuffComponent = CreateDefaultSubobject<UMy_DebuffNiagaraComponent>(TEXT("Stun Debuff"));
+	StunDebuffComponent->SetupAttachment(GetRootComponent());
+	StunDebuffComponent->DebuffTag = FMy_AuraGameplayTags::GetInstance().My_Debuff_Stun;
 }
 
 
@@ -168,6 +172,7 @@ void AMyCharacter_Base::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
 	DOREPLIFETIME(AMyCharacter_Base, bIsStunned);
+	DOREPLIFETIME(AMyCharacter_Base, bIsBurned);
 }
 
 void AMyCharacter_Base::StunTagChanged(const FGameplayTag CallBackTag, int32 NewCount)
@@ -176,7 +181,16 @@ void AMyCharacter_Base::StunTagChanged(const FGameplayTag CallBackTag, int32 New
 	GetCharacterMovement()->MaxWalkSpeed = bIsStunned ? 0.f : BaseWalkSpeed;
 }
 
+void AMyCharacter_Base::BurnTagChanged(const FGameplayTag CallBackTag, int32 NewCount)
+{
+	bIsBurned = NewCount > 0;
+}
+
 void AMyCharacter_Base::OnRep_Stunned()
+{
+}
+
+void AMyCharacter_Base::OnRep_Burned()
 {
 }
 
