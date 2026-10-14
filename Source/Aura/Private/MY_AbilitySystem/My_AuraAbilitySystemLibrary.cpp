@@ -108,7 +108,20 @@ void UMy_AuraAbilitySystemLibrary::GiveStartupAbilities(const UObject* WorldCont
 	{
 		if (ASC->GetAvatarActor()->Implements<UMy_CombatInterface>())
 		{
-			FGameplayAbilitySpec AbilitySpec = FGameplayAbilitySpec(AbilityClass, IMy_CombatInterface::Execute_GetPlayerLevel(ASC->GetAvatarActor()));
+			/*
+			 * 技能等级要夹到 31 以内，不能直接用角色等级。
+			 *
+			 * 技能激活时 MakeEffectContext 会调 SetAbility，把 GetAbilityLevel() 写进
+			 * FGameplayEffectContext::AbilityLevel（GameplayEffectTypes.cpp:180）；
+			 * 这个值随后会进 GameplayCue 参数，而引擎给 Cue 里的等级只留了 5 bit
+			 * （GameplayEffectTypes.cpp:944 NUM_LEVEL_BITS = 5，MAX_LEVEL = 31），
+			 * 超过就在 FGameplayCueParameters::NetSerialize 里触发 ensureMsgf 断言
+			 * （:1066 GameplayEffectLevel / :1076 AbilityLevel）。
+			 *
+			 * 夹住不影响角色强度：属性走的是 GiveDefaultAttributes 那条路，仍用真实等级取曲线。
+			 */
+			const int32 AbilityLevel = FMath::Clamp(IMy_CombatInterface::Execute_GetPlayerLevel(ASC->GetAvatarActor()), 1, 31);
+			FGameplayAbilitySpec AbilitySpec = FGameplayAbilitySpec(AbilityClass, AbilityLevel);
 			ASC->GiveAbility(AbilitySpec);
 		}
 	}
@@ -125,6 +138,12 @@ int32 UMy_AuraAbilitySystemLibrary::GetXPRewardForClassAndLevel(const UObject* W
 
 FGameplayEffectContextHandle UMy_AuraAbilitySystemLibrary::ApplyDamageEffect(const FMy_DamageEffectParams& Params)
 {
+	// 两个 ASC 任一为空就直接返回：再往下走会在空指针上调用 ApplyGameplayEffectSpecToSelf
+	if (Params.SourceASC == nullptr || Params.TargetASC == nullptr)
+	{
+		return FGameplayEffectContextHandle();
+	}
+
 	const AActor* SourceAvatarActor = Params.SourceASC->GetAvatarActor();
 	const FMy_AuraGameplayTags GameplayTags = FMy_AuraGameplayTags::GetInstance();
 

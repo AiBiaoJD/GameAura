@@ -161,6 +161,20 @@ void UMy_ExeCalc_Damage::Execute_Implementation(const FGameplayEffectCustomExecu
 	AActor* SourceAvatar = SourceASC ? SourceASC->GetAvatarActor() : nullptr;
 	AActor* TargetAvatar = TargetASC ? TargetASC->GetAvatarActor() : nullptr;
 
+	/*
+	 * 这四个指针都可能为空，而且不是理论上才可能：
+	 * GetTargetAbilitySystemComponent() 拿到的是 FActiveGameplayEffectsContainer::Owner 的
+	 * TWeakObjectPtr（见 GameplayEffectExecutionCalculation.h:187）。目标 ASC 一旦变成不可达对象
+	 * ——目标角色死亡 5 秒后 SetLifeSpan 到期被销毁，或组件 Unregister 时调了 ClearActorInfo——
+	 * 弱指针 Get() 就直接返回 nullptr；GetAvatarActor() 读的 AvatarActor 同样是弱指针，会一起变空。
+	 * 原来的 SourceAvatar->Implements<>() / TargetAvatar->Implements<>() 在空指针上调用 UObject
+	 * 成员函数就是访问违例。目标已经没了就不该再算伤害，直接返回。
+	 */
+	if (SourceASC == nullptr || TargetASC == nullptr || SourceAvatar == nullptr || TargetAvatar == nullptr)
+	{
+		return;
+	}
+
 	// 获取战斗接口用于获取角色等级等信息
 	int32 SourceLevel = 1;
 	if (SourceAvatar->Implements<UMy_CombatInterface>())

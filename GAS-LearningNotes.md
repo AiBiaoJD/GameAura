@@ -9748,3 +9748,486 @@ DOREPLIFETIME_ACTIVE_OVERRIDE_FAST(AActor, ReplicatedMovement, IsReplicatingMove
 `ProjectileMovement->HomingTargetComponent` 是 `TWeakObjectPtr`，**不构成强引用**。
 追踪地面点时临时造的那个虚拟组件，不自己持有就会被 GC 回收 ——
 表现为"飞一会儿突然不追踪了"。所以用 `UPROPERTY() TObjectPtr<USceneComponent>` 强引用住它。
+
+---
+
+## 六十二、长按电击蓝量耗尽 → `TargetASC == nullptr`：弱指针 + PendingKill
+
+### 62.1 现象
+
+长按电击打一个高血量敌人，蓝量耗尽时报访问违例。调试器停在 `My_ExeCalc_Damage.cpp`：
+`TargetASC: NULL`、`TargetAvatar: NULL`，而 `SourceASC` / `SourceAvatar` 正常。
+
+### 62.2 根因：`TargetASC` 是弱指针，目标一进 PendingKill 就变 null
+
+`GetTargetAbilitySystemComponent()` 拿到的**不是裸指针**：
+
+```cpp
+// GameplayEffectExecutionCalculation.h:187
+TWeakObjectPtr<UAbilitySystemComponent> TargetAbilitySystemComponent;
+```
+
+赋值链：
+
+1. 构造函数从 `InTargetAbilityComponent` 取（`GameplayEffectExecutionCalculation.cpp:18`）
+2. 调用点在 `GameplayEffect.cpp:2048 / 2167`，传的是 `FActiveGameplayEffectsContainer::Owner`
+3. `Owner` 由 `RegisterWithOwner` 设置（`GameplayEffect.cpp:1974`），
+   在 `AbilitySystemComponent.cpp:204` 的 `InitializeComponent` 里
+   `ActiveGameplayEffects.RegisterWithOwner(this)`
+
+→ `TWeakObjectPtr::Get()` 对**不可达对象（PendingKill / Garbage）返回 nullptr**
+→ `TargetASC == NULL` 只有一种解释：**目标 ASC 已经被标记销毁**
+
+`TargetAvatar` 同理：`GetAvatarActor()` 读的 `AbilityActorInfo->AvatarActor` 也是弱指针，
+一起变空 → 三元表达式落到 `nullptr` 分支 → 空指针上 `->Implements<UMy_CombatInterface>()`
+（UObject 成员函数）= 访问违例。
+
+### 62.3 为什么没炸在 `ApplyDamageEffect`
+
+```cpp
+// AbilitySystemGlobals.cpp:191  GetAbilitySystemComponentFromActor
+// 只 Cast<IAbilitySystemInterface> 就返回裸指针，【不做 IsValid 检查】
+```
+
+→ 目标 PendingKill 但内存还在时，`Params.TargetASC` 仍是**非空**，
+`ApplyGameplayEffectSpecToSelf`（虚函数）照样能调进去 → 到 ExecCalc 里弱指针才解析成 null。
+
+**这就是"报错位置和真正原因隔了两层"的原因。**
+
+### 62.4 目标什么时候会进 PendingKill
+
+- `AEnemy_Characte::Die()` → `SetLifeSpan(LifeSpan)`（`Enemy_Characte.cpp:44-50`）
+- `LifeSpan = 5.f`（`Enemy_Characte.h:58`）→ **敌人死后 5 秒被 `Destroy()`**
+- 电击在激活时把目标缓存进 `AddtionTarget` 数组，`DamageAndCostTimer` 每 tick 重新 `ApplyDamageEffect`
+- BP 里没有把死亡 Actor 移出数组的逻辑 → 死掉的目标还留在数组里
+- → 目标死亡 → 5 秒后销毁 → 下一 tick 命中 PendingKill 目标 → 崩
+
+### 62.5 两层防护
+
+| 层 | 挡什么 | 实现 |
+|---|---|---|
+| BP `Is Valid` | 目标 ASC 已变成 PendingKill / Garbage | `Get Ability System Component(Actor)` → `Is Valid` → `Branch` |
+| C++ 空判 | ASC 还在，但 `AvatarActor` 已被 `ClearActorInfo` 清空 | `My_ExeCalc_Damage.cpp` 开头 4 指针空判 + `My_AuraAbilitySystemLibrary.cpp` 的 ASC 空判 |
+
+`::IsValid` 的定义（`Object.h:1731-1738 / 1762-1765`）：
+
+```cpp
+FORCEINLINE bool IsValid(const UObject* Test)
+{
+    return Test && FInternalUObjectBaseUtilityIsValidFlagsChecker::CheckObjectValidBasedOnItsFlags(Test);
+}
+// → return !Test->HasAnyFlags(RF_InternalPendingKill | RF_InternalGarbage);
+```
+
+**为什么判 ASC 而不是判 Actor**：变成 PendingKill 的正是 **ASC 组件**，
+而 `GetAbilitySystemComponentFromActor` 恰好不做这个检查 —— `IsValid(ASC)` 刚好卡在这个缺口上。
+
+### 62.6 ⚠️ 一个容易想歪的点
+
+「`Instancing Policy = Instanced Per Execution`，所以数组里是空的，不用清」——
+**结论对，理由差一步**。
+
+脏数据是**同一次激活内**产生的：一直按着 → 额外目标死 → 5 秒后销毁 → 同一实例的下一 tick 就命中。
+跟实例策略没关系。真正让它安全的是新加的 `IsValid` 守卫。
+
+---
+
+## 六十三、电击连锁只打敌人：多目标筛选与阵营判定
+
+### 63.1 问题
+
+2 人联机时，电击的连锁会**连到队友身上**，三个后果：
+
+1. 给队友挂 `My_Enemy.Status.ShockLoop` + `GameplayCue.My_ShockLoop` —— 对玩家没有意义
+2. **对队友打 Lightning 伤害**
+3. 而 `DamageToDebuff` 里 **`My_DamageType_Lighting` → `My_Debuff_Stun`**（`Singleton.cpp:332`）
+   → 等于顺手把队友**控住**，多人下就是实打实的友伤
+
+### 63.2 为什么会被收进来
+
+`GetLivePlayersWithRadius`（`My_AuraAbilitySystemLibrary.cpp:321`）是按 `IMy_CombatInterface` 收人的，
+**附近的其他玩家同样会被收进来**（它只排除了施法者和主目标）。
+
+### 63.3 修法：用现成的 `IsNotFriend` 过滤
+
+```cpp
+// My_AuraBeamSpell.cpp StoreAdditionalTargets
+if (AActor* SourceAvatar = GetAvatarActorFromActorInfo())
+{
+    OverlappingActors.RemoveAll([SourceAvatar](AActor* Candidate)
+    {
+        return !IsValid(Candidate) || !UMy_AuraAbilitySystemLibrary::IsNotFriend(SourceAvatar, Candidate);
+    });
+}
+```
+
+`IsNotFriend`（`My_AuraAbilitySystemLibrary.cpp:396`）靠 **Actor Tag `Player` / `Enemy`** 判阵营，
+`My_ProjectileActor.cpp:79` 已经在用同一套。
+
+### 63.4 ⚠️ 排查提示
+
+Source 里**没有任何一处写 `Player` / `Enemy` Actor Tag，只在读** ——
+标签是**蓝图里配的**（玩家 BP 有 `Player`、敌人 BP 有 `Enemy`，字符串取证过）。
+如果哪天过滤静默失效，先回 BP 里确认这两个 Actor Tag 还在。
+
+---
+
+## 六十四、能力结束时的清理：位置决定一切（★ 本章最有价值）
+
+这一个 bug 前后磨了六轮，每一轮排除一个错误假设。
+**把六轮串起来看，才能看清"清理逻辑该放哪"这件事的本质。**
+
+### 64.1 六轮演进
+
+| 轮次 | 现象 | 定位到的原因 |
+|---|---|---|
+| 1 | 蓝量耗尽后 Block Tag / ShockLoop Tag / Cue 全残留 | **清理没挂在蓝量耗尽会走的链上** |
+| 2 | 加了清理，客户端敌人还是 idle | **Loose Tag 的 Add 侧没勾 `Should Replicate`** |
+| 3 | 两边都进清理了，客户端特效还是不消失 | **Cue 容器「不去重 + 只删一条」** |
+| 4 | 松手能清、蓝量耗尽清不掉 | **客户端预测结束 → 服务器被远程结束（不对称）** |
+| 5 | 搬进 `OnEndAbility` 后仍有残留 | **客户端删 Cue 需要"预测窗口"，而蓝量耗尽路径没有** |
+| 6 | 定稿 | `OnEndAbility` + 按类型分工 |
+
+### 64.2 根因 ①：清理挂的位置 = 它只在谁身上跑
+
+蓝量耗尽时的蓝图分支：
+
+```
+CommitAbilityCost → Branch(Return Value)
+    True  → Apply Damage
+    False → Print String("no mana") → Clear Timer and End Ability and Commit Cool Down
+```
+
+`ClearTImerAndEndAbilityAndCommitCoolDown` 是**普通 BP 函数，谁调用谁执行**。
+
+1. 蓝量是**客户端预测**先见底 → **客户端**走 False 分支
+2. 客户端 `EndAbility` 通过 `ServerEndAbility` RPC（`AbilitySystemComponent_Abilities.cpp:1919`）
+   把服务器上的能力**远程结束**
+3. **服务器是被远程结束的，它自己从来没执行过那个函数** → 服务器上的 Cue 一次都没清
+
+**而松手那条路两边都跑**，因为 `WaitInputRelease` 是**对称**的：
+`OnReleaseCallback`（`AbilityTask_WaitInputRelease.cpp:18-49`）在预测客户端上
+`ASC->ServerSetReplicatedEvent(InputReleased, ...)` → 服务器也触发。
+
+### 64.3 ★★ 正解：`OnEndAbility`
+
+```cpp
+// GameplayAbility.cpp:635   UGameplayAbility::EndAbility 里第一件事
+K2_OnEndAbility(bWasCancelled);      // 同步立即，两边都跑
+```
+
+声明：`GameplayAbility.h:593-594`
+
+```cpp
+UFUNCTION(BlueprintImplementableEvent, DisplayName="OnEndAbility")
+void K2_OnEndAbility(bool bWasCancelled);
+```
+
+- 客户端本地结束 → 客户端跑 ✓
+- 服务器被 `ServerEndAbility` 远程结束 → 服务器跑 ✓（晚约 1 RTT）
+- 松手 / 蓝量耗尽 / 被打断 / 死亡 → **全路径覆盖** ✓
+
+### 64.4 ★★ 根因 ②：客户端删 Cue 需要"预测窗口"
+
+```cpp
+// AbilitySystemComponent.cpp:1378
+void UAbilitySystemComponent::RemoveGameplayCue_Internal(Tag, Container)
+{
+    if (IsOwnerActorAuthoritative()) { ...Container.RemoveCue(Tag); ... }  // 服务器：真删 + 复制
+    else if (ScopedPredictionKey.IsLocalClientKey())                       // ← 客户端唯一通路
+    { Container.PredictiveRemove(Tag); }
+    // 否则：连 InvokeGameplayCueEvent 都没有，纯空操作
+}
+```
+
+**这解释了"同一个函数，松手能清、蓝量耗尽清不掉"**：
+
+| 路径 | 有没有预测窗口 | 客户端那句 Remove |
+|---|---|---|
+| 松手 | `AbilityTask_WaitInputRelease.cpp:31` 开了 `FScopedPredictionWindow`，而 `OnRelease.Broadcast()` 在**窗口内** | **真的执行了** `PredictiveRemove` → 特效立刻消失 |
+| 蓝量耗尽 | 走 `DamageAndCostTimer` 定时器回调，**不在任何窗口** | `ScopedPredictionKey` 无效 → **什么都没干** |
+
+预测键机制备查：
+
+- `FScopedPredictionWindow(ASC, bCanGenerateNewKey=true)`（`GameplayPrediction.cpp:263`）
+- `GenerateDependentPredictionKey`（`:74`）**不 check 有效性** → 从无效键出发也能拿到有效键
+- `IsLocalClientKey()` = `Current > 0 && !bIsServerInitiated`（`GameplayPrediction.h:351`）
+- 析构 `:313` `ScopedPredictionKey = RestoreKey` → 窗口结束后键被还原（通常还原成无效）
+
+### 64.5 ★★ 根因 ③：Cue 容器的两个致命特性
+
+`FActiveGameplayCueContainer`（`GameplayCueInterface.cpp`）：
+
+1. **`AddCue`（:220-235）不去重**：`GameplayCues[GameplayCues.AddDefaulted()]` 直接追加
+   → 客户端「本地预测加一次 + 服务器复制一次」= **两条同 Tag 的 Cue**
+2. **`RemoveCue`（:239-257）只删第一条就 `return`**，且**客户端也会 `MarkArrayDirty()`**
+
+```cpp
+GameplayCues.RemoveAt(idx);
+MarkArrayDirty();            // 客户端也会标脏 → 与服务器的 ArrayReplicationKey 对不上
+Owner->UpdateTagMap(Tag, -1);
+return;                      // 只删一条
+```
+
+→ 删一条剩一条（特效不消失）+ FastArray 失步 → 服务器下次全量重传把删掉的又送回来。
+
+**服务器为什么没问题**：它是权威，不吃自己的复制 → 只有一条 → 删掉就是真删掉。
+
+### 64.6 ★ 复制通道：这两个都是**无条件复制**
+
+```cpp
+// AbilitySystemComponent.cpp:1605-1636  GetLifetimeReplicatedProps
+DOREPLIFETIME_WITH_PARAMS_FAST(UAbilitySystemComponent, ActiveGameplayCues, Params);   // :1614 无 Condition
+DOREPLIFETIME_WITH_PARAMS_FAST(UAbilitySystemComponent, ReplicatedLooseTags, Params);  // :1618 无 Condition
+```
+
+→ 服务器一改，客户端必到。**所以"全部只在服务器做"是可行且最稳的。**
+
+Loose Tag 蓝图节点（`AbilitySystemBlueprintLibrary.cpp:1067/1084`）：
+
+```cpp
+AddLooseGameplayTags(Actor, Tags, bShouldReplicate):
+    ASC->AddLooseGameplayTags(Tags);                                    // → UpdateTagMap(+1)，只影响本端
+    if (bShouldReplicate) ASC->AddReplicatedLooseGameplayTags(Tags);    // → 写 ReplicatedLooseTags，复制给客户端
+```
+
+`Should Replicate` 组合表：
+
+| add 勾 | remove 勾 | 客户端结果 |
+|---|---|---|
+| ❌ | ❌ | 客户端从来没这个 Tag |
+| ✅ | ✅ | 正确 |
+| ✅ | ❌ | **客户端摘不掉**（Block Tag 卡住 = 不能移动） |
+| ❌ | ✅ | 无所谓 |
+
+### 64.7 ★ 为什么"只改 Remove 侧"会失败
+
+客户端若在预测窗口内跑了 Add → `PredictiveAdd`（`GameplayCueInterface.cpp:301`）：
+
+```cpp
+void FActiveGameplayCueContainer::PredictiveAdd(const FGameplayTag& Tag, FPredictionKey& PredictionKey)
+{
+    Owner->UpdateTagMap(Tag, 1);     // ← 只加计数，不往 GameplayCues 数组塞条目
+    PredictionKey.NewRejectOrCaughtUpDelegate(...OnPredictiveGameplayCueCatchup...);
+}
+```
+
+之后服务器 `AddCue` 复制下来 → `PostReplicatedAdd` → 再 `+1` → **计数 = 2**；
+服务器删时只 `-1` → **永久留 1**。
+
+### 64.8 ★ `EndAbility` 尾部有引擎自动清理
+
+```cpp
+AbilitySystemComponent->RemoveLooseGameplayTags(ActivationOwnedTags);
+if (UAbilitySystemGlobals::Get().ShouldReplicateActivationOwnedTags())
+{ AbilitySystemComponent->RemoveReplicatedLooseGameplayTags(ActivationOwnedTags); }
+for (FGameplayTag& CueTag : TrackedGameplayCues) { AbilitySystemComponent->RemoveGameplayCue(CueTag); }
+TrackedGameplayCues.Empty();
+```
+
+- **施法者自己的 Tag 改配 `ActivationOwnedTags`** → 每条结束路径两边自动摘，不用再手写 Add/Remove
+  （默认 `ShouldReplicateActivationOwnedTags() = false` → 各机器加各机器删，天然对称）
+- ⚠️ `TrackedGameplayCues` **只覆盖能力自己 `AddGameplayCueToOwner` 加的 Cue**；
+  `Add Gameplay Cue On Actor`（`UGameplayCueFunctionLibrary`）不在名单
+  → **目标身上的 Cue 还是得手清**
+
+### 64.9 `EndAbility` 完整时序
+
+```
+K2_EndAbility()  (BP 调用)
+ └─ EndAbility(...)
+      ├─ ScopeLockCount > 0 ? → 塞进 WaitingToExecute，延后
+      ├─ bIsAbilityEnding = true
+      ├─ ★ K2_OnEndAbility(bWasCancelled)          // :635，同步立即，两边都跑
+      ├─ if (bIsActive == false) return;            // ★ 在 OnEndAbility 里再调 K2_EndAbility 会踩这里，
+      │                                             //   引擎后续清理（含 ServerEndAbility RPC）全被跳过
+      ├─ RemoveActionsForObject + ClearAllTimersForObject(this)   // :648 引擎自动清 timer
+      ├─ OnGameplayAbilityEnded / WithData 广播
+      ├─ bIsActive = false
+      ├─ 所有 Task->TaskOwnerEnded(); ActiveTasks.Reset()
+      └─ ASC:
+           ├─ ReplicateEndOrCancelAbility()   // 客户端在这里才发 ServerEndAbility RPC
+           ├─ RemoveLooseGameplayTags(ActivationOwnedTags)
+           ├─ RemoveReplicatedLooseGameplayTags(...)（看 ShouldReplicateActivationOwnedTags）
+           └─ RemoveGameplayCue(TrackedGameplayCues...)
+```
+
+`FAbilitySystemTweaks::ClearAbilityTimers` **默认 = 1**（`GameplayAbility.cpp:36`）
+→ 能力的 timer 引擎自己清。
+
+### 64.10 定稿分工
+
+| 清什么 | 放哪 |
+|---|---|
+| `GameplayCue.My_ShockLoop`（主 + 额外目标） | **只服务器**（包 `HasAuthority` True） |
+| `My_Enemy.Status.ShockLoop` Loose Tag | **只服务器 + 勾 Should Replicate** |
+| 施法者自己的 `My_Player.Block.*` / `My_Player.Status.ShockLoop` | 能力资产 `Activation Owned Tags`（引擎自动摘） |
+| **Add 侧（Cue + Loose Tag）** | **也必须只在服务器** ← 前几版漏掉的关键 |
+
+> ★ **硬规则**：同一个东西的「加」和「删」必须在同一侧执行，`Should Replicate` 必须一致。
+> 最稳的形态是「全部只在服务器做，客户端零本地状态，全靠复制」—— 天生对称，不可能失配。
+
+验证：蓝量耗尽时日志应出现 `Server: Go Clear`，**不再有** `Client 1: Go Clear`；
+客户端特效晚约 1 RTT 消失。
+
+顺带：`Print String` 是 Development Only，正式版会被剔除，调试完记得删。
+
+---
+
+## 六十五、`0x80000003`：GameplayCue 参数里的等级只有 5 bit（★）
+
+### 65.1 现象
+
+给某个敌人把 `Level` 设成 1000
+
+```cpp
+// Enemy_Characte.h:72-74
+UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Character Class Default")
+int32 Level = 1;
+```
+
+敌人**近战攻击**命中时崩：异常 `0x80000003`，调试器停在 `FArchive::IsLoading()` 的
+`return ArIsLoading;`。
+
+### 65.2 ⚠️ 先纠正一个误导：那一行不是崩溃点
+
+**`0x80000003` 是断点指令（`EXCEPTION_BREAKPOINT`）**，在 UE 里等于
+`check` / `checkf` / `ensure` / `ensureMsgf` 被触发。
+**`0xC0000005` 才是空指针访问违例** —— 先按异常码分类，能省一半时间。
+
+`FArchive::IsLoading()` 是个一行的内联 getter（`return ArIsLoading;`），
+**它本身不可能崩**。调试器之所以显示这一行，是因为断言的 `ensureMsgf` 正好在它**相邻行**，
+内联展开后 IP 被归到了那一行：
+
+```cpp
+// GameplayEffectTypes.cpp:1064-1072
+if (RepBits & (1 << REP_GELevel))
+{
+    ensureMsgf(GameplayEffectLevel <= MAX_LEVEL, TEXT("...GameplayEffectLevel of %d"), GameplayEffectLevel);  // :1066
+    if (Ar.IsLoading())        // ★ :1067 —— 紧贴 ensureMsgf 的下一行
+    { GameplayEffectLevel = 0; }
+    Ar.SerializeBits(&GameplayEffectLevel, NUM_LEVEL_BITS);
+}
+if (RepBits & (1 << REP_AbilityLevel))
+{
+    ensureMsgf(AbilityLevel <= MAX_LEVEL, TEXT("...AbilityLevel of %d"), AbilityLevel);                        // :1076
+    if (Ar.IsLoading())        // ★ :1077
+    { AbilityLevel = 0; }
+    Ar.SerializeBits(&AbilityLevel, NUM_LEVEL_BITS);
+}
+```
+
+> 经验：**调试器停在某个「一行内联 getter」上时，别信那一行** ——
+> 去看「调用堆栈」和「输出」窗口（`Ensure condition failed: ...` 那行会带上实际数值）。
+
+### 65.3 为什么是 31
+
+```cpp
+// GameplayEffectTypes.cpp:944-945
+static const uint8 NUM_LEVEL_BITS = 5; // need to bump this up to support 20 levels for AbilityLevel
+static const uint8 MAX_LEVEL = (1 << NUM_LEVEL_BITS) - 1;   // ★ 31
+```
+
+`FGameplayCueParameters` 是要**复制到所有客户端**的。
+等级字段如果按 int32 传就是 32 bit，用 `SerializeBits(..., 5)` 只要 **5 bit** —— **纯粹为了省带宽**。
+注释写得很直白：设计时只打算支持到 **~20 级**。
+
+而且 `:1012` 是 `if (AbilityLevel != 1) RepBits |= (1 << REP_AbilityLevel);`
+—— **值等于 1 时这个字段根本不进复制流**，那个 ensure 也就不会跑。
+
+**这是引擎硬限制，绕不过去**（除非改引擎源码）。
+
+### 65.4 ★★ 关键：Cue 里的 `AbilityLevel` 不是你手填的
+
+`Make Gameplay Cue Parameters` 节点上明明写着 `Ability Level = 1`，崩溃依然发生 ——
+因为**等级有两个来源**：
+
+```cpp
+// GameplayEffectTypes.cpp:176-182  值在这里被写进 context
+void FGameplayEffectContext::SetAbility(const UGameplayAbility* InGameplayAbility)
+{
+    ...
+    AbilityLevel = InGameplayAbility->GetAbilityLevel();          // ★ = 技能 spec 等级
+}
+```
+
+```cpp
+// GameplayEffect.cpp:794-802  再从这里"抄"进 RPC Spec
+FGameplayEffectSpecForRPC::FGameplayEffectSpecForRPC(const FGameplayEffectSpec& InSpec)
+    : Level(InSpec.GetLevel())
+    , AbilityLevel(InSpec.GetEffectContext().GetAbilityLevel())   // ★ 从 context 抄
+```
+
+```cpp
+// AbilitySystemGlobals.cpp:279-280  最后进 Cue 参数
+CueParameters.GameplayEffectLevel = Spec.GetLevel();
+CueParameters.AbilityLevel        = Spec.GetAbilityLevel();
+```
+
+完整链路：
+
+```
+敌人 Level = 1000
+ → 技能 spec 等级 = 1000             (GiveStartupAbilities)
+ → EffectContext.AbilityLevel = 1000 (MakeEffectContext → SetAbility)
+ → SpecForRPC.AbilityLevel = 1000    (GameplayEffect.cpp:802)
+ → CueParameters.AbilityLevel = 1000 (AbilitySystemGlobals.cpp:280)
+ → ensureMsgf(<= 31) → 0x80000003    (GameplayEffectTypes.cpp:1076)
+```
+
+**所以节点上填 1 完全没问题；崩的是"从技能 EffectContext 带过来"的那条链。**
+
+### 65.5 为什么"之前设 1000 没崩"
+
+这个断言是**路径依赖**的，要三个条件同时成立：
+
+| # | 条件 | 说明 |
+|---|---|---|
+| 1 | **有客户端在接收复制** | 断言只在 `NetSerialize` 的 **loading 侧**跑；服务器是权威，不吃自己的复制 → **单机 / 纯 Server 永远不崩** |
+| 2 | **参数里的等级 ≠ 1** | 等于 1 时该字段压根不进复制流（`:1012`） |
+| 3 | **那条带 Cue 的路径真的被走到** | 敌人得真的用近战技能命中，且 cue 真的激活复制出去 |
+
+旁证：扫 `Saved/Logs/` 全部历史日志，**一条 `Ensure condition failed` 都没有**
+—— 每次都是 VS 抢先把进程停住，UE 来不及写日志。
+
+### 65.6 修法
+
+在**技能等级的入口**夹住（`My_AuraAbilitySystemLibrary.cpp` 的 `GiveStartupAbilities`）：
+
+```cpp
+const int32 AbilityLevel = FMath::Clamp(IMy_CombatInterface::Execute_GetPlayerLevel(ASC->GetAvatarActor()), 1, 31);
+FGameplayAbilitySpec AbilitySpec = FGameplayAbilitySpec(AbilityClass, AbilityLevel);
+```
+
+夹在"角色等级 → 技能 spec 等级"这一步，后面整条链（context → spec → cue 参数）全都 ≤ 31。
+
+**副作用：无。**
+
+- **属性强度不受影响** —— 属性走 `GiveDefaultAttributes(Level)` 那条独立路径，仍用真实等级取曲线
+- 技能等级 1000→31，但 `GetValueAtLevel` 对超范围等级本来就 clamp 到曲线端点，实际取值不变
+
+### 65.7 ⚠️ 遗留风险
+
+`GiveDefaultAttributes` 里 `MakeOutgoingSpec(PrimaryAttributes/Secondary/Vital, level, ...)`
+—— 这三个 GE 的 `Spec.Level` 仍是真实等级。
+目前不崩（它们没挂 GameplayCue），但**如果以后给它们加了 Cue**，会从
+`GameplayEffectTypes.cpp:1066` 的 `GameplayEffectLevel` 那条断言崩。
+届时不能靠改代码夹（夹了属性会变弱），得改曲线表数据。
+
+---
+
+## 附：本次会话 C++ 改动汇总（全部在 `My_` 目录下，合规）
+
+| 文件 | 改动 | 对应章节 |
+|---|---|---|
+| `MY_AbilitySystem/ExeCalc/My_ExeCalc_Damage.cpp` | `Execute_Implementation` 开头 4 指针空判 → `return` | 62.5 |
+| `MY_AbilitySystem/My_AuraAbilitySystemLibrary.cpp` | ① `ApplyDamageEffect` 开头 2 个 ASC 空判；② `GiveStartupAbilities` 技能等级 `Clamp(1, 31)` | 62.5 / 65.6 |
+| `MY_AbilitySystem/Ability/My_AuraBeamSpell.cpp` | `StoreAdditionalTargets` 加 `IsNotFriend` 阵营过滤 | 63.3 |
+
+编码校验：三文件均 `BOM: efbbbf` / 纯 CRLF ✓
+
+遗留未做：
+
+- `My_ExeCalc_Damage.cpp` 里既有调试打印（第 133-135 `[Debuff判定]`、279 / 298 / 307 / 309 `LogTemp`）
+- `My_ExeCalc_Damage.cpp:243-246` `CharacterClassInfo->DamageCalculationCoefficients` 无空判
+  （客户端 `GetGameMode` 返回 null 会崩；目前 ExecCalc 只在服务器跑，没暴露）
