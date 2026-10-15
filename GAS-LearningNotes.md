@@ -10216,6 +10216,183 @@ FGameplayAbilitySpec AbilitySpec = FGameplayAbilitySpec(AbilityClass, AbilityLev
 
 ---
 
+## 六十六、主动能力 vs 被动能力：两条生命周期（★ 实现被动能力前的必读）
+
+### 66.1 一句话区分
+
+| | 主动能力 | 被动能力 |
+|---|---|---|
+| 模型 | **请求式**：玩家发起，能力自己收尾 | **托管式**：ASC 发起，ASC 通知收尾 |
+| 生命周期 | 秒级（按键 → 播完 → 结束） | 常驻（装备 → 一直活着 → 被换下才结束） |
+| 需要委托吗 | **不需要** | **需要**（`DeactivatePassiveAbility`） |
+
+根源：主动能力的"结束条件"写在能力自己内部（蒙太奇播完 / 事件到达 / 松手），所以它既是发起者也是终结者；被动能力装备后常驻，**没有自然结束点**，"该结束了"这个信息只存在于 ASC 那一侧（玩家在技能树里换槽），能力自己感知不到。
+
+### 66.2 主动能力的五步
+
+**① 授予** —— `AddCharacterAbilities`（`AuraAbilitySystemComponent.cpp:52-66`）
+
+```cpp
+FGameplayAbilitySpec AbilitySpec = FGameplayAbilitySpec(AbilityClass, 1);
+AbilitySpec.DynamicAbilityTags.AddTag(AuraAbility->StartupInputTag);   // ★ 绑键位（被动没有）
+AbilitySpec.DynamicAbilityTags.AddTag(FAuraGameplayTags::Get().Abilities_Status_Equipped);
+GiveAbility(AbilitySpec);                                              // ★ 只给，不激活
+```
+
+**② 装槽** —— `ServerEquipAbility`（:336-387）
+
+`if (IsPassiveAbility(*AbilitySpec))` 是分水岭，主动能力跳过整块，只拿槽位 Tag。**装上 ≠ 激活**。
+
+**③ 激活** —— 玩家按键，三个输入函数分工
+
+| 函数 | 时机 | 做什么 |
+|---|---|---|
+| `AbilityInputTagPressed`（:78-93） | 按下瞬间，1 次 | 只标 `AbilitySpecInputPressed`，**不激活** |
+| `AbilityInputTagHeld`（:95-110） | 按住期间，**每帧** | **`TryActivateAbility(Handle)`** ← 激活点 |
+| `AbilityInputTagReleased`（:112-124） | 松开瞬间，1 次 | 标 `InputReleased` + `InvokeReplicatedEvent(InputReleased)` |
+
+为什么激活写在 Held 而不是 Pressed：Pressed 一辈子只有一次机会，而激活可能因为冷却没好 / 蓝不够 / 被 `BlockedTags` 挡住而失败。写在 Held = 每帧重试 → "按住不放，冷却一结束就自动放出来"。`if (!AbilitySpec.IsActive())` 防止激活后重复触发。
+
+**④ 执行** —— 能力内部（主要搭在蓝图里）
+
+```
+ActivateAbility
+  ├─ CommitAbility()              ← 扣蓝 + 上冷却，提交后不可退
+  ├─ PlayMontageAndWait(Montage)  ← 等蒙太奇
+  └─ WaitGameplayEvent(EventTag)  ← 等事件（投射物命中之类）
+```
+
+注意：`GetManaCost` / `GetCooldown`（`AuraGameplayAbility.cpp:23-48`）只是**查询**（给技能球 UI 显示数值），它们不扣蓝、不上冷却。真正生效的是 `CommitAbility`。
+
+**⑤ 结束** —— 自己调，四个出口全落在 `EndAbility`
+
+- 蒙太奇播完 → `EndAbility`
+- `WaitGameplayEvent` 处理完 → `EndAbility`
+- 松手（`WaitInputRelease` 回调）→ `EndAbility`
+- 中途放弃 → `CancelAbility`（例：`My_AuraBeamSpell.cpp:21` 鼠标没打中地形）
+
+### 66.3 被动能力的五步
+
+**① 授予** —— 两条路
+
+- 技能树路线：`UpdateAbilityStatuses`（:292-308）等级达标 → `GiveAbility` + 标 `Abilities_Status_Eligible`（**不激活**）
+- 开局直授：`AddCharacterPassiveAbilities`（:68-76）
+
+```cpp
+AbilitySpec.DynamicAbilityTags.AddTag(FAuraGameplayTags::Get().Abilities_Status_Equipped);
+GiveAbilityAndActivateOnce(AbilitySpec);      // ★ 给完立即激活（主动用的是 GiveAbility）
+```
+
+调用点 `AuraCharacterBase.cpp:258-259`（主动 / 被动一起调）
+
+**② 解锁** —— `ServerSpendSpellPoint`（:310-334）
+
+`Eligible → Unlocked`（第一次花点）；之后再花点 `Level += 1`
+
+**③ 装备** —— `ServerEquipAbility`（:336-387），两个分支都要处理
+
+```cpp
+if (!SlotIsEmpty(Slot))                        // 目标槽有旧主
+{
+    if (IsPassiveAbility(*SpecWithSlot))       // :362
+    {
+        MulticastActivatePassiveEffect(..., false);   // :364 关特效
+        DeactivatePassiveAbility.Broadcast(...);      // :365 ★ 通知它结束
+    }
+    ClearSlot(SpecWithSlot);                          // :368 腾槽（在 Broadcast 之后！）
+}
+if (!AbilityHasAnySlot(*AbilitySpec))          // 新技能还没槽
+{
+    if (IsPassiveAbility(*AbilitySpec))        // :374
+    {
+        TryActivateAbility(AbilitySpec->Handle);      // :376 ★ ASC 代劳激活
+        MulticastActivatePassiveEffect(AbilityTag, true);  // :377 开特效
+    }
+    ... AddTag(Abilities_Status_Equipped);
+}
+```
+
+**顺序是"先关旧的、再开新的"**，且 `ClearSlot` 排在 `Broadcast` 后面 —— 广播那一刻能力还得活着才能响应。
+
+**④ 常驻** —— `UAuraPassiveAbility::ActivateAbility`
+
+```cpp
+Super::ActivateAbility(...);
+AuraASC->DeactivatePassiveAbility.AddUObject(this, &UAuraPassiveAbility::ReceiveDeactivate);
+```
+
+绑完就一直活着不结束。真正干活的是子类蓝图（`ApplyGameplayEffect` 施加持续 GE）。
+
+**⑤ 卸载** —— `ReceiveDeactivate`（`AuraPassiveAbility.cpp:21-27`）
+
+```cpp
+if (AbilityTags.HasTagExact(AbilityTag))       // 广播的是我吗
+{
+    EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
+}
+```
+
+### 66.4 表现链是独立的一条（不在能力链上）
+
+`MulticastActivatePassiveEffect_Implementation`（:246-249，NetMulticast）
+→ `ActivatePassiveEffect.Broadcast(tag, bActivate)`
+→ `UPassiveNiagaraComponent::OnPassiveActivate`（`PassiveNiagaraComponent.cpp:50-63`）
+→ `Activate()` / `Deactivate()`
+
+为什么独立：
+
+1. 特效要在**所有客户端**同时开 / 关，NetMulticast 天然就是广播
+2. `UPassiveNiagaraComponent` 只需听懂 `(tag, bool)` 这一对参数，不需要认识能力系统的任何细节
+3. 读档恢复时要单独补调一次（`AddCharacterAbilitiesFromSaveData` :21-50）
+
+### 66.5 为什么主动能力不需要委托
+
+主动能力从激活到结束**全在自己内部闭环**：
+
+- 激活：`TryActivateAbility` 由玩家输入触发
+- 结束：`EndAbility` 由自己的任务回调触发
+
+没有任何一步需要"外面的人告诉我该结束了"。被动能力缺的恰好就是这一环 —— 它没有输入、没有蒙太奇、没有事件，所以必须有外部通道。
+
+### 66.6 状态机四态（两者共用）
+
+`Locked`（未达等级）→ `Eligible`（可达，能加点）→ `Unlocked`（已解锁）→ `Equipped`（已装备）
+
+被动技能只有走到 `Equipped` 才会被激活；这套状态同时驱动技能树 UI 的显示。
+
+### 66.7 实现被动能力的工作清单（按依赖顺序）
+
+**第 0 步 · 先修一个手误**
+`My_AuraGamePlayTags_Singleton.cpp:213-224` 把 `My_Abilities_Passive_HaloOfProtection` 写了**三遍**，而 `.h:95-97` 声明的 `LifeSiphon` / `ManaSiphon` 一次都没初始化（编译能过，运行时是空 tag）。三遍应改成三个不同 tag。
+
+**A. 数据层（先决条件）**
+
+1. `My_AbilityInfo.h` 确认有 `AbilityType` 字段（对标 `FAuraAbilityInfo::AbilityType`）
+2. DataAsset 里给被动技能填 `My_Abilities.Type.Passive`
+3. 被动技能蓝图的 `AbilityTags` 填 `My_Abilities.Passive.XXX`
+
+**B. ASC 侧（核心，对标 `AuraAbilitySystemComponent.cpp` 的四处）**
+
+4. `IsPassiveAbility(const FGameplayAbilitySpec&)` —— 走 `My_AbilityInfo` 查 `AbilityType`（教程 :231-238）
+5. `ServerEquipAbility` 补"换下旧被动"：`IsPassiveAbility(旧)` → `OnDeactivatePassiveAbility.Broadcast(旧Tag)`（教程 :362-365）
+6. `ServerEquipAbility` 补"装上被动就激活"：`IsPassiveAbility(新)` → `TryActivateAbility(Handle)`（教程 :374-376）
+7. 特效广播：`MulticastActivatePassiveEffect(tag, bool)`（NetMulticast）+ `OnActivatePassiveEffect` 委托（教程 :246-249）
+
+**C. 授予路径**
+
+8. `AddCharacterPassiveAbilitiesFromASC` 补 `DynamicAbilityTags.AddTag(My_Abilities_Status_Equipped)`（当前漏了，教程 :73 有）—— 漏了会导致 `ActivateIfEquipped` 永远不成立
+
+**D. 表现层**
+
+9. `UPassiveNiagaraComponent` 的 My_ 版（教程版硬编码了 `UAuraAbilitySystemComponent` 和 `Abilities_Status_Equipped`，直接复用接不上 My_ 体系）
+10. `MyCharacter_Base` 里加 `HaloOfProtectionNiagaraComponent` 等组件（教程在 `AuraCharacterBase.cpp:41-46`）
+
+**E. 验证**
+
+11. 装备被动 → 光环亮 + 持续 GE 生效
+12. 换槽 → 光环灭 + 能力 `EndAbility`（可在 `ReceiveDeactivate` 里临时加断点确认）
+13. 读档 → 光环恢复
+
 ## 附：本次会话 C++ 改动汇总（全部在 `My_` 目录下，合规）
 
 | 文件 | 改动 | 对应章节 |

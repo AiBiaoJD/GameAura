@@ -208,6 +208,22 @@ void FMy_AuraGameplayTags::InitializeNativeGameplayTags()
 	);
 
 	/*
+	*  Passive Ability Tags
+	*/
+	GameplayTagsInstance.My_Abilities_Passive_HaloOfProtection = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("My_Abilities.Passive.HaloOfProtection"),
+		FString("Halo Of Protection Ability Tag")
+	);
+	GameplayTagsInstance.My_Abilities_Passive_LifeSiphon = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("My_Abilities.Passive.LifeSiphon"),
+		FString("life Siphon Ability Tag")
+	);
+	GameplayTagsInstance.My_Abilities_Passive_ManaSiphon = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("My_Abilities.Passive.ManaSiphon"),
+		FString("Mana Siphon Ability Tag")
+	);
+	
+	/*
 	* Ability Status Tags
 	*/
 	GameplayTagsInstance.My_Abilities_Status_Locked = UGameplayTagsManager::Get().AddNativeGameplayTag(
@@ -320,7 +336,7 @@ void FMy_AuraGameplayTags::InitializeNativeGameplayTags()
 		FString("Be ShockLoop Status When using Electrocute Ability")
 	);
 
-	
+
 	// Map: DamageType To  Resistance
 	GameplayTagsInstance.DamageToResistance.Add(GameplayTagsInstance.My_DamageType_Fire, GameplayTagsInstance.My_Attribute_Secondary_Resistance_Fire);
 	GameplayTagsInstance.DamageToResistance.Add(GameplayTagsInstance.My_DamageType_Lighting, GameplayTagsInstance.My_Attribute_Secondary_Resistance_Lighting);

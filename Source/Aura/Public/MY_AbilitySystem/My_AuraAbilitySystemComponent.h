@@ -13,6 +13,7 @@ DECLARE_MULTICAST_DELEGATE(FMy_AbilityGivenSignature);
 DECLARE_DELEGATE_OneParam(FMy_ForEachAbilitySignature, const FGameplayAbilitySpec&);
 DECLARE_MULTICAST_DELEGATE_ThreeParams(FMy_AbilityStatusChangedSignature, const FGameplayTag& /*AbilityTags*/, const FGameplayTag& /*StatusTag*/, int32 /*AbilityLeve*/)
 DECLARE_MULTICAST_DELEGATE_FourParams(FMy_AbilityEquippedSignature, const FGameplayTag& /*AbilityTags*/, const FGameplayTag& /*StatusTags*/, const FGameplayTag& /*Slot*/, const FGameplayTag& /*PreSlot*/)
+DECLARE_MULTICAST_DELEGATE_OneParam(FMy_DeactivatePassiveAbilitySignature, const FGameplayTag& /*AbilityTags*/);
 
 /**
  *
@@ -31,7 +32,8 @@ public:
 	FMy_AbilityGivenSignature OnAbilityGiven; //处理技能显示UI
 	FMy_AbilityStatusChangedSignature OnAbilityStatusChanged; //处理等级提升技能变为Eligible
 	FMy_AbilityEquippedSignature OnAbilityEquipped; //处理装配技能后,发送给widgetController的相关数据
-	
+	FMy_DeactivatePassiveAbilitySignature OnDeactivatePassiveAbility; //处理取消被动能力
+
 	// Character添加能力
 	void AddCharacterAbilitiesFromASC(const TArray<TSubclassOf<UGameplayAbility>>& StartupAbility);
 	void AddCharacterPassiveAbilitiesFromASC(const TArray<TSubclassOf<UGameplayAbility>>& StartupPassiveAbility);

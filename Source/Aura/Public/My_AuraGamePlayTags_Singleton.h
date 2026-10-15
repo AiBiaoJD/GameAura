@@ -90,6 +90,12 @@ public:
 	// AbilitySpellTree
 	FGameplayTag My_Abilities_Fire_FireBolt;
 	FGameplayTag My_Abilities_Lighting_Electrocute;
+
+	// PassiveAbility
+	FGameplayTag My_Abilities_Passive_HaloOfProtection;
+	FGameplayTag My_Abilities_Passive_LifeSiphon;
+	FGameplayTag My_Abilities_Passive_ManaSiphon;
+
 	
 	// AbilityStatue
 	FGameplayTag My_Abilities_Status_Locked;
