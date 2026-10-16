@@ -10393,6 +10393,246 @@ if (AbilityTags.HasTagExact(AbilityTag))       // 广播的是我吗
 12. 换槽 → 光环灭 + 能力 `EndAbility`（可在 `ReceiveDeactivate` 里临时加断点确认）
 13. 读档 → 光环恢复
 
+## 六十七、技能槽位系统：InputTag 驱动的 UI 与装备链（★）
+
+本章把「技能装到哪个键」这条链从头串到尾：AbilityInfo 怎么喂给 UI、换键位时数据怎么改、UI 怎么知道自己该显示谁。
+
+### 67.1 一句话总纲
+
+**技能绑在哪个键，唯一存在的地方是 `AbilitySpec.DynamicAbilityTags` 里有没有那个 `My_InputTag.*` 标签。**
+
+没有"技能 → 键位"的映射表，Spec 上也没有 `KeyIndex` 这类字段。键位就是一个标签：贴上就是装上，撕掉就是卸下。所以输入侧的匹配代码**永远不用改**。
+
+### 67.2 AbilityInfo 到 UI：两个数据源 + 一条拼装规则
+
+**静态源** —— `UMy_AbilityInfo : UDataAsset`（`MY_AbilitySystem/Data/My_AbilityInfo.h`），资产 `Content/MyBlueprints/AbilitySystem/Data/My_DA_AbilityInfo.uasset`，挂在 `AMyGameModeBase::AbilityInfo`（`MyGameModeBase.h:24`），经 `UMy_AuraAbilitySystemLibrary::GetAbilityInfo(WorldContext)`（`My_AuraAbilitySystemLibrary.cpp:174`）取。
+
+`FMy_AuraAbilityInfo` 的字段被 UPROPERTY 修饰符**刻意分成两类**：
+
+| 类型 | 字段 | 谁填 |
+|---|---|---|
+| 设计时（`EditDefaultsOnly`） | `AbilityTag` / `AbilityType` / `Icon` / `Background` / `LevelUpRequirement` / `AbilityClass` / `CoolDownTag` | 在 DA 资产里手填 |
+| 运行时（只有 `BlueprintReadOnly`） | `InputTag` / `StatusTag` | 代码从 AbilitySpec 现读覆盖 |
+
+这个区分是整个设计的钥匙：图标、解锁等级永远不变（配置）；槽位和状态会变（运行时数据）。同一个结构体装两种东西，靠修饰符把责任划清。
+
+**动态源** —— ASC 里的 `FGameplayAbilitySpec`。三个取值函数**都是"按前缀扫标签"**（`My_AuraAbilitySystemComponent.cpp`），不是读字段：
+
+```cpp
+GetAbilityTagFromAbilitySpec   // :243  扫 AbilityTags，找 My_Abilities.* 前缀
+GetInputTagFromAbilitySpec     // :258  扫 DynamicAbilityTags，找 My_InputTag.* 前缀
+GetStatusTagFromAbilitySpec    // :273  扫 DynamicAbilityTags，找 My_Abilities.Status.* 前缀
+```
+
+**拼装规则（全链唯一核心）**：
+
+```cpp
+FMy_AuraAbilityInfo info = AbilityDA->FindAbilityInfoFromTag(AbilityTag);  // ① 取静态
+info.InputTag  = GetAuraASC()->GetInputTagFromAbilitySpec(Spec);           // ② 覆盖动态
+info.StatusTag = GetAuraASC()->GetStatusTagFromAbilitySpec(Spec);          // ③
+OnAbilityInfo.Broadcast(info);                                             // ④ 发出去
+```
+
+⚠️ **UI 侧也有一份 DA 引用** —— `UMy_AuraWidgetController::AbilityDA`（`My_AuraWidgetController.h:99`，`EditDefaultsOnly`），在 `My_BP_SpellMenuController` / `My_BP_OverlayWidgetController` 的 Class Defaults 里指定。它和 GameMode 那份是**两个独立引用**，必须指向同一个资产。
+
+### 67.3 三条广播路径
+
+**A · 初始全量** —— `BroadcastInitiaValues()` → `BroadcastAbilityInfo()`（`My_AuraWidgetController.cpp:22-45`）
+
+首行守卫 `if (!GetAuraASC()->bStartupAbilityGiven) return;` —— 技能没发完不播，否则 UI 会收到一堆不完整的技能。然后 `ForEachAbility(OnEachAbility)` 遍历全部 Spec，跳过 `AbilityTag` 非法的（被动技能没配 `My_Abilities.*`，查不到会刷 Error）。
+
+**B · 状态增量** —— `ClientUpdateAbilityStatus`（Server RPC，`My_AuraAbilitySystemComponent.cpp:368`）→ `OnAbilityStatusChanged.Broadcast` → SpellMenu 的 lambda（`My_SpellMenuWidgetController.cpp:26-54`）。同时干两件事：对**选中的**技能重算按钮可用性；对**任何**技能都重播一次 `OnAbilityInfo`。
+
+**C · 装备精确** —— `ClientEquipAbility` RPC → `OnAbilityEquipped` 回调（`My_SpellMenuWidgetController.cpp:263-288`），广播**两条**：旧槽（`AbilityTag = None` + `InputTag = PreSlot`）+ 新槽（真实技能 + `Slot`）。
+
+### 67.4 换键位（键1 → 键2）的完整流程
+
+**输入侧（读）**
+
+1. `UMy_AuraInputConfig`（`My_AuraInputConfig.h`）：`InputActionToTags` 数组，每条 = `InputAction`（`IA_1`/`IA_2`）+ `InputTag`（`My_InputTag.1`/`.2`）。**静态映射，配一次永不变。**
+2. `UMy_AuraEnhancedInputComponent::BindAbilityAction`（`My_AuraEnhancedInputComponent.h:26-49`）：把每个 InputAction 的 `Started`/`Triggered`/`Completed` 分别绑到 Pressed/Held/Released，**并把 `Temp.InputTag` 作为参数预绑定进去** → 回调一进 ASC 就自带 Tag。
+3. `My_Aura_Controller.cpp:157/172/206` 转发 → ASC 三个输入函数。
+4. ASC 匹配（`:142/178/207`）：
+
+```cpp
+for (FGameplayAbilitySpec& AbilitySpec : GetActivatableAbilities())
+{
+    if (AbilitySpec.DynamicAbilityTags.HasTagExact(InputTag))   // ★ 就这一句
+    {
+        if (!AbilitySpec.IsActive()) TryActivateAbility(AbilitySpec.Handle);
+    }
+}
+```
+
+**这里不查 DA、不查 InputConfig、不查任何映射表** —— 只拿按键带来的 Tag 和每个 Spec 的标签做精确比对。
+
+**装备侧（写）** —— `ServerEquipAbility_Implementation`（`:417-460`）七步：
+
+| 步 | 代码 | 作用 |
+|---|---|---|
+| ① | `PreSlot = GetInputTagFromAbilitySpec(Spec)` | 读出旧槽，留着做回执 |
+| ② | 校验 `StatusTag` 是 Unlocked/Equipped | Locked/Eligible 不给装 |
+| ③ | `ClearAbilitiesOfSlot(Slot)` | 清掉目标槽原占用者 |
+| ④ | `ClearSlot(Spec)` | 删掉自己的旧 InputTag |
+| ⑤ | **`Spec->DynamicAbilityTags.AddTag(Slot)`** | ★ **换键本体** |
+| ⑥ | Unlocked → Equipped | 纯换键时状态不变 |
+| ⑦ | `MarkAbilitySpecDirty(*Spec)` | 标脏，进增量复制 |
+
+**换完不需要任何"重新注册"或"重绑输入"** —— 因为匹配本来就是 Tag 对 Tag。按 1 时 `My_InputTag.1` 已经不在任何 Spec 上，循环一轮谁都不匹配，什么都不发生。
+
+### 67.5 PreSlot：服务器逻辑一次都没用过它
+
+`PreSlot` 从第①步抓下来、第⑧步传出去，**中间五步全是闲置的**。它唯一的作用是让客户端知道"哪个槽空了"。
+
+UI 本质上是张「槽位 Tag → 技能球」的表。服务器把技能从键1挪到键2后，若只告诉 UI "新技能在键2"，键1上那个旧球会赖着不走。所以旧槽那条广播长这样（`My_OverlayWidgetController.cpp:122-134`）：
+
+```cpp
+FMy_AuraAbilityInfo LastSlotInfo;
+LastSlotInfo.StatusTag  = My_Abilities_Status_Unlocked;   // 技能还是解锁的，只是不在这个槽
+LastSlotInfo.InputTag   = PreSlot;                        // ★ 旧槽位
+LastSlotInfo.AbilityTag = My_Abilities_None;              // ★ None = "这里没技能了"
+OnAbilityInfo.Broadcast(LastSlotInfo);
+```
+
+**为什么不能用属性复制代替**：
+
+| 方案 | 为什么不行 |
+|---|---|
+| 属性复制（`MarkAbilitySpecDirty`） | 只表达"**现在是什么**"，表达不了"**从什么变成什么**" |
+| 全量重播 `BroadcastAbilityInfo()` | 同样拿不到旧槽 —— 第④步 `ClearSlot` 已经把它从 Spec 删了 |
+| 客户端自己记住"上次它在哪" | 多存一份状态，断线重连 / 多端同步全会错 |
+
+**抓拍时机是硬性的**：第①步必须排在 `ClearSlot` 之前，晚一步读到的就是空 tag。
+
+**边界情况**：纯换键时 `PreSlot` = 旧 InputTag；首次装备（Unlocked 无槽）时 `PreSlot` = 空 tag → 广播出去的"空 info"里 `AbilityTag = None` + `InputTag` 非法 → UI 找不到槽位 → 自然忽略（前提是 UI 里没写 `check` 或直接索引）。
+
+**C++ 细节**：`:425` 是 `const FGameplayTag& PreSlot = GetInputTagFromAbilitySpec(*AbilitySpec);`。该函数**按值返回**，用 const 引用接住会触发**生命周期延长**，作用域结束才析构 —— 安全，不是悬垂引用。
+
+### 67.6 UI 侧：一份 info，两个匹配键，两类球
+
+| 球的位置 | 球的变量 | 拿什么匹配 | 匹配上做什么 |
+|---|---|---|---|
+| **技能树里的球** | `AbilityTag` | `info.AbilityTag` | 更新图标 / 背景 / 状态环 |
+| **装备行里的槽位球** | `InputTag` | `info.InputTag` | 决定这个槽显示哪个技能 |
+
+于是三条广播的分工就清楚了：
+
+| 广播 | `AbilityTag` | `InputTag` | 命中 |
+|---|---|---|---|
+| 状态变化 | 有 | **空** | 只有技能树球 |
+| 装备 · 新槽 | 有 | `Slot` | **两类都命中** |
+| 装备 · 旧槽 | `None` | `PreSlot` | 只有旧槽那个槽位球 → 读到 `None` → 清空自己 |
+
+**这就是 PreSlot 的闭环**：旧槽广播的 `InputTag = PreSlot` 正好等于旧槽球的 `InputTag`，那个球被精确点名。
+
+球里的正确写法（BP 等价逻辑）：
+
+```
+if (info.InputTag.IsValid() && info.InputTag == MyInputTag)   // ★ IsValid 不能省
+{
+    // 用 info.AbilityTag 决定显示什么：None = 清空，否则显示该技能
+}
+```
+
+`IsValid` 不能省：状态广播的 `InputTag` 是空的，若某个球的 `InputTag` 变量在设计器里忘了填（也是空的），会意外相等。
+
+比对要用**精确相等**（BP 的 `Equal (GameplayAbilityTag)` 节点），**不要用层级匹配** —— `My_InputTag` 是 `My_InputTag.1` 的父级，层级匹配会让一个 `My_InputTag` 命中所有槽位。
+
+### 67.7 被动槽位的 InputTag 从哪来
+
+tag 在项目里出现**两次**，是同一条字符串的两个副本，靠"点击槽位"建立联系：
+
+| 副本 | 位置 | 谁写 |
+|---|---|---|
+| A | WBP 球控件的 `InputTag` 变量默认值 | **手填**（Class Defaults，如 `My_WBP_PassiveSpellTree` 里的球，值为 `My_InputTag.Passive.1`） |
+| B | `AbilitySpec.DynamicAbilityTags` 里的同名 tag | `ServerEquipAbility` 第⑤步 `AddTag(Slot)` |
+
+**桥梁**：
+
+```
+点击槽位球
+  → EquipSpellRowGlobePressed(SlotTag = A 的值, AbilityType)
+  → ServerEquipAbility(AbilityTag, SlotTag)
+  → AddTag(SlotTag) 写进 B
+```
+
+**`AbilityInfo.InputTag` 从来不被"设置"** —— 它只有 `BlueprintReadOnly`（没有 `EditDefaultsOnly`），设计上就不打算在 DA 里填。每次广播前由 `GetInputTagFromAbilitySpec(Spec)` 从 B 处现读覆盖。**DA 里那条记录的 `InputTag` 永远是空的。**
+
+Tag 已注册 ✓：`My_InputTag.Passive.1` / `.2` 在 `My_AuraGamePlayTags_Singleton.cpp:78-79`，`.h:53-54` 有对应字段。
+
+⚠️ 两个副本**没有任何自动同步**。如果 WBP 里写 `My_InputTag.Passive.1` 但点槽时传出去的是别的值，两边永远对不上、球不亮。
+
+另外：`My_InputTag.Passive.*` **不会**被用来按键激活 —— `UMy_AuraInputConfig` 里只配了 LMB/RMB/1~5，没有被动那两个。它是纯标识 tag。
+
+### 67.8 ★ 顺链查出的两个缺陷（尚未修）
+
+**缺陷一：被动技能装不进槽**
+
+`AddCharacterPassiveAbilitiesFromASC`（`My_AuraAbilitySystemComponent.cpp:62-69`）漏了状态 tag：
+
+```cpp
+FGameplayAbilitySpec AbilitySpec = FGameplayAbilitySpec(Ability, 1);
+GiveAbilityAndActivateOnce(AbilitySpec);      // ← 缺 AddTag(My_Abilities_Status_Equipped)
+```
+
+教程版 `AuraAbilitySystemComponent.cpp:73` 有这一行。连锁后果：
+
+1. 被动技能 Spec 上没有任何 Status tag → `GetStatusTagFromAbilitySpec` 返回空 tag
+2. `ServerEquipAbility` 第②步 `bStatusValid = (StatusTag == Equipped || Unlocked)` → **false**
+3. → 第③④⑤⑥⑦ 全跳过 → **`AddTag(Slot)` 没执行，InputTag 没写进 Spec**
+4. 但第⑧步 `ClientEquipAbility(...)` **写在 `if` 外面，无条件执行** → UI 收到"已装备"广播 → **球亮起来（假象）**
+5. 重开 SpellMenu 走全量广播 → `GetInputTagFromAbilitySpec` 找不到 `My_InputTag.*` → `info.InputTag` 空 → 球不匹配 → **球消失**
+
+**症状：被动技能"装上能看见，重开就没了"。**
+
+（若被动技能也配进了 DA 且等级达标，`UpdateAbilityStatuses` 会给它 `Eligible` —— 同样不在第②步的允许集合里，结果一样。）
+
+**缺陷二：被顶掉的旧技能没有广播**
+
+`ClearSlot`（`:475-480`）**只删 InputTag，不改 StatusTag**：
+
+```cpp
+void UMy_AuraAbilitySystemComponent::ClearSlot(FGameplayAbilitySpec* AbilitySpec)
+{
+    const FGameplayTag& SlotTag = GetInputTagFromAbilitySpec(*AbilitySpec);
+    AbilitySpec->DynamicAbilityTags.RemoveTag(SlotTag);   // ← 只删槽位标签
+    MarkAbilitySpecDirty(*AbilitySpec);
+}
+```
+
+若键2原本装着技能 B，`ClearAbilitiesOfSlot` 会删掉 B 的 InputTag，但 B 的状态仍是 `Equipped` → 变成"状态说已装备、实际没槽位"的矛盾体。而且回执 RPC 只带**新技能**的 `PreSlot`，**没有任何东西通知 UI"键2上的 B 被腾走了"** → B 的球留在键2位置，直到某次全量刷新（比如重开 SpellMenu）。
+
+教程是用 `IsPassiveAbility(旧) → DeactivatePassiveAbility.Broadcast + MulticastActivatePassiveEffect(false)` 处理旧占用者的，My_ 侧还没补（见第六十六章的被动能力清单）。
+
+### 67.9 修法（待实施）
+
+```cpp
+// ① AddCharacterPassiveAbilitiesFromASC：补状态 tag
+AbilitySpec.DynamicAbilityTags.AddTag(
+    FMy_AuraGameplayTags::GetInstance().My_Abilities_Status_Equipped);
+GiveAbilityAndActivateOnce(AbilitySpec);
+
+// ② ServerEquipAbility：把回执挪进 if (bStatusValid) 里，避免"假成功"
+if (bStatusValid)
+{
+    ...
+    ClientEquipAbility(AbilityTag, GameplayTags.My_Abilities_Status_Equipped, Slot, PreSlot);
+}
+
+// ③ ClearAbilitiesOfSlot：把被清掉的技能也报给客户端（供 UI 清球）
+//    教程口径：IsPassiveAbility(旧) → Broadcast 结束 + MulticastActivatePassiveEffect(false)
+```
+
+### 67.10 设计思路小结
+
+1. **加了一层间接。** 键位是标签不是指针 —— 换键 = 撕标签贴新标签，输入侧匹配代码一行不改。若设计成 Spec 里存 `int32 KeyIndex`，换键就得改结构 + 改匹配 + 处理复制。
+2. **静态 / 动态分离在一个结构体里。** 用 UPROPERTY 修饰符表达"谁负责填"，比拆成两个结构体省事，也比注释更硬。
+3. **ASC 是唯一真相源。** UI 不缓存、不推断状态，从 Spec 现读 → 广播。所以不会有"UI 显示与实际不一致"的经典 bug。
+4. **一条委托、多处消费。** `OnAbilityInfo` 是通用的"技能信息变了"信号，Overlay 和 SpellMenu 都听同一个，各取所需。ASC 完全不认识 UI。
+5. **"变化过程"必须由 RPC 携带。** 属性复制只表达终态；`PreSlot` 这类过程信息只能靠参数传。
+
+---
+
 ## 附：本次会话 C++ 改动汇总（全部在 `My_` 目录下，合规）
 
 | 文件 | 改动 | 对应章节 |
@@ -10408,3 +10648,9 @@ if (AbilityTags.HasTagExact(AbilityTag))       // 广播的是我吗
 - `My_ExeCalc_Damage.cpp` 里既有调试打印（第 133-135 `[Debuff判定]`、279 / 298 / 307 / 309 `LogTemp`）
 - `My_ExeCalc_Damage.cpp:243-246` `CharacterClassInfo->DamageCalculationCoefficients` 无空判
   （客户端 `GetGameMode` 返回 null 会崩；目前 ExecCalc 只在服务器跑，没暴露）
+
+第六十七章无 C++ 改动（纯链路梳理），但顺链查出两个缺陷待修，见 67.8 / 67.9：
+
+- `AddCharacterPassiveAbilitiesFromASC` 漏 `My_Abilities_Status_Equipped` → 被动技能装不进槽
+- `ServerEquipAbility` 的 `ClientEquipAbility` 写在 `if (bStatusValid)` 外 → 假回执
+- `ClearSlot` 只删 InputTag 不改 StatusTag，且被顶掉的旧技能没广播给 UI

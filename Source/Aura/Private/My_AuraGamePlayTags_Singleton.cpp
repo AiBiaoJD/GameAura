@@ -216,7 +216,7 @@ void FMy_AuraGameplayTags::InitializeNativeGameplayTags()
 	);
 	GameplayTagsInstance.My_Abilities_Passive_LifeSiphon = UGameplayTagsManager::Get().AddNativeGameplayTag(
 		FName("My_Abilities.Passive.LifeSiphon"),
-		FString("life Siphon Ability Tag")
+		FString("Life Siphon Ability Tag")
 	);
 	GameplayTagsInstance.My_Abilities_Passive_ManaSiphon = UGameplayTagsManager::Get().AddNativeGameplayTag(
 		FName("My_Abilities.Passive.ManaSiphon"),
