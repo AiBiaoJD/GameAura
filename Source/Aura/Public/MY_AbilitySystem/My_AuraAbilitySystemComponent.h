@@ -51,7 +51,31 @@ public:
 	static FGameplayTag GetInputTagFromAbilitySpec(const FGameplayAbilitySpec& AbilitySpec);
 	static FGameplayTag GetStatusTagFromAbilitySpec(const FGameplayAbilitySpec& AbilitySpec);
 	FGameplayTag GetStatusTagFromAbilityTag(const FGameplayTag& AbilityTag);
-	FGameplayTag GetInputTagFromAbilityTag(const FGameplayTag& AbilityTag);
+	FGameplayTag GetSlotFromAbilityTag(const FGameplayTag& AbilityTag);
+
+	/* ===== 槽位相关 =====
+	 * Slot（槽位）和 InputTag（输入标签）是【同一个 FGameplayTag】，只是两个语境的叫法：
+	 *   - InputTag：强调"按哪个键"（AbilityInputTagHeld 用）
+	 *   - Slot    ：强调"显示在哪个格子"（装备系统用）
+	 */
+
+	// ---- 查询（纯读，不改数据）----
+	// 这个技能占着【指定的】槽位吗（精确匹配，不认父子层级）
+	static bool AbilityHasSlot(const FGameplayAbilitySpec& AbilitySpec, const FGameplayTag& Slot);
+	// 这个技能占着【任意】槽位吗（= 已装备）
+	static bool AbilityHasAnySlot(const FGameplayAbilitySpec& AbilitySpec);
+	// 这个槽位被谁占着？没人占返回 nullptr
+	FGameplayAbilitySpec* GetSpecWithSlot(const FGameplayTag& Slot);
+	// 这个槽位空着吗
+	bool SlotIsEmpty(const FGameplayTag& Slot);
+	// 这个技能是被动吗（查 AbilityInfo 里配的 AbilityType，不硬编码）
+	bool IsPassiveAbility(const FGameplayAbilitySpec& AbilitySpec) const;
+
+	// ---- 修改（内部都会 MarkAbilitySpecDirty，保证复制到客户端）----
+	// 清掉这个技能占的槽位
+	void ClearSlot(FGameplayAbilitySpec* AbilitySpec);
+	// 把技能换到指定槽位（先清旧槽，再写新槽）
+	void AssignSlotToAbility(FGameplayAbilitySpec& AbilitySpec, const FGameplayTag& Slot);
 
 	// AttributeMenu中按钮点击提示属性点
 	void UpgradeAttribute(const FGameplayTag& AttributeTag);
@@ -81,22 +105,8 @@ public:
 	UFUNCTION(Client, Reliable)
 	void ClientEquipAbility(const FGameplayTag& AbilityTag, const FGameplayTag& Status, const FGameplayTag& Slot, const FGameplayTag& PreSlot);
 
-	/* ===== 装备槽位辅助函数 =====
-	 * 术语说明：Slot（槽位）和 InputTag（输入标签）是【同一个 FGameplayTag】，
-	 * 只是两个语境的命名约定：
-	 *   - InputTag：强调"按哪个键"（AbilityInputTagHeld 用）
-	 *   - Slot   ：强调"显示在哪个格子 / 能不能塞进去"（装备系统用）
-	 * 换成 Slot 命名是为了可读性：AbilityHasSlot 比 AbilityHasInputTag 更能表达"占着格子没"。
-	 */
-
-	// 【针对 Ability】清掉这一个技能占的槽位（只删它自己的 InputTag）
-	void ClearSlot(FGameplayAbilitySpec* AbilitySpec);
 	// 【针对槽位】清掉占着这个槽的所有技能（遍历所有技能，内部转调 ClearSlot）
 	void ClearAbilitiesOfSlot(const FGameplayTag& Slot);
-	// 【精确判断】这个技能占着【指定的这个 Slot】吗（HasTagExact(Slot)）
-	// ⚠️ 注意与"是否装备了"的区别：判断"装备了没"应该用"有没有任意 InputTag"的写法，
-	//    本函数是"占着某个具体槽吗"，传入具体 SlotTag 才有意义。
-	bool AbilityHasSlot(const FGameplayAbilitySpec* AbilitySpec, const FGameplayTag& Slot);
 
 
 	bool GetDescriptionByAbilityTag(const FGameplayTag& AbilityTag, const FGameplayTag& StatusTag, int32 AbilityLevel, UMy_AbilityInfo* AbilityInfo, FString& OutDescription, FString& OutNextLevelDescription);

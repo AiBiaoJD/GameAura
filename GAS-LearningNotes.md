@@ -10633,6 +10633,342 @@ if (bStatusValid)
 
 ---
 
+## 六十八、`ServerEquipAbility` 重写 + FastArray 标脏机制（★）
+
+> 本章两件事：① 按"能看懂"的标准重写 `ServerEquipAbility`，把 67.8 / 67.9 列的问题一次修掉；
+> ② 补上一直含糊的两块底层机制 —— `FScopedAbilityListLock` 到底锁什么、`MarkAbilitySpecDirty` 到底为什么必须调。
+
+### 68.1 教程版为什么"看起来乱"
+
+教程 `AuraAbilitySystemComponent.cpp:338-387` 的结构：
+
+```cpp
+if (bStatusValid)
+{
+    if (!SlotIsEmpty(Slot)) { ... ClearSlot(SpecWithSlot); }
+
+    if (!AbilityHasAnySlot(*AbilitySpec))      // ← 只有"从没装过槽"才进来
+    {
+        if (IsPassiveAbility(*AbilitySpec)) { TryActivateAbility(...); MulticastActivatePassiveEffect(..., true); }
+        AbilitySpec->DynamicAbilityTags.RemoveTag(GetStatusFromSpec(*AbilitySpec));
+        AbilitySpec->DynamicAbilityTags.AddTag(GameplayTags.Abilities_Status_Equipped);
+    }
+    AssignSlotToAbility(*AbilitySpec, Slot);
+}
+ClientEquipAbility(...);                        // ← 在 if 外面，无条件发
+```
+
+四个问题：
+
+| # | 问题 | 后果 |
+|---|---|---|
+| ① | "改状态 + 激活被动"锁在 `if (!AbilityHasAnySlot(...))` 里 | 已装槽的技能换到另一个槽时整块跳过 → 被动不会重新挂载特效 |
+| ② | `ClientEquipAbility` 写在 `if (bStatusValid)` 外面 | 状态不合法（Locked / Eligible）也发"装备成功" → 骗 UI |
+| ③ | `ClearSlot`（`:418-422`）没有 `MarkAbilitySpecDirty` | 清槽不复制到客户端 → UI 认为旧技能还占着那个槽 |
+| ④ | `SlotIsEmpty(Slot)` 与 `GetSpecWithSlot(Slot)` 各遍历一次 | 两次遍历之间锁已释放，指针悬垂 |
+
+**主动技能在教程里是"隐式正确"**：它走不进 `if (IsPassiveAbility)` 的内层，只靠 `AssignSlotToAbility` 生效。逻辑没错，但没有一行注释说明，所以读起来像"主动技能没处理"。
+
+### 68.2 重写后的七步（`My_AuraAbilitySystemComponent.cpp:481-536`）
+
+```cpp
+void UMy_AuraAbilitySystemComponent::ServerEquipAbility_Implementation(const FGameplayTag& AbilityTag, const FGameplayTag& Slot)
+{
+    const FMy_AuraGameplayTags& GameplayTags = FMy_AuraGameplayTags::GetInstance();
+
+    // ① 找到技能，校验状态：只有 Unlocked（已解锁）/ Equipped（已装备）能装
+    FGameplayAbilitySpec* AbilitySpec = GetSpecFromAbilityTag(AbilityTag);
+    if (AbilitySpec == nullptr) return;
+
+    const FGameplayTag StatusTag = GetStatusTagFromAbilitySpec(*AbilitySpec);
+    const bool bCanEquip = StatusTag.MatchesTagExact(GameplayTags.My_Abilities_Status_Unlocked)
+        || StatusTag.MatchesTagExact(GameplayTags.My_Abilities_Status_Equipped);
+    if (!bCanEquip) return;
+
+    // 先把后面要用的信息取出来：激活能力可能改动能力列表，之后指针不保证有效
+    const FGameplayAbilitySpecHandle Handle = AbilitySpec->Handle;
+    const bool bPassive = IsPassiveAbility(*AbilitySpec);
+    const FGameplayTag PreSlot = GetInputTagFromAbilitySpec(*AbilitySpec);
+
+    // ② 点的就是它现在待的槽 → 数据不用改，回执让 UI 收尾
+    if (PreSlot.MatchesTagExact(Slot))
+    {
+        ClientEquipAbility(AbilityTag, StatusTag, Slot, PreSlot);
+        return;
+    }
+
+    // ③ 腾空目标槽：原来占着的不论主动被动，一律卸下
+    //    旧被动还要额外通知它 EndAbility，否则光环特效 / 持续 GE 会一直挂着
+    if (FGameplayAbilitySpec* Occupant = GetSpecWithSlot(Slot))
+    {
+        if (IsPassiveAbility(*Occupant))
+        {
+            OnDeactivatePassiveAbility.Broadcast(GetAbilityTagFromAbilitySpec(*Occupant));
+        }
+        ClearSlot(Occupant);
+    }
+
+    // ④ 写新槽位（内部先清旧槽再 AddTag，并标脏复制）
+    AssignSlotToAbility(*AbilitySpec, Slot);
+
+    // ⑤ 状态推进：Unlocked → Equipped（纯换键时状态不变）
+    if (StatusTag.MatchesTagExact(GameplayTags.My_Abilities_Status_Unlocked))
+    {
+        AbilitySpec->DynamicAbilityTags.RemoveTag(GameplayTags.My_Abilities_Status_Unlocked);
+        AbilitySpec->DynamicAbilityTags.AddTag(GameplayTags.My_Abilities_Status_Equipped);
+        MarkAbilitySpecDirty(*AbilitySpec);
+    }
+
+    // ⑥ 被动技能装上就激活；主动技能等玩家按键，这里不碰
+    if (bPassive && !AbilitySpec->IsActive())
+    {
+        TryActivateAbility(Handle);
+    }
+
+    // ⑦ 回执：带 PreSlot，UI 才能精确地"清旧槽 + 填新槽"
+    ClientEquipAbility(AbilityTag, GameplayTags.My_Abilities_Status_Equipped, Slot, PreSlot);
+}
+```
+
+核心变化：**"换槽"和"首次装槽"合并成同一条路径**。不再用 `if (!AbilityHasAnySlot(...))` 把逻辑劈成两半 —— ③④⑤⑥ 每一步都无条件、幂等，装过没装过走一样的流程。主动技能为什么在 ⑥ 被跳过，注释直接写在代码里。
+
+配套的辅助函数也重排过（`:304-365`），按「查询 / 修改」两组分开：
+
+```cpp
+// 查询
+static bool AbilityHasSlot(const FGameplayAbilitySpec&, const FGameplayTag&);   // HasTagExact
+static bool AbilityHasAnySlot(const FGameplayAbilitySpec&);                    // GetInputTagFromAbilitySpec().IsValid()
+FGameplayAbilitySpec* GetSpecWithSlot(const FGameplayTag&);
+bool SlotIsEmpty(const FGameplayTag&);                                         // 复用 GetSpecWithSlot == nullptr
+bool IsPassiveAbility(const FGameplayAbilitySpec&) const;                      // 查 AbilityInfo 的 AbilityType
+
+// 修改（内部标脏）
+void ClearSlot(FGameplayAbilitySpec*);
+void AssignSlotToAbility(FGameplayAbilitySpec&, const FGameplayTag&);
+```
+
+`ClearSlot` 和 `AssignSlotToAbility` **都必须各自标脏**：`ClearSlot` 会被 `ServerEquipAbility` 第③步直接调用（清掉旧占用者），那条路径不经过 `AssignSlotToAbility`。
+
+### 68.3 顺带补的遗漏：被动技能的状态 tag
+
+`AddCharacterPassiveAbilitiesFromASC`（`:62-74`）对照教程 `:73` 发现少了状态 tag：
+
+```cpp
+AbilitySpec.DynamicAbilityTags.AddTag(FMy_AuraGameplayTags::GetInstance().My_Abilities_Status_Equipped);
+GiveAbilityAndActivateOnce(AbilitySpec);
+```
+
+没有它，开局被动在 `ServerEquipAbility` 第①步就被 `bCanEquip` 挡回去，**永远拖不进槽**（正是 67.8 描述的缺陷一）。
+
+### 68.4 `FScopedAbilityListLock` 到底锁什么（★）
+
+**它不是线程锁，是"延迟增删"的 RAII 计数器。**
+
+```cpp
+// GameplayAbilitySpec.h:320-330
+struct GAMEPLAYABILITIES_API FScopedAbilityListLock
+{
+    FScopedAbilityListLock(UAbilitySystemComponent& InContainer);
+    ~FScopedAbilityListLock();
+private:
+    UAbilitySystemComponent& AbilitySystemComponent;
+};
+#define ABILITYLIST_SCOPE_LOCK()    FScopedAbilityListLock ActiveScopeLock(*this);
+```
+
+构造/析构只是计数器加减（`GameplayAbilityTypes.cpp:299-308`）：
+
+```cpp
+FScopedAbilityListLock::FScopedAbilityListLock(UAbilitySystemComponent& InASC)
+    : AbilitySystemComponent(InASC) { AbilitySystemComponent.IncrementAbilityListLock(); }   // AbilityScopeLockCount++
+FScopedAbilityListLock::~FScopedAbilityListLock() { AbilitySystemComponent.DecrementAbilityListLock(); }
+```
+
+**为什么需要**：`GetActivatableAbilities()` 返回的是**引用**，不是拷贝。
+
+```cpp
+// AbilitySystemComponent.h:1091-1094
+TArray<FGameplayAbilitySpec>& GetActivatableAbilities() { return ActivatableAbilities.Items; }
+```
+
+循环体里 `TryActivateAbility` / `EndAbility` 可能让某个能力结束并被移出数组，`RemoveAtSwap` 会让元素整体搬家 → 手里的 `FGameplayAbilitySpec&` 指向别的技能，或直接越界。
+
+持锁期间，增删被改成排队（`AbilitySystemComponent_Abilities.cpp`）：
+
+```cpp
+// :267-271  GiveAbility
+if (AbilityScopeLockCount > 0) { AbilityPendingAdds.Add(Spec); return Spec.Handle; }
+
+// :445-452  ClearAbility
+if (AbilityScopeLockCount > 0)
+{
+    if (Items[Idx].PendingRemove == false) { Items[Idx].PendingRemove = true; AbilityPendingRemoves.Add(Handle); }
+}
+
+// :711-716  计数归零时才真正执行
+if (--AbilityScopeLockCount == 0 && (AbilityPendingAdds.Num() > 0 || AbilityPendingRemoves.Num() > 0))
+{ FAbilityListLockActiveChange ActiveChange(*this, AbilityPendingAdds, AbilityPendingRemoves); ... }
+```
+
+三个性质：
+
+1. **不互斥，只延期** —— 别人照样能调 `GiveAbility`，请求进队列而已
+2. **可嵌套**（计数器而非 bool）—— `GetSpecWithSlot` 内部也有一把，外层再套一层没问题
+3. **必须用 RAII 局部变量** —— 不能 `new`，否则析构不触发，排队的能力永远加不上来
+
+反证：`ClearAllAbilities()` 里 `check(AbilityScopeLockCount == 0)`（`:384`），引擎自己都禁止持锁时硬清空数组。
+
+**但不是"每一处遍历都必须加"**：只要循环体不可能引发增删，加了也无害、只是没必要。GAS 的惯例是"遍历就加"，因为 `EndAbility` 可重入 —— 一个回调能绕一大圈回来把能力删掉，静态看代码很难保证。
+
+**`ServerEquipAbility` 没加锁是安全的**：函数内没有"遍历 + 增删"同时发生的循环；第⑥步 `TryActivateAbility` 虽可能移除 Spec，但之后只用 `Handle` / `AbilityTag` / `Slot` 这些值，不再碰 `AbilitySpec` 指针。
+
+### 68.5 `MarkAbilitySpecDirty`：FastArray 根本不比对字段（★★）
+
+**先纠正一个常见误解：不是所有 UPROPERTY 都"改了自动复制"。**
+
+| | 普通 `UPROPERTY(Replicated)` | `FGameplayAbilitySpecContainer : FFastArraySerializer` |
+|---|---|---|
+| 谁发现变化 | 引擎逐属性比对影子副本 | **你自己报告** |
+| 触发方式 | 每次网络更新全量扫描 | 只有 `ReplicationKey` 变过的项 |
+| 代价 | O(字段数) 每次比对 | 零比对，但改的人必须记得标 |
+
+`ActivatableAbilities` 属于后者（`AbilitySystemComponent.h:1628`），走 `NetDeltaSerialize` → `FastArrayDeltaSerialize`。**两处直接跳过：**
+
+**第一处：整个数组跳过**（`FastArraySerializer.h:818-840`）
+
+```cpp
+if (ArraySerializer.ArrayReplicationKey == BaseReplicationKey)
+{
+    // If the keys didn't change ... No need to create a new one.
+    *Parms.NewState = Parms.OldState->AsShared();
+}
+```
+
+`ArrayReplicationKey` 只在 `MarkArrayDirty()` 里递增，而 `MarkItemDirty()` 内部就会调它：
+
+```cpp
+void MarkItemDirty(FFastArraySerializerItem& Item)   // :441-454
+{
+    if (Item.ReplicationID == INDEX_NONE) { Item.ReplicationID = ++IDCounter; ... }
+    Item.ReplicationKey++;
+    MarkArrayDirty();
+}
+```
+
+**第二处：元素级也只比一个整数**（`:929-945`）
+
+```cpp
+const int32* OldValuePtr = OldIDToKeyMap ? OldIDToKeyMap->Find(Item.ReplicationID) : NULL;
+if (OldValuePtr)
+{
+    if (*OldValuePtr == Item.ReplicationKey)
+    {
+        // Stayed The Same - Skipping
+        continue;                              // ← 连 DynamicAbilityTags 都不看一眼
+    }
+    else
+    {
+        ChangedElements.Add(...);              // 只有 key 变了才进发送列表
+    }
+}
+```
+
+**为什么这么设计**：`FGameplayAbilitySpec` 里塞满了容器（`FGameplayTagContainer` × 4、`TArray<FGameplayTag> DynamicAbilityTags`、`TMap` 等）。逐字段深比对的成本 = O(玩家数 × 能力数 × 标签数)，高到不可接受。FastArray 用"手动标脏"把这笔开销换掉了。
+
+**契约的证据**：引擎自己在所有改 Spec 的地方都标了 —— `GiveAbility`（`:283`）、`:1051` / `:1127` / `:1709` / `:1819`；`AbilitySystemComponent.h:1099/1102/1105/1108` 四个 `Find...` 函数注释全写着 `If modifying call MarkAbilitySpecDirty`；连 warning 都在提示（`FastArraySerializer.h:833`）：
+
+```
+missing a MarkArrayDirty on element add/remove?
+```
+
+### 68.6 标脏之后，序列化读的是哪一刻的数据
+
+`ChangedElements` 里**只有索引和 ID，没有字段快照**（`FastArraySerializer.h:1439-1451`）：
+
+```cpp
+for (auto It = ChangedElements.CreateIterator(); It; ++It)
+{
+    void* ThisElement = &Items[It->Idx];              // ← 取【当前】元素
+    uint32 ID = It->ID;
+    Writer << ID;
+    Parms.Data = ThisElement;
+    Parms.NetSerializeCB->NetSerializeStruct(Parms);  // ← 序列化此刻的完整内容
+}
+```
+
+由此得出一个重要推论：**标脏只是"登记这一项要发"，在登记之后、发送之前发生的额外改动，会被顺带一起发出去。**
+
+所以在 `ServerEquipAbility` 里，第④步 `AssignSlotToAbility` 已经标过脏，第⑤步改状态 tag 即使不标，也会被捎上。**当前结构下第⑤步那行标脏是冗余的** —— 但保留它更安全，因为它让这段代码自洽，不依赖"④ 一定在 ⑤ 之前且一定标脏"这个没写出来的前提。
+
+### 68.7 漏标脏会发生什么（★）
+
+| 环境 | 表现 |
+|---|---|
+| 单机 / Listen Server Host | 完全正常，**发现不了** |
+| 远端客户端 UI | 正常（`ClientEquipAbility` 用 payload 刷界面，不读 spec） |
+| 远端客户端按键 | **新键无效**（`AbilityInputTagHeld` 读本地旧 tag），旧键反而还能放 |
+| 之后任意一次合法标脏 | 整个 Item 被复制 → 之前改动"顺手"带上 → **间歇性自愈** |
+| 新加入 / 重连的玩家 | 正常（全量初始复制）→ 误判成"某台机器有问题" |
+
+最坑的组合：**界面显示"已经装到 2 号位"，按 2 没反应，按 1 还能放。** 两个信号互相矛盾，排查时会先怀疑输入绑定、再怀疑 UI，最后才想到标脏。
+
+为什么这个坑必须靠规则防 —— 它同时满足三个"最难查"的条件：
+
+1. 不崩、不报错、不打警告
+2. 单机测不出来（日常开发流程天然屏蔽）
+3. 会被后续合法操作掩盖（"有时候好有时候坏"）
+
+### 68.8 一条可机械执行的规则
+
+不用记场景，看字段声明里有没有 `NotReplicated`：
+
+- **有** → 这个字段根本不参与复制，改了也不用标脏
+- **没有** → 改了就必须标脏
+
+`FGameplayAbilitySpec`（`GameplayAbilitySpec.h:162-233`）字段分类：
+
+| 字段 | 声明 | 要标脏 |
+|---|---|---|
+| `Handle` / `Ability` / `SourceObject` | `UPROPERTY()` | 要（但一般不改） |
+| **`Level`** | `UPROPERTY()` | **要** |
+| **`InputID`** | `UPROPERTY()` | **要** |
+| **`DynamicAbilityTags`** | `UPROPERTY()` | **要** |
+| `ReplicatedInstances` | `UPROPERTY()` | 要（引擎自己管） |
+| `ActiveCount` | `UPROPERTY(NotReplicated)` | 不用 |
+| `InputPressed` / `RemoveAfterActivation` / `PendingRemove` / `bActivateOnce` | `UPROPERTY(NotReplicated)` | 不用 |
+| `ActivationInfo` | `UPROPERTY(NotReplicated)` | 不用 |
+| `NonReplicatedInstances` | `UPROPERTY(NotReplicated)` | 不用 |
+
+日常真正会碰的只有三个：**`DynamicAbilityTags`、`Level`、`InputID`**。
+
+顺带解释一个疑问：为什么"技能激活了"不用标脏？因为 `ActiveCount` 标了 `NotReplicated`，注释写着 `Can't replicate until prediction accurately handles this` —— 激活状态走的是另一条通道（`ClientActivateAbilitySucceed` 这类预测确认 RPC），压根不经过这个容器。
+
+**落地建议：把标脏放进"唯一写入口"**，不要指望每个调用方都记得。本项目目前 4 个标脏点：
+
+| 位置 | 改什么 |
+|---|---|
+| `:364` `AssignSlotToAbility` | 换槽（`AddTag(Slot)`） |
+| `:557` `ClearSlot` | 清槽（`RemoveTag`） |
+| `:463` `ServerSpendSpellPoints` | 升级 / Unlocked 状态推进 |
+| `:525` `ServerEquipAbility` 第⑤步 | Unlocked → Equipped（当前冗余，留作防御） |
+
+**新增功能时照这个模式做**：写一个 `SetXxx()` 函数，里面改字段 + 标脏，外面只调函数、不直接碰 `DynamicAbilityTags`。规则就从"每次都要记得"变成"只要不绕过封装就不会错"。
+
+**排查手段**（记一个就够）：
+
+```
+Log LogNetFastTArray Log
+```
+
+服务器改了 tag 之后，如果日志一直打印 `Stayed The Same - Skipping`，就是漏标了。
+
+### 68.9 附带结论
+
+- `bIsNetDirty` 在 5.2 里只见到写入（`MarkAbilitySpecDirty:786` 等多处），没找到读取点，疑似遗留字段，不要拿它当判断依据
+- 标脏 ≠ 立刻发送：它只是打上待发标记，真正发出要等下一次网络更新（受 `NetUpdateFrequency` 影响）。所以标脏后立刻在客户端读，可能还是旧值 —— 这也正是装备槽位要用 `ClientEquipAbility` 刷新 UI 的原因：**标脏管数据，RPC 管界面**
+
+---
+
 ## 附：本次会话 C++ 改动汇总（全部在 `My_` 目录下，合规）
 
 | 文件 | 改动 | 对应章节 |
@@ -10654,3 +10990,25 @@ if (bStatusValid)
 - `AddCharacterPassiveAbilitiesFromASC` 漏 `My_Abilities_Status_Equipped` → 被动技能装不进槽
 - `ServerEquipAbility` 的 `ClientEquipAbility` 写在 `if (bStatusValid)` 外 → 假回执
 - `ClearSlot` 只删 InputTag 不改 StatusTag，且被顶掉的旧技能没广播给 UI
+
+第六十八章的 C++ 改动（`My_AuraAbilitySystemComponent.h` / `.cpp`）：
+
+| 文件 / 位置 | 改动 | 对应章节 |
+|---|---|---|
+| `.h:56-78` | 槽位声明按「查询 / 修改」分组；删掉重复的 `AbilityHasSlot(const FGameplayAbilitySpec*, ...)` 重载；`ClearSlot` 从误改的 `static` 改回非静态 | 68.2 |
+| `.cpp:62-74` | `AddCharacterPassiveAbilitiesFromASC` 补 `My_Abilities_Status_Equipped` | 68.3 |
+| `.cpp:304-365` | 五个槽位辅助函数重写：`AbilityHasAnySlot` 复用取 InputTag；`SlotIsEmpty` 复用 `GetSpecWithSlot`；`IsPassiveAbility` 加两级空判；`AssignSlotToAbility` 末尾标脏 | 68.2 |
+| `.cpp:481-536` | `ServerEquipAbility_Implementation` 全量重写为七步 | 68.2 |
+| `.cpp:549-558` | `ClearSlot` 恢复 `MarkAbilitySpecDirty` + 空判 | 68.5 |
+| `.cpp:138-143` | 过时的「⚠️ 已知缺失 … 恢复时记得补锁」注释 → 换成锁原理说明 | 68.4 |
+
+编码校验：两文件均 `BOM: efbbbf` / 纯 CRLF ✓（**未编译**，由用户在 UE 内验证）
+
+**修掉的 4 个问题**（对应 67.8 / 67.9）：
+
+1. 非被动的旧占用者没清 → 两个 Spec 共享同一 InputTag（按一个键同时放两个技能）
+2. `ClearSlot` 漏标脏 → 客户端 UI 认为旧技能还占着槽
+3. `GetSpecWithSlot` 返回的裸指针跨锁使用 → 改为先抓 `Handle`，后续用 Handle 而非指针
+4. `SlotIsEmpty` / `GetSpecWithSlot` 之间缺空判 → 直接 `if (FGameplayAbilitySpec* Occupant = ...)`
+
+**仍未做**：`MulticastActivatePassiveEffect`（NetMulticast 特效广播）尚未实现，第③步目前只做了 `OnDeactivatePassiveAbility.Broadcast`。

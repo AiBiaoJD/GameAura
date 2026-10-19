@@ -285,9 +285,13 @@ void UMy_AuraAttributeSet::HandleIncomingXP(const FMy_EffectProperties& Props)
 		// 如果升级了
 		if (NumLevelUp > 0)
 		{
-			const int32 AttributePointReward = IMy_PlayerInterface::Execute_GetAttributePointReward(Props.SourceCharacter, CurrentLevel);
-			const int32 SpellPointReward = IMy_PlayerInterface::Execute_GetSpellPointReward(Props.SourceCharacter, CurrentLevel);
-
+			int32 AttributePointReward = 0;
+			int32 SpellPointReward = 0;
+			for (int i = 0; i < NumLevelUp; i++)
+			{
+				AttributePointReward += IMy_PlayerInterface::Execute_GetAttributePointReward(Props.SourceCharacter, CurrentLevel+i);
+				SpellPointReward += IMy_PlayerInterface::Execute_GetSpellPointReward(Props.SourceCharacter, CurrentLevel+i);
+			}
 			IMy_PlayerInterface::Execute_AddToPlayerLevel(Props.SourceCharacter, NumLevelUp);
 			IMy_PlayerInterface::Execute_AddToAttributePoint(Props.SourceCharacter, AttributePointReward);
 			IMy_PlayerInterface::Execute_AddToSpellPoint(Props.SourceCharacter, SpellPointReward);
