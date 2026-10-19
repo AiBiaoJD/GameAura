@@ -9,7 +9,10 @@
 #include "Components/CapsuleComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "MY_AbilitySystem/My_AuraAbilitySystemComponent.h"
+#include "MY_AbilitySystem/Passive/My_PassiveNiagaraComponent.h"
 #include "Net/UnrealNetwork.h"
+
+
 
 // Sets default values
 AMyCharacter_Base::AMyCharacter_Base()
@@ -33,6 +36,18 @@ AMyCharacter_Base::AMyCharacter_Base()
 	StunDebuffComponent = CreateDefaultSubobject<UMy_DebuffNiagaraComponent>(TEXT("Stun Debuff"));
 	StunDebuffComponent->SetupAttachment(GetRootComponent());
 	StunDebuffComponent->DebuffTag = FMy_AuraGameplayTags::GetInstance().My_Debuff_Stun;
+
+	EffectAttachComponent = CreateDefaultSubobject<USceneComponent>(TEXT("EffectAttachPoint"));
+	EffectAttachComponent->SetupAttachment(GetRootComponent());
+
+	HaloOfProtectionPassiveComponent = CreateDefaultSubobject<UMy_PassiveNiagaraComponent>(TEXT("HaloProtectionPassiveComponent"));
+	HaloOfProtectionPassiveComponent->SetupAttachment(EffectAttachComponent);
+
+	LifeSiphonPassiveComponent = CreateDefaultSubobject<UMy_PassiveNiagaraComponent>(TEXT("LifeSiphonPassiveComponent"));
+	LifeSiphonPassiveComponent->SetupAttachment(EffectAttachComponent);
+
+	ManaSiphonPassiveComponent =CreateDefaultSubobject<UMy_PassiveNiagaraComponent>(TEXT("ManaSiphonPassiveComponent"));
+	ManaSiphonPassiveComponent->SetupAttachment(EffectAttachComponent); 
 }
 
 

@@ -14,6 +14,7 @@ DECLARE_DELEGATE_OneParam(FMy_ForEachAbilitySignature, const FGameplayAbilitySpe
 DECLARE_MULTICAST_DELEGATE_ThreeParams(FMy_AbilityStatusChangedSignature, const FGameplayTag& /*AbilityTags*/, const FGameplayTag& /*StatusTag*/, int32 /*AbilityLeve*/)
 DECLARE_MULTICAST_DELEGATE_FourParams(FMy_AbilityEquippedSignature, const FGameplayTag& /*AbilityTags*/, const FGameplayTag& /*StatusTags*/, const FGameplayTag& /*Slot*/, const FGameplayTag& /*PreSlot*/)
 DECLARE_MULTICAST_DELEGATE_OneParam(FMy_DeactivatePassiveAbilitySignature, const FGameplayTag& /*AbilityTags*/);
+DECLARE_MULTICAST_DELEGATE_TwoParams(Fmy_ActivatePassiveAbilitySignature, const FGameplayTag& /*AbilityTags*/, bool /*bActivate*/ );
 
 /**
  *
@@ -33,6 +34,7 @@ public:
 	FMy_AbilityStatusChangedSignature OnAbilityStatusChanged; //处理等级提升技能变为Eligible
 	FMy_AbilityEquippedSignature OnAbilityEquipped; //处理装配技能后,发送给widgetController的相关数据
 	FMy_DeactivatePassiveAbilitySignature OnDeactivatePassiveAbility; //处理取消被动能力
+	Fmy_ActivatePassiveAbilitySignature OnActivatePassiveAbility; //处理被动能力激活/取消的Niagara的显示
 
 	// Character添加能力
 	void AddCharacterAbilitiesFromASC(const TArray<TSubclassOf<UGameplayAbility>>& StartupAbility);
@@ -105,10 +107,12 @@ public:
 	UFUNCTION(Client, Reliable)
 	void ClientEquipAbility(const FGameplayTag& AbilityTag, const FGameplayTag& Status, const FGameplayTag& Slot, const FGameplayTag& PreSlot);
 
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastActivatePassiveEffect(const FGameplayTag& AbilityTags, bool bActivate);
+	
 	// 【针对槽位】清掉占着这个槽的所有技能（遍历所有技能，内部转调 ClearSlot）
 	void ClearAbilitiesOfSlot(const FGameplayTag& Slot);
-
-
+	
 	bool GetDescriptionByAbilityTag(const FGameplayTag& AbilityTag, const FGameplayTag& StatusTag, int32 AbilityLevel, UMy_AbilityInfo* AbilityInfo, FString& OutDescription, FString& OutNextLevelDescription);
 
 protected:

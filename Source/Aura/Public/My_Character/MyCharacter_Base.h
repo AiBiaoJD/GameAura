@@ -9,6 +9,7 @@
 #include "My_Interraction/My_CombatInterface.h"
 #include "MyCharacter_Base.generated.h"
 
+class UMy_PassiveNiagaraComponent;
 class UNiagaraSystem;
 
 
@@ -50,7 +51,7 @@ public:
 	virtual void OnRep_Burned();
 	virtual void BurnTagChanged(const FGameplayTag CallBackTag, int32 NewCount);
 
-	
+
 	/** Combat interface **/
 	virtual FVector GetWeaponSockLocation_Implementation(const FGameplayTag& MontageTag) override;
 	virtual void Die(const FVector& DeathImpulse) override;
@@ -68,7 +69,7 @@ public:
 	/** end Combat interface **/
 	FMy_ASCRegisteredSignature OnASCRegistered;
 	FMy_DeathSignature OnDeath;
-	
+
 	UPROPERTY(EditAnywhere, Category = "My_Combat")
 	TArray<FMy_TaggedMontage> AttackMontage;
 
@@ -89,7 +90,7 @@ protected:
 
 	UPROPERTY(EditAnywhere, Category = "My_Combat")
 	FName TailSockName;
-	
+
 	bool bDead = false;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "My_Combat")
@@ -138,7 +139,7 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "My_Combat")
 	UNiagaraSystem* MeleeBloodEffect;
-	
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "My_Combat")
 	USoundBase* DeathSound;
 
@@ -155,7 +156,17 @@ protected:
 
 	UPROPERTY(VisibleAnywhere)
 	TObjectPtr<UMy_DebuffNiagaraComponent> StunDebuffComponent;
-	
+
+	/* Passive Niagara*/
+	UPROPERTY(visibleAnywhere)
+	TObjectPtr<UMy_PassiveNiagaraComponent> HaloOfProtectionPassiveComponent;
+	UPROPERTY(visibleAnywhere)
+	TObjectPtr<UMy_PassiveNiagaraComponent> LifeSiphonPassiveComponent;
+	UPROPERTY(visibleAnywhere)
+	TObjectPtr<UMy_PassiveNiagaraComponent> ManaSiphonPassiveComponent;
+	UPROPERTY(visibleAnywhere)
+	TObjectPtr<USceneComponent> EffectAttachComponent;
+
 private:
 	/* 这些变量刚好没被Enemy使用,只是给Aura的
 	 * Enemy的设置在UMy_CharacterClassInfo这里DataAsset 

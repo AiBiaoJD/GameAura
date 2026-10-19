@@ -509,6 +509,8 @@ void UMy_AuraAbilitySystemComponent::ServerEquipAbility_Implementation(const FGa
 	{
 		if (IsPassiveAbility(*Occupant))
 		{
+			//特效委托
+			MulticastActivatePassiveEffect(GetAbilityTagFromAbilitySpec(*Occupant), false);
 			OnDeactivatePassiveAbility.Broadcast(GetAbilityTagFromAbilitySpec(*Occupant));
 		}
 		ClearSlot(Occupant);
@@ -526,8 +528,13 @@ void UMy_AuraAbilitySystemComponent::ServerEquipAbility_Implementation(const FGa
 	}
 
 	// ⑥ 被动技能装上就激活；主动技能等玩家按键，这里不碰
+	//    ⚠️ 这里必须是 true（开启特效）。写成 false 客户端会走 Deactivate，
+	//       表现就是"技能装上了、状态也对、但光环永远不亮"。
+	//    另外：开局直授的被动此时 IsActive() 已经是 true，整个 if 会被跳过，
+	//    它们靠 UMy_PassiveNiagaraComponent::ActivateIfEquipped 在 BeginPlay 兜底。
 	if (bPassive && !AbilitySpec->IsActive())
 	{
+		MulticastActivatePassiveEffect(AbilityTag, true);
 		TryActivateAbility(Handle);
 	}
 
@@ -555,6 +562,11 @@ void UMy_AuraAbilitySystemComponent::ClearSlot(FGameplayAbilitySpec* AbilitySpec
 
 	AbilitySpec->DynamicAbilityTags.RemoveTag(SlotTag);
 	MarkAbilitySpecDirty(*AbilitySpec);
+}
+
+void UMy_AuraAbilitySystemComponent::MulticastActivatePassiveEffect_Implementation(const FGameplayTag& AbilityTags, bool bActivate)
+{
+	OnActivatePassiveAbility.Broadcast(AbilityTags, bActivate);
 }
 
 /* 【针对槽位】清掉占着这个槽的所有技能（内部转调 ClearSlot） */

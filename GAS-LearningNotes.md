@@ -10969,6 +10969,206 @@ Log LogNetFastTArray Log
 
 ---
 
+## 六十九、被动技能特效：为什么不用 tag 事件，而用 Multicast RPC（★）
+
+### 69.1 问题
+
+`UDebuffNiagaraComponent` 用 `RegisterGameplayTagEvent` 监听 tag 计数变化，两行代码就搞定：
+
+```cpp
+ASC->RegisterGameplayTagEvent(DebuffTag, EGameplayTagEventType::NewOrRemoved)
+   .AddUObject(this, &UDebuffNiagaraComponent::DebuffTagChanged);
+```
+
+`UPassiveNiagaraComponent` 却要自己声明一个委托 `ActivatePassiveEffect`、再套一层 `MulticastActivatePassiveEffect` RPC。为什么不统一？
+
+答案不是"教程偷懒"，而是：**被动相关的 tag 根本不在那个能被监听的容器里。** 监听一个不存在的 tag，写一百遍也不会触发。
+
+### 69.2 根因：`RegisterGameplayTagEvent` 监听的是标签计数容器
+
+```cpp
+// AbilitySystemComponent.cpp:627-630
+FOnGameplayEffectTagCountChanged& UAbilitySystemComponent::RegisterGameplayTagEvent(FGameplayTag Tag, EGameplayTagEventType::Type EventType)
+{
+	return GameplayTagCountContainer.RegisterGameplayTagEvent(Tag, EventType);   // ← 标签计数容器
+}
+```
+
+它监听的是 `GameplayTagCountContainer` —— "当前这个 ASC 身上挂着哪些标签、各挂了几层"。**只有写进这个容器的东西，事件才会触发。**
+
+能写进去的来源只有四类：
+
+1. GE 的 `GrantedTags` / `TargetTags`（debuff 走这条）
+2. `AddLooseGameplayTag` / `AddReplicatedLooseGameplayTag`
+3. 能力的 `ActivationOwnedTags`（激活时自动加，结束时自动删）
+4. 部分 GameplayCue 路径
+
+而被动技能的三类标签，**一个都不在里面**。
+
+### 69.3 三种 tag 存储位置对照
+
+| tag | 存在哪 | 进 TagCount 容器 |
+|---|---|---|
+| `Debuff.Burn` | GE 的 `GrantedTags` | ✓ |
+| 被动的 `AbilityTags`（`Abilities.Passive.HaloOfProtection`） | GA CDO 上的静态标签 | ✗ |
+| 槽位 + 状态（`InputTag.Passive.1` / `Status.Equipped`） | `FGameplayAbilitySpec::DynamicAbilityTags` | ✗ |
+
+`GetSpecFromAbilityTag` 遍历的就是第二行那个 `AbilitySpec.Ability->AbilityTags`。它只是**能力类上的一个字段**，供代码查表用，从来没有登记到 ASC 的标签系统里。
+
+> ★ 常见误判：**"这个能力带 tag X" ≠ "这个 ASC 有 tag X"。**
+> 让能力标签真正进入容器，唯一的途径是 `ActivationOwnedTags`。
+
+项目里的直接证据：`ServerEquipAbility` 装备一个被动时，只做 `DynamicAbilityTags.AddTag(Slot)` + 标脏，**没有任何一行 `AddLooseGameplayTag`**。全项目 grep 下来，`AddLooseGameplayTags` 只在 `My_Character/Aura_Character.cpp:221/226` 出现过，处理的是 `BlockedTags`。
+
+**一个更干脆的反证**：如果 tag 真在容器里，`MulticastActivatePassiveEffect` 这整个 RPC 就是废代码。它存在本身，就证明作者知道监听不到。
+
+### 69.4 硬把它变成 tag 行不行？
+
+技术上可以。给每个被动 GA 配 `ActivationOwnedTags`，引擎就会自动帮你写进容器：
+
+```cpp
+// GameplayAbility.cpp:793-798（ActivateAbility 里）
+Comp->AddLooseGameplayTags(ActivationOwnedTags);
+if (UAbilitySystemGlobals::Get().ShouldReplicateActivationOwnedTags())
+{
+	Comp->AddReplicatedLooseGameplayTags(ActivationOwnedTags);   // 默认 true
+}
+// 结束在 :686-691 移除
+```
+
+`ReplicateActivationOwnedTags` 默认 `true`（`AbilitySystemGlobals.cpp:39`），所以复制也没问题。然后 `RegisterGameplayTagEvent` 就能用了。
+
+**但教程故意没走这条路**，五个具体理由：
+
+| # | 理由 | 说明 |
+|---|---|---|
+| ① | 两套真相源会漂移 | "装到槽上了"记在 `DynamicAbilityTags`，"能力激活了"记在 TagCount。这是两个不同的事实，中间存在失败可能 |
+| ② | 激活可能静默失败 | `TryActivateAbility` 返回 false 的路径很多：CD 中、被 `BlockedTags` 挡、`RemoveAfterActivation` 已移除、已在激活中且 `bRetriggerInstancedAbility=false`。这时槽位**已经写成功了**、UI 显示"已装备"，但 tag 不出现 → 光环不亮 |
+| ③ | 粒度不对 | `ActivationOwnedTags` 是**能力级**，不是**槽位级**。被顶掉的被动若没正确 `EndAbility`，tag 还挂着 → 槽位已空、光环还亮 |
+| ④ | 语义错配 | `MulticastActivatePassiveEffect` 标的是 `Unreliable`，等于明说"纯表现，丢包无所谓"。而标签复制是 reliable 的，还会把整个 `ReplicatedLooseGameplayTags` 容器标脏重发 |
+| ⑤ | 时序有缝 | Multicast 与 `ClientEquipAbility` 同一次装备流程连着发，客户端图标和光环**同时**变。走 tag 复制要等属性复制周期，会出现"图标亮了、光环没亮"的几百毫秒空窗 |
+
+`MulticastActivatePassiveEffect` 是由**装备流程直接驱动**的，和"写槽"这个动作严格同步，不存在上面任何一个缝隙。
+
+### 69.5 为什么必须 `NetMulticast`，不能是 `Client` RPC
+
+这个容易忽略：**光环是给别人看的。** `Client` RPC 只发给 owner 自己，别人看不到你的护盾特效。`NetMulticast` 发给所有相关客户端，每个客户端上的 `PassiveNiagaraComponent` 各自决定开还是关。这是"服务器权威事件 → 客户端各自播表现"的标准模式。
+
+```cpp
+// 教程 AuraAbilitySystemComponent.cpp:246-249
+void UAuraAbilitySystemComponent::MulticastActivatePassiveEffect_Implementation(const FGameplayTag& AbilityTag, bool bActivate)
+{
+	ActivatePassiveEffect.Broadcast(AbilityTag, bActivate);   // RPC 落地后转成本地委托
+}
+```
+
+RPC 只负责"跨网络把事件送到"，本地分发还是靠普通委托。**不要试图用委托跨网络**。
+
+### 69.6 `ActivateIfEquipped`：事件管实时，状态快照管迟到者
+
+```cpp
+// 教程 PassiveNiagaraComponent.cpp:38-48
+void UPassiveNiagaraComponent::ActivateIfEquipped(UAuraAbilitySystemComponent* AuraASC)
+{
+	if (AuraASC->bStartupAbilitiesGiven
+		&& AuraASC->GetStatusFromAbilityTag(PassiveSpellTag) == Abilities_Status_Equipped)
+	{
+		Activate();
+	}
+}
+```
+
+两个作用：
+
+1. **迟加入的玩家**错过了之前发出的 Multicast（当时还没连上、或不在 relevancy 里），`BeginPlay` 时主动读一次当前状态补上
+2. **开局直授的被动**压根不会收到 Multicast（见 69.7 第二条）
+
+这是标准组合：**事件管实时变化，状态快照管迟到者。** 只有事件，新玩家看不到已经生效的光环；只有状态，中途换装不会实时更新。两者缺一不可。
+
+### 69.7 实战：特效不显示的两种原因
+
+**① Multicast 的布尔参数传反了**
+
+```cpp
+// 错误写法（从"关旧被动"那行抄过来忘了改）
+MulticastActivatePassiveEffect(AbilityTag, false);
+TryActivateAbility(Handle);
+```
+
+链路变成：`Broadcast(tag, false)` → `OnPassiveActivate` 里 `bActivate == false` → `Deactivate()` → **刚装上的被动被主动关掉**。
+
+表现极具迷惑性：技能装上了、状态对了、UI 也对、`TryActivateAbility` 也成功了，就是没特效。**数据链路全通，只是最后一步动作反了。**
+
+正确写法：
+
+```cpp
+// ⑥ 被动技能装上就激活；主动技能等玩家按键，这里不碰
+if (bPassive && !AbilitySpec->IsActive())
+{
+	MulticastActivatePassiveEffect(AbilityTag, true);   // ★ true = 开启
+	TryActivateAbility(Handle);
+}
+```
+
+两个调用点的语义必须成对记住：**关旧被动传 `false`，开新被动传 `true`。**
+
+**② 缺 `ActivateIfEquipped`，开局直授的被动永远不亮**
+
+```
+AddCharacterPassiveAbilitiesFromASC → GiveAbilityAndActivateOnce   // 开局就已经激活了
+    ↓
+玩家把它拖进被动槽 → ServerEquipAbility
+    ↓
+第⑥步 if (bPassive && !AbilitySpec->IsActive())   // IsActive() 已经是 true
+    ↓ 整个 if 被跳过，一次 Multicast 都不会发
+    ↓
+永远没有特效
+```
+
+所以只改 `true` 还不够：**技能树解锁的被动能亮，开局直授的仍然不亮。** 必须补 `ActivateIfEquipped` 兜底。
+
+这也解释了为什么 `AddCharacterPassiveAbilitiesFromASC` 里那个 `My_Abilities_Status_Equipped` 是必需的 —— 没有它，`ActivateIfEquipped` 查出来的状态是空 tag，兜底同样失效。
+
+### 69.8 时序：`bStartupAbilityGiven` 什么时候为 true
+
+`ActivateIfEquipped` 有一道 `bStartupAbilityGiven` 的门。它成立与否，取决于"授技"和"组件 BeginPlay"谁先：
+
+| 角色来源 | 顺序 | 结果 |
+|---|---|---|
+| **关卡里摆放的 Pawn**（`AutoPossessPlayer`） | `PreInitializeComponents` → `Possess` → `PossessedBy` → 授技 → 组件 `BeginPlay` | `bStartupAbilityGiven` 已为 true ✓ |
+| **GameMode 动态 Spawn 的 Pawn** | `SpawnActor` → 组件 `BeginPlay`（ASC 还是 null）→ `Possess` → 授技 | BeginPlay 时订阅 `OnASCRegistered`，回调时 `bStartupAbilityGiven` 仍为 false ✗ |
+
+依据：`APawn::PreInitializeComponents`（`Pawn.cpp:109-122`）里处理 `AutoPossessPlayer` → `PC->Possess(this)`，而 `PreInitializeComponents` 早于 `BeginPlay`。
+
+本项目用的是摆放角色，不受影响。**但如果以后改成 GameMode 动态 Spawn，需要再订阅一次 `OnAbilityGiven` 补状态**，否则开局被动又不会亮。
+
+### 69.9 BP 侧检查清单（代码通了还不亮时按这个查）
+
+| # | 检查项 | 失败表现 |
+|---|---|---|
+| 1 | 三个 PassiveNiagara 组件的 `Asset` 有没有指定 Niagara System | 完全不亮（最常见） |
+| 2 | `PassiveSpellTag` 是否**精确等于** GA 的 `AbilityTags` | 不亮。`OnPassiveActivate` 用 `MatchesTagExact`，父标签不算 |
+| 3 | `My_GA_*` 的 `AbilityTags` 有没有填 | 不亮，且被动被顶掉时 `EndAbility` 也不执行（`ReceiveDeactivate` 靠 `AbilityTags.HasTagExact`） |
+
+代码侧临时打点（查完删掉）：
+
+```cpp
+// ServerEquipAbility 第⑥步
+UE_LOG(LogTemp, Warning, TEXT("Equip: %s bPassive=%d IsActive=%d"), *AbilityTag.ToString(), bPassive, AbilitySpec->IsActive());
+
+// OnPassiveActivate
+UE_LOG(LogTemp, Warning, TEXT("Niagara: Recv=%s Local=%s bActivate=%d"), *AbilityTags.ToString(), *PassiveSpellTag.ToString(), bActivate);
+```
+
+第一条打了、第二条没打 → RPC 或委托没接上；两条都打了还是不亮 → Niagara 资产或挂点问题。
+
+### 69.10 一句话总结
+
+**debuff 是"状态"，被动是"配置"。**
+状态天然属于标签系统（GE 授予、计数增减、`NewOrRemoved` 事件）；配置属于 spec 元数据（`DynamicAbilityTags`），它不参与标签计数，所以只能用 RPC 把"玩家做了这个操作"这个事件推给客户端，再由各客户端自己播表现。
+
+---
+
 ## 附：本次会话 C++ 改动汇总（全部在 `My_` 目录下，合规）
 
 | 文件 | 改动 | 对应章节 |
@@ -11011,4 +11211,25 @@ Log LogNetFastTArray Log
 3. `GetSpecWithSlot` 返回的裸指针跨锁使用 → 改为先抓 `Handle`，后续用 Handle 而非指针
 4. `SlotIsEmpty` / `GetSpecWithSlot` 之间缺空判 → 直接 `if (FGameplayAbilitySpec* Occupant = ...)`
 
-**仍未做**：`MulticastActivatePassiveEffect`（NetMulticast 特效广播）尚未实现，第③步目前只做了 `OnDeactivatePassiveAbility.Broadcast`。
+第六十九章的 C++ 改动（被动技能特效链路）：
+
+| 文件 / 位置 | 改动 | 对应章节 |
+|---|---|---|
+| `MY_AbilitySystem/My_AuraAbilitySystemComponent.cpp:530-539` | `MulticastActivatePassiveEffect(AbilityTag, false)` → `true`，补 3 行注释说明 | 69.7 |
+| `MY_AbilitySystem/Passive/My_PassiveNiagaraComponent.h` | 加 `ActivateIfEquipped` 声明 + `class UMy_AuraAbilitySystemComponent;` 前置声明 | 69.6 |
+| `MY_AbilitySystem/Passive/My_PassiveNiagaraComponent.cpp` | 加 `ActivateIfEquipped` 实现，`BeginPlay` 两个分支都调用；补 `My_AuraGamePlayTags_Singleton.h` | 69.6 / 69.8 |
+| 上面两个新文件 | 补 BOM（原来没有，其它 `My_` 文件都有） | — |
+
+编码校验：`My_AuraAbilitySystemComponent.cpp` `BOM: efbbbf` / 642 行全 CRLF；
+`My_PassiveNiagaraComponent.h/.cpp` 补 BOM 后纯 CRLF；三者均 0 空格缩进非注释行 ✓
+（**未编译**，由用户在 UE 内验证）
+
+**此前遗留的 `MulticastActivatePassiveEffect` 已补齐**，现在装备流程的特效开关是完整的：
+
+| 位置 | 动作 |
+|---|---|
+| `ServerEquipAbility` 第③步 | `MulticastActivatePassiveEffect(旧被动, false)` + `OnDeactivatePassiveAbility.Broadcast` |
+| `ServerEquipAbility` 第⑥步 | `MulticastActivatePassiveEffect(新被动, true)` + `TryActivateAbility` |
+| `My_PassiveNiagaraComponent::BeginPlay` | `ActivateIfEquipped` 兜底开局直授的被动 |
+
+**仍需在 BP 侧确认**（代码无法覆盖）：三个组件的 Niagara `Asset`、`PassiveSpellTag` 与 GA `AbilityTags` 精确匹配、GA 的 `AbilityTags` 是否填写。
