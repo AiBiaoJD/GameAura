@@ -10,6 +10,7 @@
 #include "NavigationSystem.h"
 #include "NiagaraFunctionLibrary.h"
 #include "GameFramework/Character.h"
+#include "My_AbilityActor/My_MagicCircle.h"
 #include "My_Input/My_AuraEnhancedInputComponent.h"
 #include "My_Interraction/My_Enemy_Interface.h"
 #include "My_UI/Widget/My_DamageTextComponent.h"
@@ -24,7 +25,32 @@ void AMy_Aura_Controller::PlayerTick(float DeltaTime)
 {
 	Super::PlayerTick(DeltaTime);
 	CursorTrace();
+	UpdateMagicCircleLocation();
 	AutoRun();
+}
+
+void AMy_Aura_Controller::ShowMagicCircle()
+{
+	if (!IsValid(MagicCircle)) // 无效才创建
+	{
+		MagicCircle = GetWorld()->SpawnActor<AMy_MagicCircle>(MagicCircleClass);
+	}
+}
+
+void AMy_Aura_Controller::HideMagicCircle()
+{
+	if (IsValid(MagicCircle))
+	{
+		MagicCircle->Destroy();
+	}
+}
+
+void AMy_Aura_Controller::UpdateMagicCircleLocation()
+{
+	if (IsValid(MagicCircle))
+	{
+		MagicCircle->SetActorLocation(CursorHit.ImpactPoint);
+	}
 }
 
 void AMy_Aura_Controller::ClientShowDamageNum_Implementation(float DamageAmount, ACharacter* TargetCharacter, bool IsBlockedHit, bool IsCriticalHit)
@@ -61,6 +87,7 @@ void AMy_Aura_Controller::AutoRun()
 		}
 	}
 }
+
 
 //检查鼠标点击物体的一些函数
 void AMy_Aura_Controller::CursorTrace()

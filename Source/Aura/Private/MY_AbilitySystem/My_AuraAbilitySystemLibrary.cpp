@@ -1,13 +1,13 @@
 ﻿// Copyright ABiao
 
 
-#include "MY_AbilitySystem/My_AuraAbilitySystemLibrary.h"
+#include "Aura/Public/My_AbilitySystem/My_AuraAbilitySystemLibrary.h"
 
 #include "AbilitySystemBlueprintLibrary.h"
 #include "My_AuraAbilityTypes.h"
 #include "Kismet/GameplayStatics.h"
 #include "My_Controler/My_AuraPlayerState.h"
-#include "MY_GameMode/MyGameModeBase.h"
+#include "Aura/Public/My_GameMode/MyGameModeBase.h"
 #include "My_Interraction/My_CombatInterface.h"
 #include "My_UI/HUD/My_AuraHUD.h"
 #include "Engine/Engine.h"          // GEngine / EGetWorldErrorMode

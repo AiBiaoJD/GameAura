@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "MY_AbilitySystem/Data/My_Attributeinfo.h"
+#include "Aura/Public/My_AbilitySystem/Data/My_Attributeinfo.h"
 #include "My_UI/WidgetController/My_AuraWidgetController.h"
 #include "My_AttributeMenuWidgetController.generated.h"
 

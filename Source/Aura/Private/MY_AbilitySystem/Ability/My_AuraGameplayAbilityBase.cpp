@@ -1,9 +1,9 @@
 ﻿// Copyright ABiao
 
 
-#include "MY_AbilitySystem/Ability/My_AuraGameplayAbilityBase.h"
+#include "Aura/Public/My_AbilitySystem/Ability/My_AuraGameplayAbilityBase.h"
 
-#include "MY_AbilitySystem/My_AuraAttributeSet.h"
+#include "Aura/Public/My_AbilitySystem/My_AuraAttributeSet.h"
 
 FString UMy_AuraGameplayAbilityBase::GetDescription(int32 Level)
 {

@@ -1,10 +1,10 @@
 // Copyright ABiao
 
 
-#include "MY_AbilitySystem/Ability/My_AuraPassiveAbility.h"
+#include "Aura/Public/My_AbilitySystem/Ability/My_AuraPassiveAbility.h"
 
 #include "AbilitySystemBlueprintLibrary.h"
-#include "MY_AbilitySystem/My_AuraAbilitySystemComponent.h"
+#include "Aura/Public/My_AbilitySystem/My_AuraAbilitySystemComponent.h"
 
 void UMy_AuraPassiveAbility::ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData)
 {

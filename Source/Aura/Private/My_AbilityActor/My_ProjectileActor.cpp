@@ -9,7 +9,7 @@
 #include "Aura/Aura.h"
 #include "Components/AudioComponent.h"
 #include "Kismet/GameplayStatics.h"
-#include "MY_AbilitySystem/My_AuraAbilitySystemLibrary.h"
+#include "Aura/Public/My_AbilitySystem/My_AuraAbilitySystemLibrary.h"
 
 AMy_ProjectileActor::AMy_ProjectileActor()
 {

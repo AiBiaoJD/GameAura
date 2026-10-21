@@ -1,14 +1,14 @@
 ﻿// Copyright ABiao
 
 
-#include "MY_AbilitySystem/My_AuraAbilitySystemComponent.h"
+#include "Aura/Public/My_AbilitySystem/My_AuraAbilitySystemComponent.h"
 
 #include "AbilitySystemBlueprintLibrary.h"
 #include "My_AuraGamePlayTags_Singleton.h"
 #include "Aura/AuraLogChannels.h"
-#include "MY_AbilitySystem/My_AuraAbilitySystemLibrary.h"
-#include "MY_AbilitySystem/Ability/My_AuraGameplayAbilityBase.h"
-#include "MY_AbilitySystem/Data/My_AbilityInfo.h"
+#include "Aura/Public/My_AbilitySystem/My_AuraAbilitySystemLibrary.h"
+#include "Aura/Public/My_AbilitySystem/Ability/My_AuraGameplayAbilityBase.h"
+#include "Aura/Public/My_AbilitySystem/Data/My_AbilityInfo.h"
 #include "My_Interraction/My_PlayerInterface.h"
 
 UMy_AuraAbilitySystemComponent::UMy_AuraAbilitySystemComponent()

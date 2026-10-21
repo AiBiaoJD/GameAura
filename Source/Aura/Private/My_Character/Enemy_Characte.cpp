@@ -9,9 +9,9 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Animation/AnimInstance.h"
 #include "Components/SkeletalMeshComponent.h"
-#include "MY_AbilitySystem/My_AuraAbilitySystemComponent.h"
-#include "MY_AbilitySystem/My_AuraAbilitySystemLibrary.h"
-#include "MY_AbilitySystem/My_AuraAttributeSet.h"
+#include "Aura/Public/My_AbilitySystem/My_AuraAbilitySystemComponent.h"
+#include "Aura/Public/My_AbilitySystem/My_AuraAbilitySystemLibrary.h"
+#include "Aura/Public/My_AbilitySystem/My_AuraAttributeSet.h"
 #include "My_AI/My_AuraAIController.h"
 
 void AEnemy_Characte::HighlightActor()

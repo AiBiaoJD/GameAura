@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameplayTagContainer.h"
-#include "MY_AbilitySystem/Data/My_CharacterClassInfo.h"
+#include "Aura/Public/My_AbilitySystem/Data/My_CharacterClassInfo.h"
 #include "UObject/Interface.h"
 #include "My_CombatInterface.generated.h"
 

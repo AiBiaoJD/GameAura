@@ -1,7 +1,7 @@
 ﻿// Copyright ABiao
 
 
-#include "MY_AbilitySystem/Debuff/My_DebuffNiagaraComponent.h"
+#include "Aura/Public/My_AbilitySystem/Debuff/My_DebuffNiagaraComponent.h"
 
 #include "AbilitySystemBlueprintLibrary.h"
 #include "AbilitySystemComponent.h"

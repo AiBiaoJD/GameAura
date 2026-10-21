@@ -6,11 +6,12 @@
 #include "GameFramework/PlayerController.h"
 #include "InputMappingContext.h"
 #include "Components/SplineComponent.h"
-#include "MY_AbilitySystem/My_AuraAbilitySystemComponent.h"
+#include "Aura/Public/My_AbilitySystem/My_AuraAbilitySystemComponent.h"
 #include "My_Input/My_AuraInputConfig.h"
 #include "My_Aura_Controller.generated.h"
 
 
+class AMy_MagicCircle;
 class UNiagaraSystem;
 class UDamageTextComponent;
 class UMy_DamageTextComponent;
@@ -22,12 +23,19 @@ UCLASS()
 class AURA_API AMy_Aura_Controller : public APlayerController
 {
 	GENERATED_BODY()
+
 public:
 	AMy_Aura_Controller();
 	virtual void PlayerTick(float DeltaTime) override;
 
 	UFUNCTION(Client, Reliable)
-	void ClientShowDamageNum(float DamageAmount, ACharacter* TargetCharacter,bool IsBlockedHit, bool IsCriticalHit);
+	void ClientShowDamageNum(float DamageAmount, ACharacter* TargetCharacter, bool IsBlockedHit, bool IsCriticalHit);
+
+	UFUNCTION(BlueprintCallable)
+	void ShowMagicCircle();
+	UFUNCTION(BlueprintCallable)
+	void HideMagicCircle();
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void SetupInputComponent() override;
@@ -81,8 +89,8 @@ private:
 	FVector CachedDestination = FVector::Zero();
 	float FollowTime = 0.f;
 	bool bAutoRunning = false;
-	bool bTargeting = false;					//鼠标是否点击敌人，用来处理鼠标左键多种Ability
-	float ShortPressThreshold = 0.5f;			//短按的阀值
+	bool bTargeting = false; //鼠标是否点击敌人，用来处理鼠标左键多种Ability
+	float ShortPressThreshold = 0.5f; //短按的阀值
 
 	UPROPERTY(EditDefaultsOnly)
 	float AutoRunningAcceptanceRadius = 50.0f; //自动寻路停止距离
@@ -90,7 +98,7 @@ private:
 	TObjectPtr<USplineComponent> Spline;
 	UPROPERTY(EditDefaultsOnly)
 	TObjectPtr<UNiagaraSystem> ClickedNiagaraSystem;
-	
+
 	void AutoRun();
 
 	/* Damage Text Show */
@@ -98,5 +106,11 @@ private:
 	TSubclassOf<UMy_DamageTextComponent> DamageTextComponentClass;
 
 
-};
+	UPROPERTY(EditDefaultsOnly)
+	TSubclassOf<AMy_MagicCircle> MagicCircleClass; // 存 BP_MagicCircle 这个 UClass（图纸）
 
+	UPROPERTY()
+	TObjectPtr<AMy_MagicCircle> MagicCircle; // 存 Spawn 出来的那一个实例（实物）
+
+	void UpdateMagicCircleLocation();
+};

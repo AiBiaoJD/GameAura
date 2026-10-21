@@ -8,8 +8,8 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Kismet/GameplayStatics.h"
-#include "MY_AbilitySystem/My_AuraAbilitySystemComponent.h"
-#include "MY_AbilitySystem/Passive/My_PassiveNiagaraComponent.h"
+#include "Aura/Public/My_AbilitySystem/My_AuraAbilitySystemComponent.h"
+#include "Aura/Public/My_AbilitySystem/Passive/My_PassiveNiagaraComponent.h"
 #include "Net/UnrealNetwork.h"
 
 

@@ -1,15 +1,15 @@
 ﻿// Copyright ABiao
 
 
-#include "MY_AbilitySystem/ExeCalc/My_ExeCalc_Damage.h"
+#include "Aura/Public/My_AbilitySystem/ExeCalc/My_ExeCalc_Damage.h"
 
 #include "AbilitySystemComponent.h"
 #include "My_AuraGamePlayTags_Singleton.h"
-#include "MY_AbilitySystem/My_AuraAttributeSet.h"
-#include <MY_AbilitySystem/Data/My_CharacterClassInfo.h>
+#include "Aura/Public/My_AbilitySystem/My_AuraAttributeSet.h"
+#include <Aura/Public/My_AbilitySystem/Data/My_CharacterClassInfo.h>
 
 #include "Aura/AuraLogChannels.h"
-#include "MY_AbilitySystem/My_AuraAbilitySystemLibrary.h"
+#include "Aura/Public/My_AbilitySystem/My_AuraAbilitySystemLibrary.h"
 #include "My_Interraction/My_CombatInterface.h"
 
 

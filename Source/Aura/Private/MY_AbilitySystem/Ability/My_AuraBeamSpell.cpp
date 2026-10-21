@@ -1,12 +1,12 @@
 ﻿// Copyright ABiao
 
 
-#include "MY_AbilitySystem/Ability/My_AuraBeamSpell.h"
+#include "Aura/Public/My_AbilitySystem/Ability/My_AuraBeamSpell.h"
 
 #include "My_AuraGamePlayTags_Singleton.h"
 #include "GameFramework/Character.h"
 #include "Kismet/KismetSystemLibrary.h"
-#include "MY_AbilitySystem/My_AuraAbilitySystemLibrary.h"
+#include "Aura/Public/My_AbilitySystem/My_AuraAbilitySystemLibrary.h"
 #include "My_Interraction/My_CombatInterface.h"
 
 void UMy_AuraBeamSpell::StoreMouseDataInfo(const FHitResult& HitResult)

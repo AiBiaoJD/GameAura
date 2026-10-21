@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "MY_AbilitySystem/Data/My_AbilityInfo.h"
+#include "Aura/Public/My_AbilitySystem/Data/My_AbilityInfo.h"
 #include "My_UI/Widget/My_AuraUserWidget.h"
 #include "My_UI/WidgetController/My_AuraWidgetController.h"
 #include "My_OverlayWidgetController.generated.h"

@@ -4,8 +4,8 @@
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemInterface.h"
 #include "GameFramework/Character.h"
-#include "MY_AbilitySystem/Data/My_CharacterClassInfo.h"
-#include "MY_AbilitySystem/Debuff/My_DebuffNiagaraComponent.h"
+#include "Aura/Public/My_AbilitySystem/Data/My_CharacterClassInfo.h"
+#include "Aura/Public/My_AbilitySystem/Debuff/My_DebuffNiagaraComponent.h"
 #include "My_Interraction/My_CombatInterface.h"
 #include "MyCharacter_Base.generated.h"
 

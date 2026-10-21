@@ -1,13 +1,13 @@
 ﻿// Copyright ABiao
 
 
-#include "MY_AbilitySystem/Passive/My_PassiveNiagaraComponent.h"
+#include "Aura/Public/My_AbilitySystem/Passive/My_PassiveNiagaraComponent.h"
 
 #include "AbilitySystemBlueprintLibrary.h"
 #include "My_AuraGamePlayTags_Singleton.h"
 #include "My_Interraction/My_CombatInterface.h"
 
-#include "MY_AbilitySystem/My_AuraAbilitySystemComponent.h"
+#include "Aura/Public/My_AbilitySystem/My_AuraAbilitySystemComponent.h"
 
 UMy_PassiveNiagaraComponent::UMy_PassiveNiagaraComponent()
 {

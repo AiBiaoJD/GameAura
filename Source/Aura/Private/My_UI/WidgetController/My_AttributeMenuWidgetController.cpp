@@ -3,8 +3,8 @@
 
 #include "My_UI/WidgetController/My_AttributeMenuWidgetController.h"
 
-#include "MY_AbilitySystem/My_AuraAbilitySystemComponent.h"
-#include "MY_AbilitySystem/My_AuraAttributeSet.h"
+#include "Aura/Public/My_AbilitySystem/My_AuraAbilitySystemComponent.h"
+#include "Aura/Public/My_AbilitySystem/My_AuraAttributeSet.h"
 #include "My_Controler/My_AuraPlayerState.h"
 
 

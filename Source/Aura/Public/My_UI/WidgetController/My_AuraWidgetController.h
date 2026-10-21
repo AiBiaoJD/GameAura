@@ -4,8 +4,8 @@
 
 #include "CoreMinimal.h"
 #include "AbilitySystemComponent.h"
-#include "MY_AbilitySystem/My_AuraAttributeSet.h"
-#include "MY_AbilitySystem/Data/My_AbilityInfo.h"
+#include "Aura/Public/My_AbilitySystem/My_AuraAttributeSet.h"
+#include "Aura/Public/My_AbilitySystem/Data/My_AbilityInfo.h"
 #include "My_Controler/My_AuraPlayerState.h"
 #include "My_Controler/My_Aura_Controller.h"
 #include "My_AuraWidgetController.generated.h"

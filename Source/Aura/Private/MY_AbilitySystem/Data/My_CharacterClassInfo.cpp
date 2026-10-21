@@ -1,7 +1,7 @@
 // Copyright ABiao
 
 
-#include "MY_AbilitySystem/Data/My_CharacterClassInfo.h"
+#include "Aura/Public/My_AbilitySystem/Data/My_CharacterClassInfo.h"
 
 FMy_CharacterClassDefaultInfo UMy_CharacterClassInfo::GetClassDefaultInfo(EMy_CharacterClass CharacterClass)
 {

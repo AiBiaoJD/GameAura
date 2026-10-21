@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "MY_AbilitySystem/Ability/My_AuraProjectileSpell.h"
+#include "Aura/Public/My_AbilitySystem/Ability/My_AuraProjectileSpell.h"
 #include "My_AuraFireBolt.generated.h"
 
 /**

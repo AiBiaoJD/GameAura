@@ -1,9 +1,9 @@
 ﻿// Copyright ABiao
 
 
-#include "MY_AbilitySystem/ModMagCale/My_MMC_MaxHealth.h"
+#include "Aura/Public/My_AbilitySystem/ModMagCale/My_MMC_MaxHealth.h"
 
-#include "MY_AbilitySystem/My_AuraAttributeSet.h"
+#include "Aura/Public/My_AbilitySystem/My_AuraAttributeSet.h"
 #include "My_Interraction/My_CombatInterface.h"
 
 UMy_MMC_MaxHealth::UMy_MMC_MaxHealth()

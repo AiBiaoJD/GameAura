@@ -1,7 +1,7 @@
 ﻿// Copyright ABiao
 
 
-#include "MY_AbilitySystem/My_AuraAttributeSet.h"
+#include "Aura/Public/My_AbilitySystem/My_AuraAttributeSet.h"
 
 #include "AbilitySystemBlueprintLibrary.h"
 #include "GameplayEffectExtension.h"
@@ -9,7 +9,7 @@
 #include "Aura/AuraLogChannels.h"
 #include "GameFramework/Character.h"
 #include "Kismet/GameplayStatics.h"
-#include "MY_AbilitySystem/My_AuraAbilitySystemLibrary.h"
+#include "Aura/Public/My_AbilitySystem/My_AuraAbilitySystemLibrary.h"
 #include "My_Controler/My_Aura_Controller.h"
 #include "My_Interraction/My_CombatInterface.h"
 #include "My_Interraction/My_PlayerInterface.h"

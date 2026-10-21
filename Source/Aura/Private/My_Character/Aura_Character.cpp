@@ -4,9 +4,9 @@
 #include "My_Character/Aura_Character.h"
 
 #include "GameFramework/CharacterMovementComponent.h"
-#include "MY_AbilitySystem/My_AuraAbilitySystemComponent.h"
+#include "Aura/Public/My_AbilitySystem/My_AuraAbilitySystemComponent.h"
 #include "My_AuraGamePlayTags_Singleton.h"
-#include "MY_AbilitySystem/Data/My_LevelUpInfo.h"
+#include "Aura/Public/My_AbilitySystem/Data/My_LevelUpInfo.h"
 #include "My_Controler/My_AuraPlayerState.h"
 #include "My_Controler/My_Aura_Controller.h"
 #include "My_UI/HUD/My_AuraHUD.h"

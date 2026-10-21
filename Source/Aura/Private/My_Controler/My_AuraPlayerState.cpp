@@ -1,8 +1,8 @@
 // Copyright ABiao
 
 #include "My_Controler/My_AuraPlayerState.h"
-#include "MY_AbilitySystem/My_AuraAbilitySystemComponent.h"
-#include "MY_AbilitySystem/My_AuraAttributeSet.h"
+#include "Aura/Public/My_AbilitySystem/My_AuraAbilitySystemComponent.h"
+#include "Aura/Public/My_AbilitySystem/My_AuraAttributeSet.h"
 #include "Net/UnrealNetwork.h"
 
 AMy_AuraPlayerState::AMy_AuraPlayerState()
