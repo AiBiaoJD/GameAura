@@ -11169,6 +11169,408 @@ UE_LOG(LogTemp, Warning, TEXT("Niagara: Recv=%s Local=%s bActivate=%d"), *Abilit
 
 ---
 
+## 七十、Decal 组件、Actor 载体与魔法阵指示器（★）
+
+### 70.1 `UDecalComponent` 是什么
+
+延迟贴花（deferred decal）：把一份材质**投影**到场景里已有的表面上，贴着地形、墙壁、斜坡走。它不生成几何体、不参与碰撞、不受光照。
+
+和静态网格的关键差别：`UStaticMeshComponent` 摆在斜坡上要么悬空要么穿模；贴花不是一个"面"，而是一个**投影体积**，材质是"打"到别人身上的。
+
+| 属性 | 作用 |
+|---|---|
+| `DecalMaterial` | 要投影的材质，**Domain 必须是 Deferred Decal** |
+| `DecalSize` | `FVector`，默认 `(128, 256, 256)`（`DecalComponent.cpp:160`）。**X 是投影深度，Y/Z 是平面半径** |
+| `SortOrder` | 多层贴花重叠时的绘制顺序 |
+| `FadeScreenSize` | 相机拉远到一定程度自动淡出 |
+
+`DecalSize` 最容易搞错：只有 Y 和 Z 决定地面上的范围，X 决定往下扎多深。
+
+**它继承自 `USceneComponent`，不是 `UPrimitiveComponent`**（`DecalComponent.h:22`）——这一点后面会引出一连串后果。
+
+### 70.2 组件的三层存在性：`Activate` 代替不了 `Spawn`
+
+| 层 | 含义 | 对应操作 |
+|---|---|---|
+| **存在** | `UObject` 在内存里 | `NewObject` / GC |
+| **注册** | 进了 World 的 Scene，参与 tick 和渲染 | `RegisterComponent` |
+| **可见** | 真正被画出来 | `SetVisibility` |
+
+`Activate()` / `Deactivate()` **这三层一层都不碰**（`ActorComponent.cpp:1950-1970`）：
+
+```cpp
+void UActorComponent::Activate(bool bReset)
+{
+	if (bReset || ShouldActivate()==true)
+	{
+		SetComponentTickEnabled(true);     // 只是允许 tick
+		SetActiveFlag(true);               // 只是 bIsActive = true
+		OnComponentActivated.Broadcast(this, bReset);
+	}
+}
+```
+
+`SetActiveFlag` 更简单（`:2526-2530`）——只写一个 bool + 标属性脏，**没有 `MarkRenderStateDirty`**。
+
+所以 **对 Decal 来说 `Deactivate()` 根本关不掉它**，屏幕上照样画。真正让它消失必须走可见性：
+
+```cpp
+USceneComponent::SetVisibility(false)          // SceneComponent.cpp:3159
+  → SetVisibleFlag(false)
+  → OnVisibilityChanged()                       // :3154 → MarkRenderStateDirty
+  → UDecalComponent::CreateRenderState_Concurrent()   // DecalComponent.cpp:357
+      if (ShouldComponentAddToScene() && ShouldRender())   // ← 过不去就不建 proxy
+```
+
+> ★ 想让 Decal 显示/隐藏，用 `SetVisibility(bool)`，不是 `SetActive(bool)`。
+
+### 70.3 Actor 到底给 Component 提供了什么
+
+四样东西，每一样组件自己都造不出来。
+
+**① 世界坐标的"根"**
+
+`RootComponent` 的官方注释（`Actor.h:818`）：
+
+```cpp
+/** The component that defines the transform (location, rotation, scale) of this Actor in the world,
+    all other components must be attached to this one somehow */
+```
+
+组件的世界变换是**逐级乘上去**的（`SceneComponent.cpp:569-594`）：
+
+```cpp
+if (Parent != nullptr)
+{
+	const FTransform ParentToWorld = Parent->GetSocketTransform(SocketName);
+	FTransform NewCompToWorld = NewRelativeTransform * ParentToWorld;   // 相对 × 父
+	...
+}
+else
+{
+	return NewRelativeTransform;   // 没有父，相对就是世界
+}
+```
+
+注意 `RelativeTransform` 这个词——**组件的位置天生是"相对"的**。链条顶端是 `RootComponent`，而它的相对变换就是 Actor 的世界位置。
+
+**② World 的访问权**
+
+```cpp
+// ActorComponent.cpp:629-647
+UWorld* UActorComponent::GetWorld_Uncached() const
+{
+	AActor* MyOwner = GetOwner();
+	if (MyOwner && !MyOwner->HasAnyFlags(RF_ClassDefaultObject))
+	{
+		ComponentWorld = MyOwner->GetWorld();       // ← 只能问 Owner
+	}
+	if (ComponentWorld == nullptr)
+	{
+		ComponentWorld = Cast<UWorld>(GetOuter());  // 兜底：Outer 恰好是 World
+	}
+	return ComponentWorld;
+}
+```
+
+**③ 生命周期**
+
+```cpp
+// Actor.cpp:4135-4175
+void AActor::BeginPlay()
+{
+	TInlineComponentArray<UActorComponent*> Components;
+	GetComponents(Components);
+	for (UActorComponent* Component : Components)
+	{
+		if (Component->IsRegistered() && !Component->HasBegunPlay())
+		{
+			Component->RegisterAllComponentTickFunctions(true);
+			Component->BeginPlay();      // ← Actor 挨个叫醒自己的组件
+		}
+	}
+	...
+}
+```
+
+组件自己不可能知道"世界什么时候开始"——它连 World 都拿不到。
+
+**④ GC 引用与网络身份**
+
+`OwnedComponents` 是裸指针（`Actor.h:3819`：`TSet<UActorComponent*> OwnedComponents;`），裸指针 GC 不认，靠 Actor 手动登记（`Actor.cpp:381-392`）：
+
+```cpp
+void AActor::AddReferencedObjects(UObject* InThis, FReferenceCollector& Collector)
+{
+	AActor* This = CastChecked<AActor>(InThis);
+	Collector.AddStableReferenceSet(&This->OwnedComponents);    // ← 组件靠这行活着
+	...
+}
+```
+
+网络角色也是问 Owner 要的：`ENetRole GetOwnerRole() const;`（`ActorComponent.h:590`）。组件没有 `NetOwner`、没有 `Connection`，复制走的是 Actor 的 `UActorChannel`。
+
+### 70.4 「组件必须挂 Actor」的准确表述
+
+**技术上不成立，工程上是默认。** `RegisterComponentWithWorld` 里明确有无 Owner 的分支（`ActorComponent.cpp:1351-1364`）：
+
+```cpp
+// If no owner we won't trigger BeginPlay either so register now in that case as well.
+else if (MyOwner == nullptr)
+{
+	if (!bHasBeenInitialized && bWantsInitializeComponent) { InitializeComponent(); }
+	RegisterAllComponentTickFunctions(true);
+}
+```
+
+注释还有一句：**"The only time you should specify a scene that is not Owner->GetWorld() is when you don't have an Actor"**。
+
+引擎自己就这么干——`SpawnSystemAtLocation` 没创建 Actor（`NiagaraFunctionLibrary.cpp:132-153`）：
+
+```cpp
+PSC = CreateNiagaraSystem(NiagaraSystem, World, World->GetWorldSettings(), ...);
+if (!PSC->IsRegistered()) { PSC->RegisterComponentWithWorld(World); }
+PSC->SetAbsolute(true, true, true);   // 摆脱相对变换，自己管世界坐标
+```
+
+**代价**：必须 `SetAbsolute`、必须手动 Destroy、不参与 Actor 生命周期、不参与复制、编辑器不可见。
+
+**决策规则**（一句话）：**问「它需要独立的位置和生命周期吗？」**
+
+| 需求 | 做法 | 项目实例 |
+|---|---|---|
+| 角色的能力 / 状态 / 跟随特效 | 挂已有 Actor | `My_PassiveNiagaraComponent` 挂 `MyCharacter_Base`；`UAuraAttributeSet` 挂 PlayerState |
+| 独立世界位置 + 独立生灭 | 新建 Actor 类 | `AMy_MagicCircle` |
+| 全局系统 | `UGameInstanceSubsystem` / `UWorldSubsystem` | — |
+| 纯数据 | `UObject` / `UStruct` / `UDataAsset` | — |
+
+**运行时动态加组件**（不用构造函数，项目里已有现成例子，`AuraPlayerController.cpp:57-67`）：
+
+```cpp
+UDamageTextComponent* DamageText = NewObject<UDamageTextComponent>(TargetCharacter, DamageTextComponentClass);
+DamageText->RegisterComponent();
+DamageText->AttachToComponent(TargetCharacter->GetRootComponent(), FAttachmentRules::KeepRelativeTransform);
+DamageText->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);   // 借坐标后脱附
+```
+
+### 70.5 Decal 不能当 `RootComponent`（★ 实测踩坑）
+
+**现象**：`SetRootComponent(MagicCircleDecal)` 之后，在编辑器里选中这个 Decal，**按 W/E/R 没有 gizmo**；改成 `SetupAttachment(GetRootComponent())` 反而能调。
+
+**原因一：Root 组件没有组件级 gizmo。**
+
+RootComponent 的变换就是 Actor 的变换。编辑器不会给 root 一套"相对变换"手柄——移动 root 等于移动整个 Actor。选中 root 时，Details 面板显示的是 **Actor 的绝对 Transform**，不是子组件那种 Relative Transform。**子组件才有独立的移动/旋转/缩放 gizmo。**
+
+所以 `SetupAttachment(GetRootComponent())`（传 nullptr）能调，是因为它让 Decal 变成了**子组件**（蓝图 SCS 建了 `DefaultSceneRoot`，Decal 被挂到它下面）。
+
+**原因二：Decal 不是 `UPrimitiveComponent`，两个后果。**
+
+- 渲染代理 `FDeferredDecalProxy` 不是 `FPrimitiveSceneProxy`，没有 hit proxy → **视口里永远点不中**，只能从 Components 面板选
+- `AActor::GetComponentsBoundingBox`（`Actor.cpp:1718-1732`）只遍历 `UPrimitiveComponent` → Decal 不贡献包围盒，F 键聚焦、框选全部无效
+
+**原因三：Decal 的包围盒半径 = `DecalSize`**（`DecalComponent.cpp:345-348`）：
+
+```cpp
+FBoxSphereBounds UDecalComponent::CalcBounds(const FTransform& LocalToWorld) const
+{
+	return FBoxSphereBounds(FVector(0, 0, 0), DecalSize, DecalSize.Size()).TransformBy(LocalToWorld);
+}
+```
+
+`DecalSize` 调大，Actor 包围盒跟着暴涨，gizmo 被巨大的线框淹没。
+
+**正确写法**（显式空 SceneRoot）：
+
+```cpp
+SceneRoot = CreateDefaultSubobject<USceneComponent>("SceneRoot");
+SetRootComponent(SceneRoot);
+
+MagicCircleDecal = CreateDefaultSubobject<UDecalComponent>("MagicCircleDecal");
+MagicCircleDecal->SetupAttachment(SceneRoot);
+```
+
+| 好处 | 具体表现 |
+|---|---|
+| 包围盒不被 `DecalSize` 撑大 | `USceneComponent` 的 bounds 是一个点 |
+| Decal 变成普通子组件 | 可单独选中、单独旋转、单独改 `DecalSize` |
+| 消除 `SetupAttachment(nullptr)` | 不再刷 "none of them were set as the actor's RootComponent" 的 Warning |
+| 符合 root 的惯例 | Root 只当变换锚点，以后加 Niagara / 音效有统一父节点 |
+
+**教程那行的问题**：`SetupAttachment(GetRootComponent())` 在构造函数里 `GetRootComponent()` 还是 `nullptr`，等于空操作，靠 `FixupNativeActorComponents`（`Actor.cpp:3603-3634`）"随便挑一个"补上，并打 Warning：
+
+```
+"%s has natively added scene component(s), but none of them were set as the actor's RootComponent - picking one arbitrarily"
+```
+
+> 记忆点：**`SetupAttachment` 只能用在构造函数里，运行时附加必须用 `AttachToComponent`。**
+
+### 70.6 gizmo 是什么
+
+编辑器视口里的**拖拽手柄**，只在编辑器出现，打包后没有。
+
+| 键 | 模式 | 长什么样 | 改什么 |
+|---|---|---|---|
+| **W** | 移动 | 三根箭头 | Location |
+| **E** | 旋转 | 三个圆环 | Rotation |
+| **R** | 缩放 | 三根带方块的线 | Scale |
+
+颜色约定：**红 = X，绿 = Y，蓝 = Z**。
+
+前提是**必须先选中对象**。没选中 → 视口干干净净，按 W/E/R 什么都不发生。Decal 在视口点不中，所以只能在 Components 面板选。
+
+> 那个绿色大线框**不是 gizmo**，是 Decal 的投影体积可视化，不可点击。
+
+### 70.7 为什么魔法阵由 `PlayerController` 显示
+
+**时序是技能激活之后才显示**，不是先显示再激活：
+
+```
+玩家按键 → ASC::AbilityInputTagHeld → TryActivateAbility
+  → GA_ArcaneShards 激活（蓝图里）
+      → IPlayerInterface::Execute_ShowMagicCircle(AvatarActor, 法阵材质)
+      → AAuraCharacter::ShowMagicCircle_Implementation   // AuraCharacter.cpp:199
+      → AAuraPlayerController::ShowMagicCircle           // :37
+      → SpawnActor<AMagicCircle> + bShowMouseCursor = false
+```
+
+C++ 里 grep 不到 `Execute_ShowMagicCircle`，是**蓝图调的**。
+
+三个理由：
+
+1. **鼠标位置只有 PC 知道**——`CursorHit` 由 `CursorTrace()` 在 `PlayerTick` 里每帧算（`:123`），GA 拿不到输入设备
+2. **纯本地表现，不该进技能的网络逻辑**——技能可能跑在服务器上，服务器也 Spawn 一个没人看的 Actor，而且服务器没有"鼠标"
+3. **职责分工**——GA 管消耗/冷却/伤害/状态，PC 管输入/光标/本地 UI
+
+细节：`ShowMagicCircle_Implementation` 顺手把 `bShowMouseCursor = false`，因为此时用"光标射线"瞄准，系统鼠标指针会干扰视觉。技能不该管鼠标指针。
+
+### 70.8 类、CDO、实例：`TSubclassOf` 与 `TObjectPtr`
+
+| 你看到的 | 实际是什么 |
+|---|---|
+| 内容浏览器里的 `BP_MagicCircle` | **UClass**（图纸） |
+| 双击打开后视口里那个东西 | **CDO**（Class Default Object，默认值模板） |
+| 拖进关卡里的那个 | **实例** |
+| `SpawnActor` 出来的 | **实例** |
+
+**蓝图编辑器里摆的不是实例**，是 CDO 的可视化。改 Details 面板的值 = 改 CDO。
+
+> ★ 改 CDO 的默认值，**场景里已存在的实例不会跟着变**（创建时已把值复制到自己内存）。例外是组件结构（增删组件、改层级），关卡重载时会重建。
+
+```cpp
+UPROPERTY(EditDefaultsOnly)   // 配置项：在蓝图里设，运行时不该改
+TSubclassOf<AMy_MagicCircle> MagicCircleClass;   // 存 UClass（图纸）
+
+UPROPERTY()                   // 运行时状态：不需要编辑器编辑，但要被 GC 追踪
+TObjectPtr<AMy_MagicCircle> MagicCircle;         // 存实例（实物）
+```
+
+- `TSubclassOf<T>` 内部就是 `UClass*`，但多了类型约束：编辑器只列 `T` 及其子类，`SpawnActor` 能直接收
+- `TObjectPtr` 必须配 `UPROPERTY` 才会进 GC 引用图，否则 `Destroy` 后可能变野指针
+- 小瑕疵：`MagicCircle` 更该写 `UPROPERTY(Transient)`，运行时 Spawn 的实例不该序列化
+
+**只有 Class 会怎样**：每次移动/销毁都要 `GetAllActorsOfClass` 遍历全场找。
+**只有 Ptr 会怎样**：没法在编辑器里选蓝图子类，只能硬编码 `AMagicCircle::StaticClass()`。
+
+### 70.9 `IsValid` 与裸指针的区别
+
+| 写法 | 检查什么 | 能用吗 |
+|---|---|---|
+| `if (MagicCircle)` | **只判指针是否为 null** | ⚠️ 会漏判已销毁对象 |
+| `if (IsValid(MagicCircle))` | 指针非空 **且** 没被标记销毁 | ✅ 推荐 |
+| `if (IsValidChecked(MagicCircle))` | 同上，但会 assert | 调试用 |
+
+`TObjectPtr` 的 `operator bool` 只判句柄（`ObjectPtr.h:520`）：
+
+```cpp
+explicit FORCEINLINE operator bool() const { return ObjectPtr.operator bool(); }
+```
+
+`IsValid` 还检查标志位（`Object.h:1762-1765`）：
+
+```cpp
+FORCEINLINE bool IsValid(const UObject *Test)
+{
+	return Test && FInternalUObjectBaseUtilityIsValidFlagsChecker::CheckObjectValidBasedOnItsFlags(Test);
+}
+// 内部：return !Test->HasAnyFlags(RF_InternalPendingKill | RF_InternalGarbage);
+```
+
+> ★ **`Actor->Destroy()` 不会让指针变 null**，只打 `PendingKill` 标记，内存要等下一次 GC。
+
+项目里的真实场景：
+
+```cpp
+void AAuraPlayerController::HideMagicCircle()
+{
+	if (IsValid(MagicCircle)) { MagicCircle->Destroy(); }   // 标记 PendingKill，指针仍非空
+}
+```
+
+如果 `ShowMagicCircle` 写成 `if (!MagicCircle)` → `Destroy` 后指针还在 → 永远进不去 → **第二次按技能键魔法阵再也不出来**。
+
+补充：`IsValid` 只对 UObject 有效，普通 C++ 指针只能判空；`TObjectPtr` 的 `operator bool` 是 `explicit`，`if (x)` 可以，`bool b = x;` 编译不过。
+
+### 70.10 `SpawnActor` 拆解 + `Location` vs `ImpactPoint`
+
+```cpp
+MagicCircle = GetWorld()->SpawnActor<AMy_MagicCircle>(MagicCircleClass);
+//   ③            ①              ②
+```
+
+- **① `GetWorld()`**：`SpawnActor` 是 `UWorld` 的成员函数，没有 World 就没有场景
+- **② `SpawnActor<类型>(类)`**：模板参数决定**返回类型**，函数参数决定**造哪个类**（可以是蓝图子类）。内部流程和拖进关卡完全一样：读 CDO → 复制 → 跑构造函数 → 注册进 World → 调 BeginPlay
+- **③ 赋值**：不存起来就再也找不到它了，没法移动/销毁
+
+没传位置 → 新实例先出现在世界原点，但下一次 `PlayerTick` 的 `UpdateMagicCircleLocation` 立刻把它挪到鼠标位置。隐患：Spawn 那一帧 `CursorHit` 无效时会在原点闪一下。
+
+**`Location` vs `ImpactPoint`**（`HitResult.h:38-52`）：
+
+| 字段 | 含义 | 线检测 | 形状扫描 |
+|---|---|---|---|
+| `Location` | 检测形状**中心**最终停在哪 | 命中点 | **球心**位置 |
+| `ImpactPoint` | 检测形状**表面**和物体的接触点 | 命中点 | **球面**接触点 |
+
+官方注释的关键词：`Location` 是 "the center of the sphere"，`ImpactPoint` 是 "the surface of the sphere"。形状扫描时两者**差一个半径**。
+
+项目里用的是线检测（`GetHitResultUnderCursor` → `LineTraceSingleByChannel`），所以两者数值完全相同。教程用 `ImpactPoint` 只是语义更明确。同理 `Normal == ImpactNormal`。
+
+**一个实际影响**：`CursorTrace` 里 `if (!CursorHit.bBlockingHit) return;`（`:124`）——未命中直接 return，`CursorHit` **保留上一帧的值**。而 `UpdateMagicCircleLocation` 无条件读它，所以鼠标指向天空时魔法阵会停在最后一次命中的位置。想更严谨可以加 `&& CursorHit.bBlockingHit`。
+
+### 70.11 PC 里 Spawn/Destroy 的好处 + `AMagicCircle` 的 Tick
+
+| | Spawn / Destroy | 常驻 + `SetVisibility` |
+|---|---|---|
+| 状态判断 | `IsValid()` 一行 | 需要额外 bool |
+| 状态清理 | 彻底（Destroy 即归零） | 手动还原材质/位置/可见性 |
+| 关卡依赖 | 无 | 每张图都要摆 |
+| 运行开销 | 每次按键一次 Spawn | 只创建一次 |
+| 出错风险 | 低 | 忘关就永久残留 |
+
+核心：**"是否存在"本身就是状态**。不需要 `bool bIsAiming`，两个变量描述一件事迟早会不同步。而且 `Destroy` 之后材质、位置、可见性全部归零——常驻方案漏还原一样就是 bug（比如忘了还原材质，下次用别的技能时法阵还是上次的贴图）。
+
+**`AMagicCircle::Tick` 的意义**：独立 Actor 有独立 Tick，法阵自己的每帧逻辑写在自己的 Tick 里，不用 PC 或角色代劳。
+
+| 效果 | 写在哪 |
+|---|---|
+| 法阵缓慢自转 / 缩放脉动 / 贴合斜坡 | `AMy_MagicCircle::Tick` |
+| 跟随鼠标移动 | **PC 的 `UpdateMagicCircleLocation`** |
+
+```cpp
+void AMy_MagicCircle::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+	AddActorLocalRotation(FRotator(0.f, 45.f * DeltaTime, 0.f));   // 每秒转 45 度
+}
+```
+
+封装边界清楚了：`AMyMagicCircle` 知道"我怎么动"，`AAuraPlayerController` 只知道"鼠标在哪、什么时候显隐"。`Destroy()` 之后 tick 自动停，不用手动关。
+
+> 注意：组件也能 tick（`PrimaryComponentTick`），"只有 Actor 能 tick"是错的，区别在**逻辑归属**。
+
+**一个边角**：`AAuraPlayerController` 只有 `BeginPlay`，没有 `EndPlay`。玩家在瞄准状态下异常退出时 `MagicCircle` 不会被销毁。正常流程（技能结束调 `Hide`）不会出问题，异常路径漏了兜底。
+
+---
+
 ## 附：本次会话 C++ 改动汇总（全部在 `My_` 目录下，合规）
 
 | 文件 | 改动 | 对应章节 |
@@ -11233,3 +11635,15 @@ UE_LOG(LogTemp, Warning, TEXT("Niagara: Recv=%s Local=%s bActivate=%d"), *Abilit
 | `My_PassiveNiagaraComponent::BeginPlay` | `ActivateIfEquipped` 兜底开局直授的被动 |
 
 **仍需在 BP 侧确认**（代码无法覆盖）：三个组件的 Niagara `Asset`、`PassiveSpellTag` 与 GA `AbilityTags` 精确匹配、GA 的 `AbilityTags` 是否填写。
+
+第七十章的 C++ 改动（`My_MagicCircle` 的 root 结构）：
+
+| 文件 / 位置 | 改动 | 对应章节 |
+|---|---|---|
+| `My_AbilityActor/My_MagicCircle.h` | 新增 `SceneRoot`（`USceneComponent`）；`MagicCircleDecal` 的 `EditAnywhere` → `VisibleAnywhere, BlueprintReadOnly` | 70.5 |
+| `My_AbilityActor/My_MagicCircle.cpp` | `SetRootComponent(SceneRoot)`；Decal 改为 `SetupAttachment(SceneRoot)`；补 `Components/SceneComponent.h` | 70.5 |
+| 上面两个新文件 | 补 BOM（原来没有），CRLF / Tab 校验通过 | — |
+
+**改掉的问题**：原来 `SetupAttachment(GetRootComponent())` 在构造函数里传 `nullptr`，等于空操作，靠 `FixupNativeActorComponents` 兜底把 Decal 设成 root，并刷一条 Warning。Decal 当 root 的后果：Actor 包围盒半径 = `DecalSize`（会被贴花尺寸撑大）、root 组件没有组件级 gizmo（编辑器里无法 W/E/R）。
+
+**未编译**，由用户在 UE 内验证。编译后需在 `BP_MagicCircle` 里检查：Components 面板是否出现 `SceneRoot` + `DefaultSceneRoot` 并存（若是则删掉 `DefaultSceneRoot`，把 Decal 挂到 `SceneRoot` 下），以及 `DecalSize` 与材质是否被重置。
