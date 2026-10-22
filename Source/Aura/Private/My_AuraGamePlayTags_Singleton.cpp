@@ -175,7 +175,7 @@ void FMy_AuraGameplayTags::InitializeNativeGameplayTags()
 
 
 	/*
-	* Abilities Tags
+	* Abilities Tags（技能树外：通用能力）
 	*/
 	GameplayTagsInstance.My_Abilities_Attack = UGameplayTagsManager::Get().AddNativeGameplayTag(
 		FName("My_Abilities.Attack"),
@@ -187,6 +187,19 @@ void FMy_AuraGameplayTags::InitializeNativeGameplayTags()
 		FString("Summon Ability Tag")
 	);
 
+	GameplayTagsInstance.My_Abilities_HitReact = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("My_Abilities.HitReact"),
+		FString("Hit React Ability Tag")
+	);
+
+	GameplayTagsInstance.My_Abilities_None = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("My_Abilities.None"),
+		FString("No Ability - like the nullptr for AbilityTag")
+	);
+
+	/*
+	* SpellTree Ability Tags（技能树内：可解锁 / 装备）
+	*/
 	GameplayTagsInstance.My_Abilities_Fire_FireBolt = UGameplayTagsManager::Get().AddNativeGameplayTag(
 		FName("My_Abilities.Fire.FireBolt"),
 		FString("FireBolt Ability Tag")
@@ -197,14 +210,9 @@ void FMy_AuraGameplayTags::InitializeNativeGameplayTags()
 		FString("Electrocute  Ability Tag")
 	);
 
-	GameplayTagsInstance.My_Abilities_HitReact = UGameplayTagsManager::Get().AddNativeGameplayTag(
-		FName("My_Abilities.HitReact"),
-		FString("Hit React Ability Tag")
-	);
-
-	GameplayTagsInstance.My_Abilities_None = UGameplayTagsManager::Get().AddNativeGameplayTag(
-		FName("My_Abilities.None"),
-		FString("No Ability - like the nullptr for AbilityTag")
+	GameplayTagsInstance.My_Abilities_Arcane_ArcaneShards = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("My_Abilities.Arcane.ArcaneShards"),
+		FString("ArcaneShards Ability Tag")
 	);
 
 	/*
@@ -270,6 +278,11 @@ void FMy_AuraGameplayTags::InitializeNativeGameplayTags()
 	GameplayTagsInstance.My_CoolDown_Fire_FireBolt = UGameplayTagsManager::Get().AddNativeGameplayTag(
 		FName("My_CoolDown.Fire.FireBolt"),
 		FString("FireBolt CoolDown Tag")
+	);
+
+	GameplayTagsInstance.My_CoolDown_Arcane_ArcaneShards = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("My_CoolDown.Arcane.ArcaneShards"),
+		FString("ArcaneShards CoolDown Tag")
 	);
 
 

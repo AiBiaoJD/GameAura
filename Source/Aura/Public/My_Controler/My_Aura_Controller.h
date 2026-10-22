@@ -12,6 +12,7 @@
 
 
 class AMy_MagicCircle;
+class UMaterialInterface;
 class UNiagaraSystem;
 class UDamageTextComponent;
 class UMy_DamageTextComponent;
@@ -32,7 +33,7 @@ public:
 	void ClientShowDamageNum(float DamageAmount, ACharacter* TargetCharacter, bool IsBlockedHit, bool IsCriticalHit);
 
 	UFUNCTION(BlueprintCallable)
-	void ShowMagicCircle();
+	void ShowMagicCircle(UMaterialInterface* DecalMaterial = nullptr);
 	UFUNCTION(BlueprintCallable)
 	void HideMagicCircle();
 
@@ -69,6 +70,19 @@ private:
 	//TObjectPtr 只能用于 UObject 的派生类，不能用于接口，所以这里不用Tobject建立指针
 	IMy_Enemy_Interface* LastActor = nullptr;
 	IMy_Enemy_Interface* ThisActor = nullptr;
+
+	/*
+	 * 鼠标光标显隐
+	 * 默认显示，只有鼠标停在敌人身上才隐藏；跟具体技能无关
+	 */
+	void UpdateMouseCursor(bool bOverEnemy);
+
+	UPROPERTY(EditDefaultsOnly, Category = "My_Mouse")
+	bool bHideCursorOnEnemy = true; // 总开关，关掉就永不隐藏光标
+
+	// 我上次的意图（true = 我想藏）。只在意图翻转时才写 bShowMouseCursor，
+	// 避免每帧覆盖 UI 那边设置的光标状态
+	bool bCursorHiddenByMe = false;
 
 	/*
 	 * AbilityInput

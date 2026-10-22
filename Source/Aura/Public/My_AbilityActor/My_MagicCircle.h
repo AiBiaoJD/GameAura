@@ -6,6 +6,8 @@
 #include "GameFramework/Actor.h"
 #include "My_MagicCircle.generated.h"
 
+class UMaterialInterface;
+
 UCLASS()
 class AURA_API AMy_MagicCircle : public AActor
 {
@@ -14,6 +16,9 @@ class AURA_API AMy_MagicCircle : public AActor
 public:
 	AMy_MagicCircle();
 	virtual void Tick(float DeltaTime) override;
+
+	/** 换贴花材质（BONUS 项）：已显示时也能中途换，不用 Hide 再 Show */
+	void SetMagicCircleMaterial(UMaterialInterface* DecalMaterial);
 
 protected:
 	virtual void BeginPlay() override;

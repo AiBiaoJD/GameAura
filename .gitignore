@@ -36,3 +36,6 @@ backups/
 
 # 静态分析用编译数据库（构建产物，体积大，可随时重新生成）
 compile_commands.json
+
+# AI 助手的本地会话数据（不共享）
+.workbuddy-ai/

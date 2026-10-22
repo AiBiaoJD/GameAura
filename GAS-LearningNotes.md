@@ -11571,6 +11571,462 @@ void AMy_MagicCircle::Tick(float DeltaTime)
 
 ---
 
+## 七十一、原生 Tag 结构体重排：技能树内 vs 技能树外（★）
+
+### 71.1 起因
+
+两件事：① 补上 `Arcane.shards` 的 tag；② 把 `FMy_AuraGameplayTags` 里的成员用注释分出「进技能树的」和「不进技能树的」，方便日后翻。
+
+### 71.2 判定标准
+
+一句话：**看它会不会作为 `AbilityTag` 写进 `DA_SpellTreeInfo` 的 `SpellTreeAbilities`。**
+
+- 会 → 技能树内（玩家可见、可解锁、可装备、占技能槽）
+- 只是 `GiveAbility` 硬塞进去、玩家永远看不到 → 技能树外
+
+`Attack` / `Summon` / `HitReact` 是典型的技能树外：它们靠输入或事件直接触发，不占技能槽。如果误把它们放进技能树，会白白吃掉玩家一个槽位。
+
+### 71.3 新的八个区段
+
+| 区段 | 内容 |
+|---|---|
+| 一、属性 Attribute | 主属性 / 次属性 / 元属性 |
+| 二、输入 Input | 主动槽 1-5 + LMB/RMB，被动槽 Passive_1/2 |
+| 三、伤害与减益 | DamageType / Debuff 类型 / SetByCaller 参数 |
+| 四、技能标识 Ability | **本次重点**，见 71.4 |
+| 五、技能状态与类型 | Status.Locked/Eligible/Unlocked/Equipped、Type.* |
+| 六、冷却 Cooldown | 与技能一一对应 |
+| 七、动画与插槽 | CombatSocket / Montage |
+| 八、玩家状态 Player | Block_* / ShockLoop |
+
+### 71.4 Ability 层拆成三块
+
+```cpp
+// ---- 4.1 技能树内：会出现在 SpellTree，玩家可解锁 / 装备 ----
+// 主动技能
+FGameplayTag My_Abilities_Fire_FireBolt;
+FGameplayTag My_Abilities_Lighting_Electrocute;
+FGameplayTag My_Abilities_Arcane_ArcaneShards;   // 新增
+// 被动技能
+FGameplayTag My_Abilities_Passive_HaloOfProtection;
+FGameplayTag My_Abilities_Passive_LifeSiphon;
+FGameplayTag My_Abilities_Passive_ManaSiphon;
+
+// ---- 4.2 技能树外：通用能力，不进技能树、不占玩家技能槽 ----
+FGameplayTag My_Abilities_Attack;    // 近战普攻，绑 LMB
+FGameplayTag My_Abilities_Summon;    // 敌人召唤
+FGameplayTag My_Abilities_HitReact;  // 受击，暂时没使用
+
+// ---- 4.3 空技能哨兵 ----
+FGameplayTag My_Abilities_None;
+```
+
+### 71.5 为什么 ArcaneShards 要两个 tag
+
+| Tag | 位置 | 谁在用 |
+|---|---|---|
+| `My_Abilities.Arcane.ArcaneShards` | `.h:97` / `.cpp:213` | `GA_ArcaneShards` 的 `AbilityTags`；`DA_SpellTreeInfo` 的 `AbilityTag` |
+| `My_CoolDown.Arcane.ArcaneShards` | `.h:137` / `.cpp:283` | `GE_Cooldown_ArcaneShards` 的 `SetByCaller` |
+
+两个名字长得很像，用途完全不同：一个回答「是哪个技能」，一个回答「这个技能冷却多久」。**别混填。** 这是整套框架的固定套路，FireBolt 也是两个（`My_Abilities.Fire.FireBolt` + `My_CoolDown.Fire.FireBolt`）。
+
+### 71.6 `None` 与 `Type_None` 是两层哨兵
+
+- `My_Abilities_None` 比的是「**是哪个**技能」，等价于 `AbilityTag` 的 nullptr。取消选中、蓝图里没配 `AbilityTag` 时用它占位。
+- `My_Abilities_Type_None` 比的是「**是哪类**技能」。当前项目尚未使用。
+
+两层不能混用。
+
+### 71.7 `.cpp` 的注册块同步拆开
+
+原来是一个 `Abilities Tags` 大块，现在拆成：
+
+```cpp
+/*
+* Abilities Tags（技能树外：通用能力）
+*/      // Attack / Summon / HitReact / None
+
+/*
+* SpellTree Ability Tags（技能树内：可解锁 / 装备）
+*/      // FireBolt / Electrocute / ArcaneShards
+```
+
+`My_Abilities_None` 留在「技能树外」那块末尾 —— 它不属于任何一边，但挨着上下文更好读。
+
+### 71.8 编译之后还要做的事
+
+原生 tag 是模块启动时 `AddNativeGameplayTag` 注册的，**热重载看不到**，必须重启编辑器才能在 Tag 列表里选到。
+
+BP 侧三处：
+
+1. `DA_SpellTreeInfo` 的 `SpellTreeAbilities` 加一条：`AbilityTag` = `My_Abilities.Arcane.ArcaneShards`、`Status` = `Eligible`、`AbilityType` = `Offensive`
+2. `GA_ArcaneShards` 的 `AbilityTags` 填 `My_Abilities.Arcane.ArcaneShards`
+3. `GE_Cooldown_ArcaneShards` 的 `SetByCaller` 用 `My_CoolDown.Arcane.ArcaneShards`
+
+> 注意：教程的 `UArcaneShards`（`Source/Aura/Public/AbilitySystem/Abilities/ArcaneShards.h`）目前还是纯教程代码，没有 `My_` 版本。按项目约定不能改教程源码，要重写必须新建 `My_ArcaneShards.h/.cpp` 继承 `AMy_AuraGameplayAbility`，再让 `BP_ArcaneShards` 改继承。
+
+---
+
+## 七十二、`WaitInputPress` 的真实触发链 + 法阵重现的根因（★）
+
+### 72.1 现象
+
+`GA_ArcaneShards`：按 3 显示法阵，再按 3 应该取消（藏起法阵 + `EndAbility`）。实际表现是法阵「消失一下又出现」。教程说在 `EndAbility` 前加一个 `Delay` 就好了。
+
+### 72.2 两条平行通道（★ 最容易搞错的地方）
+
+`AbilityInputTagPressed` 里连续两句，看着都像「通知输入」，其实是两条独立通道：
+
+| 代码 | 实际做了什么 | 消费者 |
+|---|---|---|
+| `:166` `AbilitySpecInputPressed(Spec)` | `Spec.InputPressed = true`；若激活则调 `Instance->InputPressed()` | ① `WaitInputPress` 的 `bTestInitialState` 读那个标记 ② C++ 子类 override 的钩子 |
+| `:174` `InvokeReplicatedEvent(InputPressed, ...)` | 按 `(SpecHandle, PredictionKey)` 取缓存，`Delegate.Broadcast()` | `WaitInputPress` / `WaitInputRelease` |
+
+**`WaitInputPress` 绑的是后者。** 绑定点在 `AbilityTask_WaitInputPress.cpp:72`：
+
+```cpp
+DelegateHandle = ASC->AbilityReplicatedEventDelegate(
+    EAbilityGenericReplicatedEvent::InputPressed,
+    GetAbilitySpecHandle(), GetActivationPredictionKey()
+).AddUObject(this, &UAbilityTask_WaitInputPress::OnPressCallback);
+```
+
+而 `AbilityReplicatedEventDelegate` 返回的就是 `GenericEvents[EventType].Delegate`（`AbilitySystemComponent_Abilities.cpp:3615`），**只有 `InvokeReplicatedEvent` 会 Broadcast 它**。
+
+前一条通道为什么也要保留？因为 `UGameplayAbility::InputPressed()` 在 UE5.2 是**空实现**：
+
+```cpp
+/** Input binding stub. */
+virtual void InputPressed(const FGameplayAbilitySpecHandle Handle, ...) {};   // GameplayAbility.h:386
+```
+
+引擎里**根本没有 `OnInputPressed` 这个委托**（整个 GameplayAbilities 插件 grep 零匹配）。所以 `AbilitySpecInputPressed` 对蓝图技能唯一的实际作用就是设那个 `Spec.InputPressed` 标记。
+
+### 72.3 `InvokeReplicatedEvent` 名字骗人
+
+头文件注释（`AbilitySystemComponent.h:1531`）写得很清楚：
+
+> Calls **local callbacks** that are registered with the given Generic Replicated Event
+
+**一行 RPC 都没有。** 名字里的 "Replicated" 指的是「这个事件会被缓存，可被远端消费」，不是「本函数负责同步」。
+
+### 72.4 真正发 RPC 的是 task
+
+`OnPressCallback`（`AbilityTask_WaitInputPress.cpp:30-38`）：
+
+```cpp
+if (IsPredictingClient())
+    ASC->ServerSetReplicatedEvent(InputPressed, ..., ASC->ScopedPredictionKey);  // 客户端 → 服务器
+else
+    ASC->ConsumeGenericReplicatedEvent(InputPressed, ...);                      // 清标记
+```
+
+服务器侧 `ServerSetReplicatedEvent_Implementation`（`:3392`）再调一次 `InvokeReplicatedEvent`，服务器上的 task 才跟着响；服务器 → 客户端走 `ClientSetReplicatedEvent_Implementation`（`:3460`），同理。
+
+**事件复制是 task 在消费时自己发起的**，`InvokeReplicatedEvent` 只是个本地事件总线。
+
+### 72.5 `bTriggered` 缓存与「补发」
+
+`FAbilityReplicatedData`（`GameplayAbilityTargetTypes.h:675-681`）：
+
+```cpp
+bool bTriggered;                          // 事件发生过没有
+FVector_NetQuantize100 VectorPayload;     // 只有 WithPayload 版本才用
+FSimpleMulticastDelegate Delegate;        // 无参数
+```
+
+因为委托**无参**，「InputPressed 发生了」这句话除了「发生了」之外没有别的信息 —— 所以**存一个 bool 就够**，不用存内容。
+
+设计意图：服务器发起的技能，客户端实例可能**晚于**事件才 `Activate()` 绑委托，那时 `Broadcast()` 没人听，事件就丢了。所以先把 `bTriggered = true` 记下来，等绑完委托再回头补发（`CallReplicatedEventDelegateIfSet`，`:3572`）。
+
+补发和首发是**同一行代码**：
+
+```cpp
+ReplicatedData->GenericEvents[EventType].Delegate.Broadcast();   // 首发 :3415
+CachedData->GenericEvents[EventType].Delegate.Broadcast();       // 补发 :3580
+```
+
+所以「补发」不是第二条通道，就是把当初没人听见的那句话再喊一遍。
+
+### 72.6 同帧时间线（根因）
+
+第二次按 3 的完整过程：
+
+1. `Started` → `AbilityInputTagPressed`
+2. `:168 if (IsActive())` 成立 → `:174 InvokeReplicatedEvent`
+3. → `Delegate.Broadcast()`（**同步**）→ `WaitInputPress::OnPressCallback`
+4. → `OnPress.Broadcast()`（同步）→ 蓝图 `Hide Magic Circle` + `End Ability` **全部跑完**
+5. 回到 `:168`，`IsActive()` 已经 false
+6. **同一帧** `Triggered` → `AbilityInputTagHeld` → `:203 if (!IsActive())` 成立 → `:205 TryActivateAbility`
+7. → `ActivateAbility` → `Sequence Then 0` → `Show Magic Circle`
+
+第 6 步就是根因：**`Pressed` 和 `Held` 在同一帧都跑**（Enhanced Input 的 `Started` 和 `Triggered` 同帧触发），`Pressed` 把技能结束了，`Held` 看到「没在跑」就当成玩家又按了一次。
+
+而 `My_Aura_Controller::HideMagicCircle`（`:46`）是 `Destroy()`，所以第二次 `ShowMagicCircle` 发现 `IsValid(MagicCircle)` 为 false，直接 Spawn 了一个新的 —— 视觉上就是「消失又出现」。
+
+### 72.7 `Delay` 为什么有效
+
+`Delay` 是潜行节点，执行到那里立刻返回。于是 `EndAbility` 被推迟到 0.1 秒后，同帧的 `AbilityInputTagHeld:203` 看到的仍是 `IsActive() == true`，跳过 `TryActivateAbility`。
+
+**它不是「等动画播完」，是「让技能多活一帧」。**
+
+### 72.8 `Delay` 的局限（★ 教程没说）
+
+`Triggered`（对应 `Held`）在按住期间是**每帧都触发**的。所以如果一直按住键 3 超过 Delay 时长，Delay 到点 `EndAbility` 后，下一帧 `Triggered → Held` 又会看到 `!IsActive()` 成立，还是会把技能重新拉起来一次。
+
+教程演示里大家都是快速点一下就松手，所以看起来「好了」。**这是同帧补丁，不是真修。**
+
+### 72.9 `IsActive()` 守卫到底防什么
+
+`:168` 那个判断不能删，但影响范围比想象中窄。
+
+`WaitInputPress::Activate()` 里补发是有条件的（`:73`）：
+
+```cpp
+if (IsForRemoteClient())
+{
+    if (!ASC->CallReplicatedEventDelegateIfSet(...))
+        SetWaitingOnRemotePlayerData();
+}
+```
+
+`IsForRemoteClient()`（`GameplayAbility.cpp:1682`）：
+
+```cpp
+if (bIsAuthority && !bIsLocallyControlled) return true;   // 服务器在替远端玩家跑这个技能
+```
+
+三种环境：
+
+| 环境 | `bIsAuthority` | `bIsLocallyControlled` | `IsForRemoteClient()` | 补发逻辑 |
+|---|---|---|---|---|
+| 纯客户端 | false | true | false | 不跑 |
+| 监听服务器（PIE 单机 / 主机） | true | **true** | false | 不跑 |
+| 专用服务器 | true | **false** | **true** | **跑** |
+
+**没有守卫会怎样**（只在专用服务器上发作）：
+
+1. 第一次按下，技能还没激活，但 `:174` 照样把 `bTriggered = true` 写进缓存
+2. `Broadcast()` 时没有监听者 → 事件被「存着」
+3. `TryActivateAbility` → `WaitInputPress::Activate()` 绑委托
+4. `CallReplicatedEventDelegateIfSet` 读到这个脏标记 → 补发 → `OnPress` 立刻执行
+5. 刚 `Show` 出来的法阵马上被 `Hide`，接着 `EndAbility`
+
+而且不是一次性：缓存键是 `(SpecHandle, ActivationPredictionKey)`，服务器上这个 key 一直是无效值，所以同一个 Spec **每次激活都会命中同一个脏标记**。
+
+**在单机 / 监听服务器上，删掉守卫什么都不会发生** —— 脏标记躺着但没人读。这就是它「看起来可有可无」的原因。
+
+### 72.10 `Pressed` 与 `Released` 的 `IsActive()` 差别
+
+两处其实**都判了**，只是写法不同：
+
+```cpp
+// Pressed（:158 / :168）—— 条件拆成两层
+if (AbilitySpec.DynamicAbilityTags.HasTagExact(InputTag))
+{
+    AbilitySpecInputPressed(AbilitySpec);        // 无条件跑
+    if (AbilitySpec.IsActive())                  // ← 嵌套
+    {
+        InvokeReplicatedEvent(InputPressed, ...);
+    }
+}
+
+// Released（:225）—— 条件合并成一层
+if (AbilitySpec.DynamicAbilityTags.HasTagExact(InputTag) && AbilitySpec.IsActive())   // ← 藏在这儿
+{
+    AbilitySpecInputReleased(AbilitySpec);
+    InvokeReplicatedEvent(InputReleased, ...);
+}
+```
+
+`InvokeReplicatedEvent` 在两边**都必须**被保护，理由相同（听众只存在于正在运行的技能实例里）。
+
+真正的差别在它上面那一行：
+
+| | 调用 | 有没有被 `IsActive()` 包住 | 为什么 |
+|---|---|---|---|
+| Pressed | `AbilitySpecInputPressed` | ❌ 无条件 | 要设 `Spec.InputPressed = true`，这是「手指按着」的物理事实，跟技能状态无关 |
+| Released | `AbilitySpecInputReleased` | ✅ 包住了 | 省事 |
+
+而 Released 这一层**其实不是必需**的，因为 `AbilitySpecInputReleased`（`:2596`）内部自己就判了：
+
+```cpp
+void UAbilitySystemComponent::AbilitySpecInputReleased(FGameplayAbilitySpec& Spec)
+{
+    Spec.InputPressed = false;      // 无条件
+    if (Spec.IsActive())            // ← 内部自己判了
+    {
+        Instance->InputReleased(...);
+    }
+}
+```
+
+外面再套一层纯粹是「瞬发技能松手时技能早结束了，整段没必要进」，省几个指令。
+
+### 72.11 稳妥的三种解法
+
+| 方案 | 做法 | 评价 |
+|---|---|---|
+| 配 Cooldown GE | `GA_ArcaneShards` 填 `Cooldown Gameplay Effect Class` | 最 GAS 原生。`EndAbility` 后冷却 tag 还在，`TryActivateAbility` 直接被挡，永不重现 |
+| 改用 `Wait Input Release` | 松手才 `Hide + EndAbility` | 语义最干净（按住瞄准、松手释放）。`Released` 一次按下只来一次，且 `:225` 有守卫 |
+| 加「本帧刚结束」抑制 | 在 `AbilityInputTagHeld` 里加标记，`Pressed` 结束时置位、下一帧清掉 | 通用但要动 ASC 代码 |
+
+### 72.12 顺带：`WaitInputPress` 为什么不监听键盘
+
+它绑的是**当前 GA 实例自己的** `AbilityReplicatedEventDelegate`，完全不知道键盘、不知道按键号。
+
+「只识别键 3」的过滤发生在更上游 —— `AbilityInputTagPressed:158` 的 `DynamicAbilityTags.HasTagExact(InputTag)`，只有「装备在槽位 3」的那个 Spec 的 `DynamicAbilityTags` 里含 `My_InputTag_3`。
+
+由此推出三条：
+
+1. **换槽位跟着变**：把 GA 装到槽位 4，按 4 也能触发，task 一个字都不用改
+2. **可以一键多技能**：`:154` 的 for 循环没有 `break`，两个 Spec 都含同一个 tag 就两个都被通知
+3. **`Test Already Pressed` 千万别勾**：勾上后 task 在 `Activate()` 那一刻会读 `Spec.InputPressed`（就是 `:166` 设的那个标记），发现「已经按着了」就立刻广播一次 `OnPress`。而首次激活是 `Held` 触发的，那时 `Pressed` 早把标记置 true 了 —— 一勾上，法阵刚显示就被自己关掉
+
+---
+
+## 七十三、鼠标光标按「是否指着敌人」显隐（★）
+
+### 73.1 起因
+
+原来 `ShowMagicCircle` 里直接 `bShowMouseCursor = false`，瞄准时看不到鼠标中心点，很不方便。
+
+需求：**默认显示光标，只有鼠标停在敌人身上才隐藏**；并且要通用 —— 不能绑在某个技能里。
+
+### 73.2 为什么放在 `CursorTrace`
+
+因为 `CursorTrace()` 本来就：
+
+- 每帧跑（`PlayerTick` 里调用）
+- 已经算出 `ThisActor`（鼠标下面是不是敌人）
+
+直接复用，不用新增任何探测。而且它**完全不提技能**，所以以后加火球瞄准、电击引导，一行都不用写。
+
+### 73.3 单出口重构
+
+原来是两处 `return` 提前退出（被 tag 挡住 / 没打到东西）。那样就得在两个出口各写一次光标状态，同一个函数里写两次同一个值容易出错。
+
+改成 `if / else` + 末尾统一处理：
+
+```cpp
+void AMy_Aura_Controller::CursorTrace()
+{
+	// 本帧鼠标是否停在敌人身上（默认不是）
+	bool bOverEnemy = false;
+
+	if (被 My_Player_Block_CursorTrace 挡住)
+	{
+		// 清高亮、清 LastActor / ThisActor
+	}
+	else
+	{
+		GetHitResultUnderCursor(ECC_Visibility, false, CursorHit);
+		if (CursorHit.bBlockingHit)
+		{
+			LastActor = ThisActor;
+			ThisActor = Cast<IMy_Enemy_Interface>(CursorHit.GetActor());
+			bOverEnemy = (ThisActor != nullptr);
+			// 高亮切换
+		}
+	}
+
+	// 全函数唯一的出口
+	UpdateMouseCursor(bOverEnemy);
+}
+```
+
+> 语义保持不变：无 `bBlockingHit` 时 `ThisActor` 仍不清空，高亮会残留（教程原行为）。
+
+### 73.4 意图 vs 现状（`bCursorHiddenByMe`）
+
+```cpp
+void AMy_Aura_Controller::UpdateMouseCursor(bool bOverEnemy)
+{
+	// bOverEnemy         世界现状：本帧鼠标是否在敌人身上
+	// bHideCursorOnEnemy 我的策略：要不要隐藏
+	// bCursorHiddenByMe  我的历史：上次的意图，决定这次该不该动手
+
+	const bool bWantHide = bOverEnemy && bHideCursorOnEnemy;
+
+	// 意图没变就不碰 bShowMouseCursor，把它让给别人（UI 等）管
+	if (bCursorHiddenByMe == bWantHide) return;
+
+	bCursorHiddenByMe = bWantHide;
+	bShowMouseCursor = !bWantHide;
+}
+```
+
+`bCursorHiddenByMe` 记的是**意图**，不是现状。两者可能不一致，而这是故意的。
+
+没有它会怎样（每帧硬写 `bShowMouseCursor = !bOverEnemy`）：
+
+| 帧 | 发生了什么 | `bShowMouseCursor` |
+|---|---|---|
+| 100 | 指着敌人，写 false | false（藏了） |
+| 101 | 按 B 打开背包，UI 写 true | true |
+| 102 | `CursorTrace` 又跑，还指着敌人 → 又写 false | **false** ← 背包里光标没了 |
+| 103 | 玩家点不到格子 | false |
+
+有了它之后：
+
+| 帧 | 发生了什么 | `bCursorHiddenByMe` | `bShowMouseCursor` |
+|---|---|---|---|
+| 100 | 指着敌人，意图 true ≠ 上次 false → 写 | true | false |
+| 101 | 还指着敌人，意图 == 上次 → **return** | true | false（没动） |
+| 102 | 打开背包，UI 写 true | true | true |
+| 103 | 意图 == 上次 → **return** | true | **true** ← UI 的没被踩 |
+| 104 | 关背包 + 鼠标移开敌人 → 意图 false ≠ 上次 → 写 | false | true |
+
+第 103 帧 `bCursorHiddenByMe` 是 `true` 而光标是显示的 —— **不一致，但正确**。因为它是「我上次想不想藏」，不是「光标现在什么样」。只要意图没变，我就没有理由再伸手。
+
+`bShowMouseCursor` 是 `APlayerController` 上的**公共开关**，游戏逻辑、UI、过场动画都会动它，你只是众多使用者之一。
+
+### 73.5 这个模式有学名
+
+不是野路子，是「多个系统共享一个可变状态」的标准解法之一：
+
+| 领域 | 叫法 |
+|---|---|
+| 通用软件 | 幂等 setter（idempotent setter）/ 带守卫的写入 |
+| 图形/引擎 | 状态缓存（state caching） |
+| UI 框架 | diffing / reconciliation（React 虚拟 DOM diff 本质就是这个） |
+| 游戏输入 | 边沿触发（edge-triggered），对应「电平触发」 |
+| 数据库 | 乐观并发里「只在版本号变了才写」 |
+
+核心永远是：**先比较，一样就别动。**
+
+引擎自己也这么写 —— `APlayerController::SetShowMouseCursor`（`PlayerController.cpp:2589`）：
+
+```cpp
+void APlayerController::SetShowMouseCursor(bool bShow)
+{
+	if (bShowMouseCursor != bShow)      // ← 一模一样
+	{
+		UE_LOG(LogViewport, Display, TEXT("Player bShowMouseCursor Changed, %s -> %s"), ...);
+		bShowMouseCursor = bShow;
+	}
+}
+```
+
+连日志都只在真的变了才打。旁边还有个只读的 `ShouldShowMouseCursor()`（`:2584`），给「每帧来问一次」的人用。
+
+### 73.6 push vs pull
+
+- **push 模型**（当前实现）：谁想改，谁去推一下。所以必须靠「记住意图」来避免互相踩。
+- **pull 模型**：没人去改状态，每帧问一次「现在该是什么样」。Slate 就是 —— 鼠标下面的 widget 每帧返回 `FCursorReply`，`FSlateApplication` 拿最后结果去设光标。没有「谁去 Set」，天然不打架。
+
+`CursorTrace()` 其实已经是 pull 的一半了（每帧算出 `bOverEnemy` = 现在该是什么样）。唯一还残留 push 的，就是写 `bShowMouseCursor` 那一下 —— 因为 UE 这个属性就是 push 式 API，绕不开。
+
+### 73.7 代价（取舍）
+
+别人趁「我不插手」的时候改了光标，我**不会去纠正**。比如鼠标停在敌人身上（意图=藏），此时打开背包 UI 设了 true，关背包后 UI 又设回 true —— 这一轮就「想藏但没藏成」，要等鼠标离开敌人再进来（意图翻转一次）才重新接管。
+
+**宁可偶尔漏管一次，也不覆盖别人的决定。** 对光标显隐这种视觉细节来说，这个取舍是对的。
+
+> 如果哪天改成「只有瞄准时才隐藏」，把 `UpdateMouseCursor(bOverEnemy)` 换成 `UpdateMouseCursor(bOverEnemy && bAiming)` 就行，一个 `&&`。
+
+---
+
 ## 附：本次会话 C++ 改动汇总（全部在 `My_` 目录下，合规）
 
 | 文件 | 改动 | 对应章节 |
@@ -11647,3 +12103,32 @@ void AMy_MagicCircle::Tick(float DeltaTime)
 **改掉的问题**：原来 `SetupAttachment(GetRootComponent())` 在构造函数里传 `nullptr`，等于空操作，靠 `FixupNativeActorComponents` 兜底把 Decal 设成 root，并刷一条 Warning。Decal 当 root 的后果：Actor 包围盒半径 = `DecalSize`（会被贴花尺寸撑大）、root 组件没有组件级 gizmo（编辑器里无法 W/E/R）。
 
 **未编译**，由用户在 UE 内验证。编译后需在 `BP_MagicCircle` 里检查：Components 面板是否出现 `SceneRoot` + `DefaultSceneRoot` 并存（若是则删掉 `DefaultSceneRoot`，把 Decal 挂到 `SceneRoot` 下），以及 `DecalSize` 与材质是否被重置。
+
+第七十一章的 C++ 改动（Tag 结构体）：
+
+| 文件 / 位置 | 改动 | 对应章节 |
+|---|---|---|
+| `My_AuraGamePlayTags_Singleton.h` | 重排为 8 个编号区段；第四区拆成 4.1 技能树内 / 4.2 技能树外 / 4.3 空技能哨兵；新增 `My_Abilities_Arcane_ArcaneShards`（`:97`）与 `My_CoolDown_Arcane_ArcaneShards`（`:137`） | 71.3 / 71.4 / 71.5 |
+| `My_AuraGamePlayTags_Singleton.cpp` | Abilities 注册块拆成「技能树外」/「SpellTree 技能树内」两块；新增两个 `AddNativeGameplayTag`（`:213` / `:283`） | 71.7 |
+
+编码校验：两文件均 `BOM: efbbbf` / 纯 CRLF / 0 空格缩进非注释行 ✓（**未编译**）
+
+BP 侧待做（见 71.8）：`DA_SpellTreeInfo` 加条目、`GA_ArcaneShards` 填 `AbilityTags`、`GE_Cooldown_ArcaneShards` 填 `SetByCaller`。**改完必须重启编辑器**，热重载看不到原生 tag。
+
+第七十二章无 C++ 改动（纯引擎源码梳理 + 根因定位）。
+
+第七十三章的 C++ 改动（鼠标光标显隐）：
+
+| 文件 / 位置 | 改动 | 对应章节 |
+|---|---|---|
+| `My_Controler/My_Aura_Controller.h` | 新增 `UpdateMouseCursor` 声明、`bHideCursorOnEnemy`（`EditDefaultsOnly`，BP 可关）、`bCursorHiddenByMe` | 73.4 |
+| `My_Controler/My_Aura_Controller.cpp:32` | `ShowMagicCircle` 删掉 `bShowMouseCursor = false;`，加一行说明注释 | 73.2 |
+| `My_Controler/My_Aura_Controller.cpp:46` | `HideMagicCircle` 删掉 `bShowMouseCursor = true;` | 73.2 |
+| `My_Controler/My_Aura_Controller.cpp:99` | `CursorTrace` 由两处 early-return 改为单出口（`if/else` + 局部 `bOverEnemy`） | 73.3 |
+| `My_Controler/My_Aura_Controller.cpp:135` | 新增 `UpdateMouseCursor`：只在意图翻转时写 `bShowMouseCursor` | 73.4 |
+
+编码校验：两文件均 `BOM: efbbbf` / 纯 CRLF ✓（**未编译**）
+
+**行为变化**：瞄准时（法阵已显示）光标默认可见，只有鼠标停在敌人身上才隐藏，离开立刻恢复。因为逻辑里不含任何技能，所以对所有技能自动生效。
+
+**已知代价**：别人在「我不插手」期间改了光标，本类不会纠正，要等下一次意图翻转才重新接管（见 73.7）。

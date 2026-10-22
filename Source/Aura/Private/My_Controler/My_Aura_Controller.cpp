@@ -29,11 +29,17 @@ void AMy_Aura_Controller::PlayerTick(float DeltaTime)
 	AutoRun();
 }
 
-void AMy_Aura_Controller::ShowMagicCircle()
+void AMy_Aura_Controller::ShowMagicCircle(UMaterialInterface* DecalMaterial)
 {
+	// 注意：光标显隐不在这里管，统一由 CursorTrace() 按"是否指着敌人"决定
 	if (!IsValid(MagicCircle)) // 无效才创建
 	{
 		MagicCircle = GetWorld()->SpawnActor<AMy_MagicCircle>(MagicCircleClass);
+	}
+
+	if (IsValid(MagicCircle))
+	{
+		MagicCircle->SetMagicCircleMaterial(DecalMaterial);
 	}
 }
 
@@ -92,28 +98,54 @@ void AMy_Aura_Controller::AutoRun()
 //检查鼠标点击物体的一些函数
 void AMy_Aura_Controller::CursorTrace()
 {
+	// 本帧鼠标是否停在敌人身上（默认不是）
+	bool bOverEnemy = false;
+
 	if (GetAuraASC() && GetAuraASC()->HasMatchingGameplayTag(FMy_AuraGameplayTags::GetInstance().My_Player_Block_CursorTrace))
 	{
 		if (LastActor) LastActor->UnHighlightActor();
 		if (ThisActor) ThisActor->UnHighlightActor();
 		LastActor = nullptr;
 		ThisActor = nullptr;
-		return;
 	}
-
-	GetHitResultUnderCursor(ECC_Visibility, false, CursorHit);
-	if (!CursorHit.bBlockingHit) return;
-
-	// 保存上一帧的接口对象
-	LastActor = ThisActor;
-	// 将当前帧检测到的 Actor 转换为接口
-	ThisActor = Cast<IMy_Enemy_Interface>(CursorHit.GetActor());
-
-	if (LastActor != ThisActor)
+	else
 	{
-		if (LastActor) LastActor->UnHighlightActor();
-		if (ThisActor) ThisActor->HighlightActor();
+		GetHitResultUnderCursor(ECC_Visibility, false, CursorHit);
+		// 没打到东西就直接跳过：ThisActor 保持原样，高亮会残留（教程原行为）
+		if (CursorHit.bBlockingHit)
+		{
+			// 保存上一帧的接口对象
+			LastActor = ThisActor;
+			// 将当前帧检测到的 Actor 转换为接口
+			ThisActor = Cast<IMy_Enemy_Interface>(CursorHit.GetActor());
+			bOverEnemy = (ThisActor != nullptr);
+
+			if (LastActor != ThisActor)
+			{
+				if (LastActor) LastActor->UnHighlightActor();
+				if (ThisActor) ThisActor->HighlightActor();
+			}
+		}
 	}
+
+	// 全函数唯一的出口：光标显隐统一在这里决定，不跟具体技能挂钩
+	UpdateMouseCursor(bOverEnemy);
+}
+
+void AMy_Aura_Controller::UpdateMouseCursor(bool bOverEnemy)
+{
+	// bOverEnemy         世界现状：本帧鼠标是否在敌人身上
+	// bHideCursorOnEnemy 我的策略：要不要隐藏
+	// bCursorHiddenByMe  我的历史：上次的意图，决定这次该不该动手
+
+	const bool bWantHide = bOverEnemy && bHideCursorOnEnemy;
+
+	// 意图没变就不碰 bShowMouseCursor，把它让给别人（UI 等）管。
+	// 注意：它可能和光标实际状态不一致，这是故意的——记的是意图，不是现状
+	if (bCursorHiddenByMe == bWantHide) return;
+
+	bCursorHiddenByMe = bWantHide;
+	bShowMouseCursor = !bWantHide;
 }
 
 

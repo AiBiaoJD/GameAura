@@ -1,10 +1,12 @@
-// Copyright ABiao
+﻿// Copyright ABiao
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "UObject/Interface.h"
 #include "My_PlayerInterface.generated.h"
+
+class UMaterialInterface;
 
 // This class does not need to be modified.
 UINTERFACE(MinimalAPI)
@@ -47,4 +49,9 @@ public:
 	
 	UFUNCTION(BlueprintNativeEvent)
 	void LevelUp();
+
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable)
+	void ShowMagicCircle(UMaterialInterface* DecalMaterial = nullptr);
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable)
+	void HideMagicCircle();
 };

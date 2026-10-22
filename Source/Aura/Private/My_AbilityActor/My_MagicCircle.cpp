@@ -5,6 +5,7 @@
 
 #include "Components/DecalComponent.h"
 #include "Components/SceneComponent.h"
+#include "Materials/MaterialInterface.h"
 
 // Sets default values
 AMy_MagicCircle::AMy_MagicCircle()
@@ -16,6 +17,14 @@ AMy_MagicCircle::AMy_MagicCircle()
 
 	MagicCircleDecal = CreateDefaultSubobject<UDecalComponent>("MagicCircleDecal");
 	MagicCircleDecal->SetupAttachment(SceneRoot);
+}
+
+void AMy_MagicCircle::SetMagicCircleMaterial(UMaterialInterface* DecalMaterial)
+{
+	if (IsValid(MagicCircleDecal) && DecalMaterial)
+	{
+		MagicCircleDecal->SetMaterial(0, DecalMaterial);
+	}
 }
 
 void AMy_MagicCircle::BeginPlay()
