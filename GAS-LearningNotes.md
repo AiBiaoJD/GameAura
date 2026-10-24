@@ -12132,3 +12132,297 @@ BP 侧待做（见 71.8）：`DA_SpellTreeInfo` 加条目、`GA_ArcaneShards` �
 **行为变化**：瞄准时（法阵已显示）光标默认可见，只有鼠标停在敌人身上才隐藏，离开立刻恢复。因为逻辑里不含任何技能，所以对所有技能自动生效。
 
 **已知代价**：别人在「我不插手」期间改了光标，本类不会纠正，要等下一次意图翻转才重新接管（见 73.7）。
+
+---
+
+## 七十四、法阵点位收集器：`GetGroundPoints` 的实现与坑（★）
+
+### 74.1 为什么要一个「点位 Actor」
+
+法阵要按技能等级在圈内生成 N 个 Niagara 特效，位置从哪来？两条路：
+
+| 做法 | 优点 | 缺点 |
+|---|---|---|
+| **A. C++ 算** | 不用额外资源；改数量只改一个数 | 只能出规则图形（圆环、螺旋）；想摆六芒星得写一堆三角函数；美术想微调就得改代码 |
+| **B. 手摆 Actor** | 任意图案；每个点的 Z 可以单独调；改图案不动代码 | 多一个 Actor；每个点一次射线 |
+
+教程选 B。核心观念：**点位是数据，不是算法。**
+
+### 74.2 数据怎么存：具名指针 + 平行数组（两个都要）
+
+| 成员 | 类型 | 给谁用 |
+|---|---|---|
+| `PT_0` ~ `PT_10` | `TObjectPtr<UBillboardComponent>` | **编辑器**：Details 面板能选、视口能拖 |
+| `ImmutablePts` | `TArray<TObjectPtr<USceneComponent>>` | **代码**：`for` 循环遍历 |
+| `OriginalOffsets` | `TArray<FVector>` | **计算**：手摆偏移的只读快照 |
+
+只留数组 → 视口里点不到具体某个点；只留具名指针 → 得手写 11 段一样的逻辑。**两者都要。**
+
+`ImmutablePts` 的类型故意声明成基类 `USceneComponent` 而不是 `UBillboardComponent`，这样以后换组件类型（换成 `UArrowComponent` 之类）不用改数组。
+
+**`Immutable` 这个名字有歧义**：它指的是「数组的成员和顺序不变」，数组里那些**组件本身**会被贴地逻辑改 transform。别读成「点位不可变」。
+
+### 74.3 教程实现的 6 个问题
+
+#### ① 累积漂移（唯一的真 bug）
+
+```cpp
+FVector ToPoint = Pt->GetComponentLocation() - Pt_0->GetComponentLocation();   // PointCollection.cpp:73
+ToPoint = ToPoint.RotateAngleAxis(YawOverride, FVector::UpVector);             // :74
+Pt->SetWorldLocation(Pt_0->GetComponentLocation() + ToPoint);                  // :75
+```
+
+`:73` 读的是组件**此刻**的世界位置，而 `:75` 上一轮已经把这个位置改过了。于是「原始偏移」和「上次旋转后的结果」混在一起。
+
+PT_1 手摆 `(100,0,0)`，`YawOverride` 固定 45°：
+
+| 第几次调用 | 读到的 `ToPoint` | 转 45° 后写回 |
+|---|---|---|
+| 1 | (100, 0, 0) | (70.7, 70.7, 0) |
+| 2 | (70.7, 70.7, 0) | (0, 100, 0) |
+| 3 | (0, 100, 0) | (−70.7, 70.7, 0) |
+
+**每调一次就多转 45°，图案会绕圈。**
+
+为什么平时看不出来：法阵每次施法都是新 spawn 的 Actor，只调一次就销毁。一旦改成复用（缓存、对象池、或把 PointCollection 直接摆进关卡），立刻暴露。
+
+附带问题：`Pt_0` 自己在 `i=0` 时也被吸到地面，所以 `i>0` 读 `Pt_0->GetComponentLocation()` 拿到的是**地面高度**。绕 `UpVector` 转不改 Z、后面又重设 Z，所以没出错——但这依赖「先改、后覆盖」的执行顺序，很脆。
+
+#### ② 查询写在循环里
+
+```cpp
+for (USceneComponent* Pt : ImmutablePts)
+{
+    TArray<AActor*> IgnoreActors;
+    UAuraAbilitySystemLibrary::GetLivePlayersWithinRadius(this, IgnoreActors, TArray<AActor*>(), 1500.f, GetActorLocation());  // :83
+    FCollisionQueryParams QueryParams;                                                                                          // :85
+}
+```
+
+11 个点位查 11 遍活玩家，参数完全一样。`QueryParams` 也重建 11 次。
+
+#### ③ `GroundLocation` 是死参数
+
+签名里有 `const FVector& GroundLocation`，函数体**一次都没读**。纯残留。
+
+#### ④ 射线打空不判断
+
+```cpp
+const FVector AdjustedLocation = FVector(..., HitResult.ImpactPoint.Z);   // :89
+Pt->SetWorldRotation(UKismetMathLibrary::MakeRotFromZ(HitResult.ImpactNormal));  // :91
+```
+
+没打到东西时 `ImpactPoint` 是 `(0,0,0)`、`ImpactNormal` 是零向量 → 点位**瞬移到世界原点**，`MakeRotFromZ(零向量)` 返回退化矩阵（可能带 NaN）。
+
+#### ⑤ `BlueprintPure` + 改状态
+
+函数标了 `BlueprintPure`，里面却到处 `SetWorldLocation`。Pure 的约定是「无副作用、随时可重算」，编译器不知道它有副作用，所以在蓝图里**每次读取返回值都重算一遍**。
+
+这就是「`GetGroundPoints` 在 For Each Loop 里每轮都评估」的根源——不是蓝图抽风，是函数签名骗了它。
+
+#### ⑥ `checkf` 会崩游戏
+
+```cpp
+checkf(ImmutablePts.Num() >= NumPoints, TEXT("Attempted to access ImmutablePts out of bounds."));  // :63
+```
+
+等级给 `NumPoints = 12`（只有 11 个点），Development 构建直接断言崩掉。
+
+**小事**：`GetComponentLocation()` 一个点调 3 次；`500.f` / `1500.f` 硬编码；`TArray<USceneComponent*>` 裸指针（UE5 建议 `TObjectPtr`）。
+
+### 74.4 修法：三步坐标变换
+
+```cpp
+// ① 局部方向 -> 世界方向
+FVector Offset = GetActorQuat().RotateVector(OriginalOffsets[i]);
+
+// ② 叠加技能要求的额外旋转（PT_0 是圆心，绕自己转没意义）
+if (i > 0) Offset = Offset.RotateAngleAxis(YawOverride, FVector::UpVector);
+
+// ③ 方向 + 起点 = 世界里的点
+const FVector Target = GroundLocation + Offset;
+```
+
+关键是 **`Offset` 是向量（往哪走多远），`Target` 是点（绝对位置）**。向量加起点才成点。
+
+`OriginalOffsets` 存的是 `GetRelativeLocation()`，也就是**相对父组件（PT_0）的局部偏移**，必须乘上 Actor 的朝向才能变成世界方向：
+
+| Actor 朝向 | 手摆局部偏移 | `RotateVector` 后 | 点位落在 |
+|---|---|---|---|
+| 朝东 yaw=0° | (100, 0, 0) | (100, 0, 0) | 圆心东边 100 |
+| 朝北 yaw=90° | (100, 0, 0) | (0, 100, 0) | 圆心北边 100 |
+| 朝西 yaw=180° | (100, 0, 0) | (−100, 0, 0) | 圆心西边 100 |
+
+不转的话，Actor 怎么转图案都不动。
+
+**为什么要分两步转**：两个旋转来源不同。
+
+| | 来源 | 什么时候变 |
+|---|---|---|
+| `GetActorQuat()` | Actor 在关卡里摆的朝向 | 关卡里拖一下才变 |
+| `YawOverride` | 技能/蓝图传的参数 | 每次施法可以不一样 |
+
+合成一个四元数再转一次也行，但分开写能一眼看出「哪个是环境、哪个是参数」。
+
+#### 缓存为什么必须在运行时做
+
+`OriginalOffsets` 不能在构造函数里填。你在蓝图里手摆的点位写的是 **BP CDO 的组件模板**，C++ 构造函数跑的时候那些点还是 `(0,0,0)`。所以只能等到运行时第一次调用时抓：
+
+```cpp
+void AMy_PointCollection::CacheOriginalOffsets()
+{
+    if (OriginalOffsets.Num() == ImmutablePts.Num()) return;   // 抓过就别覆盖，此时可能已被贴地改过
+    OriginalOffsets.Reset(ImmutablePts.Num());
+    for (const TObjectPtr<USceneComponent>& Pt : ImmutablePts)
+    {
+        OriginalOffsets.Add(IsValid(Pt) ? Pt->GetRelativeLocation() : FVector::ZeroVector);
+    }
+}
+```
+
+#### 顺带删掉的一处过度设计
+
+原来写的是 `RotateVector(OriginalOffsets[i] - PivotOffset)`，`PivotOffset = OriginalOffsets[0]`。但：
+
+- `OriginalOffsets` 存的是 `GetRelativeLocation()`，PT_1~PT_10 的父组件是 PT_0，所以**存的值本来就是相对 PT_0 的**
+- PT_0 是 `SetRootComponent` 设的根，它相对 Actor 的位置**恒为 (0,0,0)**，蓝图里也改不动
+
+所以 `PivotOffset` 恒等于零向量，减法等于没做。已删。
+
+### 74.5 射线贴地
+
+```cpp
+FHitResult Hit;
+const bool bHit = GetWorld()->LineTraceSingleByProfile(
+    Hit,
+    Target + FVector(0.f, 0.f, TraceHeight),   // 上方 500 起
+    Target - FVector(0.f, 0.f, TraceHeight),   // 下方 500 止
+    FName("BlockAll"),
+    QueryParams);
+
+Pt->SetWorldLocation(bHit ? FVector(Target.X, Target.Y, Hit.ImpactPoint.Z) : Target);
+if (bHit) Pt->SetWorldRotation(UKismetMathLibrary::MakeRotFromZ(Hit.ImpactNormal));
+```
+
+**为什么从上往下打**：起点抬高，射线先穿空气再碰地表，取到的是地表**最上面那一层**。从下往上会先打到物体底面。
+
+**打空为什么必须单独处理**：`ImpactPoint` 会是 `(0,0,0)`，照抄教程不管它，点位会飞到世界原点。坑洞、悬崖边、地面比平面低超过 500 都会触发。
+
+**`SetWorldRotation(MakeRotFromZ(ImpactNormal))` 干什么**：`MakeRotFromZ(v)` 造一个「本地 +Z 轴对准 v」的旋转，让组件**躺在坡上**而不是永远水平。Niagara 用组件朝向决定粒子喷射方向——不设的话粒子永远朝世界正上方，斜坡上会穿进地里。
+
+`if (bHit)` 不能省：没命中时 `ImpactNormal` 是零向量，`MakeRotFromZ(零向量)` 内部 `GetSafeNormal()` 得到零，矩阵退化，转出来的 `FRotator` 可能带 NaN。NaN 旋转会往子组件传播、污染整个 Actor 变换。
+
+**一个容易踩的前提**：这里设的旋转只有在 spawn Niagara 时传了 `Point->GetComponentRotation()` 才生效。写死 `FRotator::ZeroRotator` 的话上面白设。
+
+### 74.6 `LineTraceSingleByProfile` vs `LineTraceSingleByChannel`
+
+两个函数都是「从 A 到 B 打一条线」，差别只在第 4 个参数：
+
+| | `ByChannel` | `ByProfile` |
+|---|---|---|
+| 第 4 参数 | 一个**通道**（`ECC_Visibility`…） | 一个**预设名**（`"BlockAll"`…） |
+| 判断依据 | 只看对象对**这一个通道**的响应 | 看对象对**所有通道**的响应组合 |
+| 典型用途 | 快速探测（鼠标指着谁） | 需要精确控制撞什么 |
+
+**为什么贴地用 `BlockAll`**：有些美术资源为了不被鼠标选中，把 `Visibility` 通道设成 Ignore，但它物理上是实的。用 `ECC_Visibility` 会直接穿过去、打不到地面。`BlockAll` 只要是实心碰撞就停。
+
+**顺带查出的老问题**（`My_AuraSummonAbility.cpp:36`，召唤小怪找落点）：
+
+```cpp
+GetWorld()->LineTraceSingleByChannel(Hit, Start, End, ECC_Visibility);   // 没传 QueryParams
+```
+
+1. 没传 `FCollisionQueryParams` → 射线可能先撞到玩家胶囊体，小怪生成在半空
+2. `Hit.Location` 不如 `Hit.ImpactPoint` 准：`Location` 是「射线停在哪」（起点卡在物体里时等于起点），`ImpactPoint` 才是真正撞到表面的点
+3. `Hit.bBlockingHit` 可以用更严的 `Hit.IsValidBlockingHit()`（额外检查命中法线是否与射线方向相反）
+
+### 74.7 Billboard：让点位在视口里可见
+
+`USceneComponent` 在视口里没有可点的图标，只能去组件树里选中再拖 gizmo。`UBillboardComponent`（蓝图里叫 `Billboard`）是一个**永远正对镜头**的图标面片，继承自 `USceneComponent`，所以所有接口都兼容。
+
+**关键坑：Billboard 不赋 `Sprite` 就完全隐形。** `USpriteComponent::CreateSceneProxy()` 在 `Sprite == nullptr` 时直接返回空。所以「换个类型就能看见」是错的。
+
+```cpp
+static ConstructorHelpers::FObjectFinder<UTexture2D> PointSprite(
+    TEXT("/Engine/EngineResources/DefaultTexture.DefaultTexture"));
+...
+Billboard->Sprite = PointSprite.Object;
+Billboard->bHiddenInGame = true;
+```
+
+`bHiddenInGame = true` 必须有：有 Sprite 又没勾这个的话，**打包后游戏里会飘着 11 个棋盘格**。这个开关不影响编辑器视口。
+
+BP 里设的 `Sprite` 会覆盖构造函数里的默认值，想换成自己的小圆点直接在 Details 面板改。
+
+### 74.8 点位怎么摆
+
+三个约束：
+
+| 约束 | 原因 |
+|---|---|
+| 相邻距离 = 200 | 特效不重叠、不挤成一坨 |
+| 左右上下对称 | 不对称看起来像随机撒点，`YawOverride` 一转就明显歪 |
+| 编号按离圆心由近到远 | 等级低只用前几个（靠中心），等级高才铺到外圈 |
+
+**3×3 方格**最省事（相邻距离全是 200，不用算三角函数）：
+
+| 编号 | X | Y | 方位 |
+|---|---|---|---|
+| `PT_0` | 0 | 0 | 圆心（必须是它，是 Root） |
+| `PT_1` / `PT_2` | 0 | ±200 | 上 / 下 |
+| `PT_3` / `PT_4` | ±200 | 0 | 右 / 左 |
+| `PT_5` ~ `PT_8` | ±200 | ±200 | 四个角 |
+| `PT_9` / `PT_10` | ±400 | 0 | 外扩（可选） |
+
+**Z 一律填 0**：贴地由射线决定，手摆 Z 会被完全覆盖。
+
+**圆半径约束**：Decal 半径 ≈ `DecalSize.Y`。四个角到圆心是 `200×√2 ≈ 283`，外扩两点是 400。
+
+- 半径 ≥ 400 → 11 个点全用
+- 半径 ~300 → 只用前 9 个（`FMath::Clamp` 会自动截断，`NumPoints` 传超也只用 9 个）
+- 半径 < 290 → 间距缩到 150，表里所有数乘 0.75
+
+**`PT_0` 不能动**：它是 Root，也是图案圆心。所有点都是「圆心 + 偏移」算出来的，它必须在原点。
+
+### 74.9 一条通用经验：`BlueprintPure` 不要放进循环
+
+纯节点不是「算一次缓存起来」，而是**在被消费的每一处展开一次**。`For Each Loop` 本身是宏，会读数组 `1+N` 次（长度一次 + 每轮一次 `Array Get`）。
+
+所以纯节点如果连在循环体里，`1+N` 次消费就是 `1+N` 次求值。对 `GetGroundPoints` 这种带射线的函数，不只是性能问题——**它会改组件 transform，重算 N 次就转 N 次**，图案直接错乱。
+
+两种解法：
+
+1. **函数标 `BlueprintCallable` 不标 `BlueprintPure`**（有副作用就该这样，带执行引脚，逼你显式调一次）
+2. 保持 Pure，但在蓝图里先 `SET 变量 = 函数(...)`，循环里读变量
+
+判据：**纯节点求值次数 = 它的输出被消费的次数。**
+
+---
+
+第七十四章的 C++ 改动（法阵点位收集器）：
+
+| 文件 / 位置 | 改动 | 对应章节 |
+|---|---|---|
+| `My_AbilityActor/My_PointCollection.h:6` | 新增 `#include "Components/BillboardComponent.h"` | 74.7 |
+| `My_AbilityActor/My_PointCollection.h:41-71` | `PT_0` ~ `PT_10` 类型 `TObjectPtr<USceneComponent>` → `TObjectPtr<UBillboardComponent>` | 74.7 |
+| `My_AbilityActor/My_PointCollection.h:79` | 新增 `ImmutablePts`（`TArray<TObjectPtr<USceneComponent>>`，故意用基类） | 74.2 |
+| `My_AbilityActor/My_PointCollection.h:86` | 新增 `OriginalOffsets`（`TArray<FVector>`，手摆偏移快照） | 74.4 |
+| `My_AbilityActor/My_PointCollection.h:90-94` | 新增 `TraceHeight = 500` / `LivePlayerSearchRadius = 1500`（`EditDefaultsOnly`） | 74.5 |
+| `My_AbilityActor/My_PointCollection.cpp:20` | `ConstructorHelpers` 加载 `/Engine/EngineResources/DefaultTexture` 作占位 Sprite | 74.7 |
+| `My_AbilityActor/My_PointCollection.cpp:27-69` | 11 个 `CreateDefaultSubobject<UBillboardComponent>`，每建一个 `ImmutablePts.Add` | 74.2 |
+| `My_AbilityActor/My_PointCollection.cpp:73-79` | 末尾循环统一设 `Sprite` + `bHiddenInGame = true` | 74.7 |
+| `My_AbilityActor/My_PointCollection.cpp:82` | 新增 `CacheOriginalOffsets`：首次调用抓 `GetRelativeLocation()` | 74.4 |
+| `My_AbilityActor/My_PointCollection.cpp:94` | 新增 `GetGroundPoints` 实现（`BlueprintCallable`，非 Pure） | 74.3 / 74.4 |
+| `My_AbilityActor/My_PointCollection.cpp:102` | `GetLivePlayersWithRadius` 与 `QueryParams` 提到循环外 | 74.3② |
+| `My_AbilityActor/My_PointCollection.cpp:138` | `LineTraceSingleByProfile("BlockAll")`，`bHit` 判断后才用 `ImpactPoint` | 74.5 / 74.6 |
+| `My_AbilityActor/My_PointCollection.cpp:151` | `SetWorldRotation(MakeRotFromZ(ImpactNormal))` 让点位躺坡上 | 74.5 |
+
+**用自己库不用教程库**：`UMy_AuraAbilitySystemLibrary::GetLivePlayersWithRadius`
+（注意是 **With**Radius，不是教程的 **Within**Radius），声明在
+`My_AuraAbilitySystemLibrary.h:108`，实现在 `Private/MY_AbilitySystem/My_AuraAbilitySystemLibrary.cpp:334`。
+它**不会先清空出参**（只 `Add`），所以必须传全新局部数组。
+
+编码校验：两文件均 `BOM: efbbbf` / 纯 CRLF ✓（**未编译**，由用户在 UE 内验证）
+
+BP 侧待做：`My_BP_PointCollection` 按 74.8 摆 11 个点位（Z 全 0）；`My_GA_ArcaneShards`
+里 `GetGroundPoints` 只调一次存变量，再进循环 spawn Niagara 并传 `GetComponentRotation()`。
