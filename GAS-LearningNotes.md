@@ -12245,7 +12245,7 @@ const FVector Target = GroundLocation + Offset;
 
 关键是 **`Offset` 是向量（往哪走多远），`Target` 是点（绝对位置）**。向量加起点才成点。
 
-`OriginalOffsets` 存的是 `GetRelativeLocation()`，也就是**相对父组件（PT_0）的局部偏移**，必须乘上 Actor 的朝向才能变成世界方向：
+`OriginalOffsets` 存的是**相对圆心 PT_0 的局部偏移**（注意不是直接读 `GetRelativeLocation()`，原因见下面的「根组件陷阱」），必须乘上 Actor 的朝向才能变成世界方向：
 
 | Actor 朝向 | 手摆局部偏移 | `RotateVector` 后 | 点位落在 |
 |---|---|---|---|
@@ -12272,22 +12272,50 @@ const FVector Target = GroundLocation + Offset;
 void AMy_PointCollection::CacheOriginalOffsets()
 {
     if (OriginalOffsets.Num() == ImmutablePts.Num()) return;   // 抓过就别覆盖，此时可能已被贴地改过
+
+    const FTransform ActorTM = GetActorTransform();
+    const FVector Pivot = IsValid(PT_0) ? PT_0->GetComponentLocation() : GetActorLocation();
+
     OriginalOffsets.Reset(ImmutablePts.Num());
     for (const TObjectPtr<USceneComponent>& Pt : ImmutablePts)
     {
-        OriginalOffsets.Add(IsValid(Pt) ? Pt->GetRelativeLocation() : FVector::ZeroVector);
+        if (!IsValid(Pt))
+        {
+            OriginalOffsets.Add(FVector::ZeroVector);
+            continue;
+        }
+        const FVector WorldDelta = Pt->GetComponentLocation() - Pivot;
+        OriginalOffsets.Add(ActorTM.InverseTransformVectorNoScale(WorldDelta));
     }
 }
 ```
 
-#### 顺带删掉的一处过度设计
+#### 根组件陷阱：PT_0 的 `GetRelativeLocation()` 不是 (0,0,0)
 
-原来写的是 `RotateVector(OriginalOffsets[i] - PivotOffset)`，`PivotOffset = OriginalOffsets[0]`。但：
+一开始写的是直接读 `Pt->GetRelativeLocation()`，理由是「PT_1~PT_10 的父组件是 PT_0，读出来就是相对 PT_0 的偏移」。**这个理由对子组件成立，对 PT_0 本身不成立。**
 
-- `OriginalOffsets` 存的是 `GetRelativeLocation()`，PT_1~PT_10 的父组件是 PT_0，所以**存的值本来就是相对 PT_0 的**
-- PT_0 是 `SetRootComponent` 设的根，它相对 Actor 的位置**恒为 (0,0,0)**，蓝图里也改不动
+结果就是 `Num Points = 9` 时只有 8 个点位正常，圆心那个飞到几千米外。打日志：
 
-所以 `PivotOffset` 恒等于零向量，减法等于没做。已删。
+```
+i=0 PT_0 offset=X=-2486.861 Y=289.154 Z=0.410
+```
+
+这明显是**世界坐标**，不是 `(0,0,0)`。
+
+原因在 `USceneComponent::UpdateComponentToWorldWithParent`：当 `Parent == nullptr` 时，引擎**直接拿 RelativeLocation 当世界变换用**（根组件的变换就是 Actor 的变换）。所以根组件的 `GetRelativeLocation()` 返回的是它在关卡里的绝对位置。
+
+> 推论：**`RelativeLocation` 的语义随「有没有父级」而变**。有父级时是相对父组件的局部坐标，没有父级时就是世界坐标。根组件永远拿不到"相对自己的 (0,0,0)"。
+
+修法：不读 `RelativeLocation`，改成「相对 PT_0 的世界位移」再转回 Actor 局部空间：
+
+```cpp
+const FVector WorldDelta = Pt->GetComponentLocation() - Pivot;   // Pivot = PT_0 的世界位置
+OriginalOffsets.Add(ActorTM.InverseTransformVectorNoScale(WorldDelta));
+```
+
+PT_0 自己算出来正好是 `(0,0,0)`，子组件的值与原逻辑完全一致。
+
+> 早期还写过 `RotateVector(OriginalOffsets[i] - PivotOffset)`，因为误以为 `PivotOffset` 恒为零而删掉了。删是对的，但**理由错了** —— 圆心偏移必须处理，只是处理位置从「减一次常量」变成了「缓存时先对齐到 PT_0」。
 
 ### 74.5 射线贴地
 
@@ -12397,6 +12425,167 @@ BP 里设的 `Sprite` 会覆盖构造函数里的默认值，想换成自己的�
 
 判据：**纯节点求值次数 = 它的输出被消费的次数。**
 
+### 74.10 逐个生成点位：`For Each Loop` 里放 `Delay` 为什么一定失败
+
+需求：法阵的 9 个点位不要一瞬间全出，而是一个一个慢慢出现。
+
+最直觉的写法是 `For Each Loop` + 每轮 `Delay`。**这条路一定失败**，而且失败方式很反直觉。
+
+#### 现象：三个互相矛盾的观察
+
+| 接法 | 观察到的结果 |
+|---|---|
+| 循环体 = `Draw Sphere` → `Delay`（`Completed` 空着） | 9 个球**同一帧全部出现**，`Delay` 完全没起间隔作用 |
+| 循环体 = `Draw Sphere` → `Delay` → `Print`，且 `Completed` 接 `End Ability` | `Print` **一次都不打** |
+| 同上，但把 `Completed` 后的 `End Ability` 断开 | `Print` 打 **1 次**（不是 9 次），球仍然同帧全出 |
+
+三条看起来互相矛盾：既然循环跑了 9 轮（球有 9 个），为什么 `Delay` 后面的东西只执行 1 次甚至 0 次？
+
+#### 原因一：`Delay` 不阻塞任何东西
+
+`Delay` 是 **latent 节点**。它的实现只是往 `FLatentActionManager` 里注册一个定时器，**然后立刻返回**。
+
+它挂起的是 `Completed` 引脚后面那条链，**不是调用它的循环**。`For Each Loop` 是宏，展开后 `LoopBody` 的下一句就是 `Index++` 和下一轮判断，所以「本轮结束」的信号照常送达 —— 9 轮全在 frame 0 跑完。
+
+> **判据：`Delay` 之前每轮都跑，`Delay` 之后是「挂起链」，只恢复一次。**
+
+#### 原因二：`Delay` 会判重
+
+`UKismetSystemLibrary::Delay` 的实现：
+
+```cpp
+if (LatentActionManager.FindExistingAction<FDelayAction>(LatentInfo.CallbackTarget, LatentInfo.UUID) == nullptr)
+{
+    LatentActionManager.AddNewAction(LatentInfo.CallbackTarget, LatentInfo.UUID, new FDelayAction(Duration, LatentInfo));
+}
+```
+
+判重的键来自 `FLatentActionInfo`：
+
+| 字段 | 含义 | 9 轮之间 |
+|---|---|---|
+| `CallbackTarget` | 这条延迟挂在哪个对象上 | 同一个 Ability 实例 → **相同** |
+| `UUID` | 编译期给这个节点生成的固定编号 | 同一个节点 → **相同** |
+| `Linkage` | 恢复执行时跳转的代码偏移 | 同一个节点 → **相同** |
+
+所以第 1 轮注册成功，第 2~9 轮全部 `return`。**9 次调用只留下 1 个定时器**，1 秒后只恢复 1 次 —— 这就是 `Print` 只打 1 次的原因。
+
+同理可以推出一条：**在 `For Each Loop` 里复制 9 个不同的 `Delay` 节点也没用**，它们会有 9 个不同 `UUID`，但时长都是 `Time`，1 秒后同时到期、同时恢复，依旧不串行。
+
+#### 原因三：`End Ability` 在 frame 0 就结束了技能
+
+第二条观察里 `Print` 一次都不打，跟 `Delay` 无关，是这条链造成的：
+
+```
+For Each Loop (Completed) → Hide Magic Circle → Delay 0.2 → End Ability
+```
+
+`For Each Loop` 是同步的，`Completed` 在 **frame 0** 就触发，技能当场结束。技能一结束，所有挂起的 latent 链跟着一起没了 —— 1 秒后什么都没有恢复。
+
+**这是独立的 bug，就算生成逻辑改对了也必须修。`End Ability` 必须挂在「最后一个点位生成完」之后。**
+
+#### 正确写法一：自定义事件递归（其实不是递归）
+
+把循环拆掉，让事件自己调自己：
+
+```
+【施法入口】
+    Get Ground Points(...) → Set Points      ← 只调一次，它有副作用
+    Set PointIndex = 0
+    → 调用 SpawnNextPoint
+
+【Custom Event: SpawnNextPoint】
+    Branch: PointIndex < Points.Length
+      ├ True:
+      │    Points[PointIndex] → Get World Location / Rotation
+      │      → Spawn System at Location
+      │    Set PointIndex = PointIndex + 1
+      │    Delay(0.2).Completed → 调用 SpawnNextPoint   ★ 连 Call 节点
+      │
+      └ False:
+           Hide Magic Circle → Delay(0.2) → End Ability  ★ 收尾在这里
+```
+
+**它不会爆栈。** 第一次调用在 `Delay` 处就返回了，栈已经清空；0.2 秒后的第二次调用是定时器发起的**全新调用**，不是嵌套。栈深度永远只有 1。严格说这叫**续延（continuation）**，不是递归。
+
+（如果去掉 `Delay` 让它直接调自己，那才是真递归，9 层栈，而且 `Branch` 写错就是无限递归。）
+
+两种执行形态的差别：
+
+| 维度 | `For Each Loop` | 自定义事件递归 |
+|---|---|---|
+| 调用次数 | **1 次**调用里循环 N 轮 | **N 次**独立调用 |
+| 发生在哪 | 全部挤在**同一帧** | 分散在 **N 个帧** |
+| 栈深度 | 1 | 1（每次都返回了） |
+| 循环变量 | 宏内部临时变量，只活这一帧 | 必须自己定义**成员变量** |
+| 放 `Delay` | 注册定时器后立刻返回，循环照跑 | 注册定时器后整个事件返回，链断开 |
+| `Delay` 判重 | N 次撞同一 `UUID` → 只剩 1 个 | 跨帧，上次记录已消费 → 不命中 |
+| 能否逐个生成 | **永远不能** | 能 |
+
+#### 正确写法二：`Set Timer by Event`
+
+教程用的这个。它比递归版更简洁 —— **不需要递归结构，定时器自己循环**。
+
+三个成员变量：
+
+| 变量 | 类型 |
+|---|---|
+| `Points` | Scene Component → Array |
+| `PointIndex` | Integer |
+| `SpawnTimerHandle` | Timer Handle |
+
+```
+【施法入口】
+    Points = Get Ground Points(...)
+    Set PointIndex = 0
+    Set SpawnTimerHandle = Set Timer by Event
+        Event               = SpawnNextPoint
+        Time                = Shard Spawn Delta Time
+        Looping             = ✓
+        Initial Start Delay = 0
+
+【Custom Event: SpawnNextPoint】
+    Branch: PointIndex < Points.Length
+      ├ True  → 生成特效 + PointIndex++
+      └ False → Clear and Invalidate Timer by Handle(SpawnTimerHandle)
+                → Hide Magic Circle → Delay 0.2 → End Ability
+```
+
+四个要点：
+
+1. **`Looping = true` 的定时器永远不会自己停**，`False` 分支必须 `Clear`，否则每 `Time` 秒空转、Actor 销毁后报 `Accessed None`。
+2. 绑定的 Custom Event **不能有输入参数**（`FTimerDynamicDelegate` 是无参签名）。
+3. `Set Timer by Event` **不判重**。`K2_SetTimerDelegate` 内部是 `FTimerHandle Handle; Handle = SetTimer(...); return Handle;` —— 局部句柄，每次调用都新建。所以它在 `For Each Loop` 里调 9 次会**真的产生 9 个定时器**，但都同时到期，仍然不串行。
+4. 技能可能被打断时，`EndAbility` 里也要 `Clear` 一次。
+
+#### `Initial Start Delay` 是「加」在 `Time` 上的偏移
+
+本节最容易搞错的地方。实测三个数据点：
+
+| `Time` | `Initial Start Delay` | 首次触发 | 验证 |
+|---|---|---|---|
+| `0.2` | `-0.2` | `0.2 + (-0.2) = 0` | 立刻 ✓ |
+| `1.0` | `-1.0` | `1.0 + (-1.0) = 0` | 立刻 ✓ |
+| `1.0` | `0.5` | `1.0 + 0.5 = **1.5**` | **1.5s** ✓ |
+
+公式：
+
+> **首次触发时刻 = `Time` + `Initial Start Delay`**（负数结果按 0 处理，即立刻）
+
+所以网上流传的「把 `Initial Start Delay` 改成 `-0.2` 就能让第一个点位立刻出现」是**只在 `Time = 0.2` 时成立的巧合**。`-0.2` 不是魔数，**`-Time` 才是**。把 `Time` 改成 `1.0` 却忘了改 `Initial Start Delay`，`-0.2` 就变成 0.8 秒延迟，而且很难查 —— 数字看起来还是那个 `-0.2`。
+
+**推荐写法：施法入口手动调一次 `SpawnNextPoint`，`Initial Start Delay` 留 `0`。** 这样 `Time` 以后怎么改都不影响第一个点位的时机。（注意此时 `Initial Start Delay` 必须是 `0` 而不是负数，否则第 2 个点位也会立刻出，一次出两个。）
+
+要让取负自动跟随 `Time`，就用 `变量 × (-1)` 而不是硬填 `-0.2`；别用 `0 - X`，因为 `Subtract` 的 `A`/`B` 接反了就是原值，容易错。
+
+另一个高级引脚 `Initial Start Delay Variance` 是给首次延迟加 `±Variance` 的随机抖动，用来让多个同类定时器错开节奏（避免同一帧集中到期造成周期性卡顿）。它**只作用于第一次**，不影响 `Time`。单个法阵留 `0.0` 就行；设太大还可能把首次延迟顶成负数。
+
+#### 三句记忆锚点
+
+1. **循环里放 `Delay`，等于没放。**
+2. **`Delay` 之前每轮都跑，`Delay` 之后只跑一次。**
+3. **要串行，就让每一轮成为一次独立的事件调用。**
+
 ---
 
 第七十四章的 C++ 改动（法阵点位收集器）：
@@ -12411,7 +12600,7 @@ BP 里设的 `Sprite` 会覆盖构造函数里的默认值，想换成自己的�
 | `My_AbilityActor/My_PointCollection.cpp:20` | `ConstructorHelpers` 加载 `/Engine/EngineResources/DefaultTexture` 作占位 Sprite | 74.7 |
 | `My_AbilityActor/My_PointCollection.cpp:27-69` | 11 个 `CreateDefaultSubobject<UBillboardComponent>`，每建一个 `ImmutablePts.Add` | 74.2 |
 | `My_AbilityActor/My_PointCollection.cpp:73-79` | 末尾循环统一设 `Sprite` + `bHiddenInGame = true` | 74.7 |
-| `My_AbilityActor/My_PointCollection.cpp:82` | 新增 `CacheOriginalOffsets`：首次调用抓 `GetRelativeLocation()` | 74.4 |
+| `My_AbilityActor/My_PointCollection.cpp:82` | 新增 `CacheOriginalOffsets`：抓「相对 PT_0 的世界位移」再转局部（**不能**直接读 `GetRelativeLocation()`，根组件读出来是世界坐标） | 74.4 |
 | `My_AbilityActor/My_PointCollection.cpp:94` | 新增 `GetGroundPoints` 实现（`BlueprintCallable`，非 Pure） | 74.3 / 74.4 |
 | `My_AbilityActor/My_PointCollection.cpp:102` | `GetLivePlayersWithRadius` 与 `QueryParams` 提到循环外 | 74.3② |
 | `My_AbilityActor/My_PointCollection.cpp:138` | `LineTraceSingleByProfile("BlockAll")`，`bHit` 判断后才用 `ImpactPoint` | 74.5 / 74.6 |
@@ -12424,5 +12613,6 @@ BP 里设的 `Sprite` 会覆盖构造函数里的默认值，想换成自己的�
 
 编码校验：两文件均 `BOM: efbbbf` / 纯 CRLF ✓（**未编译**，由用户在 UE 内验证）
 
-BP 侧待做：`My_BP_PointCollection` 按 74.8 摆 11 个点位（Z 全 0）；`My_GA_ArcaneShards`
-里 `GetGroundPoints` 只调一次存变量，再进循环 spawn Niagara 并传 `GetComponentRotation()`。
+BP 侧：`My_BP_PointCollection` 按 74.8 摆 11 个点位（Z 全 0）；`My_GA_ArcaneShards`
+按 74.10 用 `Set Timer by Event` 逐点生成（**不再**用 `For Each Loop` + `Delay`），
+`GetGroundPoints` 只调一次存成员变量，spawn Niagara 时传 `GetComponentRotation()`。

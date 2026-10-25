@@ -84,10 +84,26 @@ void AMy_PointCollection::CacheOriginalOffsets()
 	// 已经缓存过就别再覆盖：这时组件位置可能已经被上一次贴地改过了
 	if (OriginalOffsets.Num() == ImmutablePts.Num()) return;
 
+	/*
+	 * 不能用 GetRelativeLocation()：
+	 * PT_0 是根组件、没有父级，引擎直接拿它的 RelativeLocation 当世界坐标用
+	 * （根组件的变换就是 Actor 的变换），所以读出来是几千米外的绝对位置，不是 0。
+	 * 改成「相对 PT_0 的世界位移」再转回局部空间，PT_0 自己正好得到 (0,0,0)。
+	 */
+	const FTransform ActorTM = GetActorTransform();
+	const FVector Pivot = IsValid(PT_0) ? PT_0->GetComponentLocation() : GetActorLocation();
+
 	OriginalOffsets.Reset(ImmutablePts.Num());
 	for (const TObjectPtr<USceneComponent>& Pt : ImmutablePts)
 	{
-		OriginalOffsets.Add(IsValid(Pt) ? Pt->GetRelativeLocation() : FVector::ZeroVector);
+		if (!IsValid(Pt))
+		{
+			OriginalOffsets.Add(FVector::ZeroVector);
+			continue;
+		}
+
+		const FVector WorldDelta = Pt->GetComponentLocation() - Pivot;
+		OriginalOffsets.Add(ActorTM.InverseTransformVectorNoScale(WorldDelta));
 	}
 }
 
