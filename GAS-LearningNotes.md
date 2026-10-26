@@ -12588,6 +12588,263 @@ For Each Loop (Completed) → Hide Magic Circle → Delay 0.2 → End Ability
 
 ---
 
+### 74.11 GameplayCue 使用手册：五种类型、`Add` vs `Execute`、以及「特效为什么晚了半拍」
+
+74.10 把点位从 `For Each Loop` 改成 `Set Timer by Event` 之后，冒出一个新问题：点位特效的 `Print String` 在日志里**永远是 `Server` 排在 `Client 1` 前面**。这一节把 Cue 的整条链路一次性讲透。
+
+#### 现象：日志里 `Server` 排在 `Client 1` 前面
+
+```
+LogBlueprintUserMessages: [Default__My_GC_ArcaneShards_C] Server: Hello
+LogBlueprintUserMessages: [Default__My_GC_ArcaneShards_C] Client 1: Hello
+```
+
+预期是客户端先播（零延迟），实际是服务器先播、客户端半 RTT 后才播。而且**客户端只播了一次**——不是双播。
+
+先记牢两个事实：
+
+1. **`LogBlueprintUserMessages` 是严格时序，从上往下就是发生顺序。** 「新的在上面」只适用于屏幕浮层：`UEngine::AddOnScreenDebugMessage` 在 `bNewerOnTop = true` 时把新消息 append 到 `PriorityScreenMessages` 尾部，而绘制循环（`UnrealEngine.cpp:11898`）是 `for (PrioIndex = Num()-1; PrioIndex >= 0; PrioIndex--)` **倒序遍历**、`YPos` 递增，所以尾部（最新）画在最上面。**两件事别混。**
+2. 只有一行 `Client 1` 且排在 `Server` 之后 ⇒ 客户端**本地一次都没播**，那一行是收到服务器多播才播的。
+
+#### 结论先行：`Set Timer by Event` 把 Cue 推出了预测窗口
+
+`FScopedPredictionWindow` 是 **RAII 对象**，析构就还原 key（`GameplayPrediction.cpp:295-316`）：
+
+```cpp
+FScopedPredictionWindow::~FScopedPredictionWindow()
+{
+    if (ClearScopedPredictionKey)
+    {
+        OwnerPtr->ScopedPredictionKey = RestoreKey;   // 出作用域即还原，通常是 0
+    }
+}
+```
+
+`AbilityTask_WaitInputPress::OnPressCallback` 的窗口只包住 `OnPress.Broadcast` 这一次同步调用（`AbilityTask_WaitInputPress.cpp:28-45`）。`Set Timer by Event` 只是**注册**定时器就返回了，`Broadcast` 一返回窗口立刻关闭。等下一帧 `SpawnNextPoint` 真正执行时，`ASC->ScopedPredictionKey` 已经是 0。
+
+**通用规则：**
+
+> **预测 key 只在「开窗的那次同步调用栈」里活着。**
+> 中间只要跨帧（`Set Timer` / `Delay` / Montage 回调 / `WaitGameplayEvent`），key 就归零。
+
+注意：即使 `Initial Start Delay = -Time` 让第一发"立刻"触发，`SetTimer` 仍然是注册、触发在下一个 tick，照样在窗口外。**连第一个点位也没有本地预测。**
+
+#### 五种 Cue 类的血缘关系
+
+| 类 | 父类 | 实例 | Spawn 到世界 |
+|---|---|---|---|
+| `GameplayCueNotify_Static` | `UObject` | **CDO 单例** | ❌ |
+| `GameplayCueNotify_Burst` | `GameplayCueNotify_Static` | CDO 单例 | ❌ |
+| `AGameplayCueNotify_Actor` | `AActor` | 每次事件一个 | ✅ |
+| `GameplayCueNotify_Looping` | `AGameplayCueNotify_Actor` | 每次事件一个 | ✅ |
+| `GameplayCueNotify_BurstLatent` | `AGameplayCueNotify_Actor` | 每次事件一个 | ✅ |
+
+`Static` / `Burst` **没有实例**，`GameplayCueManager` 用的是 `Blueprint->GeneratedClass->ClassDefaultObject`——所以**全场只有一个**，不能存状态、不能 `Delay`、不能 Timeline。`Burst` 的头注释原话：
+
+> *"Since it is not instanced, it cannot do latent actions such as delays and time lines."*
+
+`Looping` 和 `BurstLatent` 都是 `notplaceable`，只能被 `GameplayCueManager` Spawn。
+
+#### 基类四个事件全是空实现
+
+`GameplayCueNotify_Static.cpp:102-120`：
+
+```cpp
+bool UGameplayCueNotify_Static::OnExecute_Implementation(...)   const { return false; }
+bool UGameplayCueNotify_Static::OnActive_Implementation(...)    const { return false; }
+bool UGameplayCueNotify_Static::WhileActive_Implementation(...) const { return false; }
+bool UGameplayCueNotify_Static::OnRemove_Implementation(...)    const { return false; }
+```
+
+`GameplayCueNotify_Burst` **只 override 了 `OnExecute_Implementation`**（`GameplayCueNotify_Burst.cpp:15`）。
+
+⇒ **用 `Add` 触发一个 `Burst` cue = 什么都不播。** 这不是配置问题，是基类空实现。
+
+事件分发在 `HandleGameplayCue` 里，两种类完全一样（`GameplayCueNotify_Static.cpp:65-96` / `GameplayCueNotify_Actor.cpp:186-276`）：
+
+| 事件 | 调哪个函数 |
+|---|---|
+| `OnActive` | `OnActive()` |
+| `WhileActive` | `WhileActive()` |
+| `Executed` | `OnExecute()` |
+| `Removed` | `OnRemove()` |
+
+#### `Add` 与 `Execute` 在源码里分叉的地方
+
+| | `Execute` | `Add` |
+|---|---|---|
+| ASC 入口 | `ExecuteGameplayCue`（`AbilitySystemComponent.cpp:1277`） | `AddGameplayCue` → `AddGameplayCue_Internal`（`:1310`） |
+| 进 `ActiveGameplayCues` 数组 | ❌ | ✅ |
+| 需要 `Remove` | ❌ | ✅ **必须** |
+| 客户端本地播的条件 | `PredictionKey.IsLocalClientKey()` | 同一个 |
+| 广播 RPC | `NetMulticast_InvokeGameplayCueExecuted_WithParams` | `NetMulticast_InvokeGameplayCueAdded_WithParams` |
+
+`Execute` 走 `InvokeGameplayCueExecuted_WithParams`（`GameplayCueManager.cpp:1353`）→ `AddPendingCueExecuteInternal`（`:1368`）→ 若不在 SendContext 里就立刻 `FlushPendingCues`。**全程不碰 `ActiveGameplayCues`**，所以没有"移除"这回事。
+
+`Removed` **没有多播 RPC**（源码注释：*"Don't need to multicast broadcast this, ActiveGameplayCues replication handles it"*），数组复制是唯一的移除通道 ⇒ 服务器不 `Remove`，客户端就永久残留。
+
+#### 铁律：`Execute` = 瞬时，`Add` = 持续
+
+> **判断标准只有一条：这个效果有没有「持续期」？**
+
+| 需求 | 用哪个 | Cue 类 | 要 Remove |
+|---|---|---|---|
+| 播一次（爆炸、命中、抬手、点位光圈） | `Execute` | `Burst` | 不需要 |
+| 持续挂载（护盾、燃烧、减速光环） | `Add` | `Looping` | **必须** |
+| 有开始/持续/结束三段 | `Add` + `Remove` | `Looping` | **必须** |
+| 一次性但要延迟几帧 | `Execute` | `BurstLatent` | 需自己 End |
+
+#### 三个一定不要
+
+**① 不要用 `Add` 触发 `Static` / `Burst`**
+
+`OnActive` 是空实现 → 什么都没播；但 tag 已经进了 `ActiveGameplayCues`，还得再 `Remove` 一遍。白干 + 残留。
+
+**② 不要用 `Execute` 触发需要持续的效果**
+
+`Execute` 不进数组 → 没有 `Remove` 的机会 → Actor cue 永久残留，Static cue 根本挂不住。
+
+**③ 不要在客户端调用 `...On Actor` 变体**
+
+`GameplayCueFunctionLibrary.cpp:25-47`：
+
+```cpp
+if (Target->GetLocalRole() == ROLE_Authority)
+{
+    ASC->ExecuteGameplayCue(GameplayCueTag, Parameters);
+}
+```
+
+客户端调用 = **静默无操作**。而且它绕过了 `K2_AddGameplayCue`，`Remove on Ability End` 也管不到。
+
+#### 坑：Actor cue 用 `Execute` 触发不会自动销毁
+
+`bAutoDestroyOnRemove` **只在 `Removed` 分支生效**（`GameplayCueNotify_Actor.cpp:249-264`）。`Executed` 分支只有两行：
+
+```cpp
+case EGameplayCueEvent::Executed:
+    OnExecute(MyTarget, Parameters);
+    break;                                    // ← 没有任何销毁逻辑
+```
+
+⇒ 用 `Execute` 触发 `AGameplayCueNotify_Actor`，必须在 `OnExecute` 末尾手动调 **`End (Recycle) GameplayCue`**（`K2_EndGameplayCue`，`GameplayCueNotify_Actor.h:58`，`BlueprintCallable`），否则那个 actor 会一直留在世界里。
+
+**这就是「一次性效果优先用 `Burst` 而不是 `Actor`」的真正原因。**
+
+#### 预测 key 的生死：四种组合对照表
+
+客户端本地播不播，看 `FlushPendingCues`（`GameplayCueManager.cpp:1414-1450`）：
+
+```cpp
+bool bHasAuthority       = PendingCue.OwningComponent->IsOwnerActorAuthoritative();
+bool bLocalPredictionKey = PendingCue.PredictionKey.IsLocalClientKey();
+
+if (bHasAuthority)            { RepInterface->Call_InvokeGameplayCueExecuted_WithParams(...); }
+else if (bLocalPredictionKey) { InvokeGameplayCueEvent(Executed); }      // ← 没有 else！
+```
+
+客户端收到多播后跳不跳过，看 `NetMulticast_InvokeGameplayCueExecuted_WithParams_Implementation`（`AbilitySystemComponent.cpp:1441-1447`）：
+
+```cpp
+if (IsOwnerActorAuthoritative() || PredictionKey.IsLocalClientKey() == false)
+{
+    InvokeGameplayCueEvent(GameplayCueTag, EGameplayCueEvent::Executed, GameplayCueParameters);
+}
+```
+
+注意它**不是「比对是不是我那个 key」，而是「只要这个 key 是有效的 local client key 就跳过」**。而 `FPredictionKey::NetSerialize` 只把 key 发给发起连接的那个客户端，别的客户端收到的都是 0。
+
+| 客户端本地播了吗 | 多播带来的 key | 客户端跳过？ | 客户端总次数 | 现象 |
+|---|---|---|---|---|
+| 播了（有 key） | 有效（它自己的） | 跳过 | **1** | 零延迟 ✅ 理想格 |
+| 播了（有 key） | **0**（服务器没 key） | 不跳过 | **2** | **双播** ❌ |
+| 没播（key=0） | **0** | 不跳过 | **1** | 半 RTT ✅ 可接受 |
+| 没播（key=0） | 有效 | 跳过 | **0** | **一次都不播** ❌ |
+
+`IsLocalClientKey()` 的定义（`GameplayPrediction.h:351-354`）：
+
+```cpp
+bool IsLocalClientKey() const { return Current > 0 && !bIsServerInitiated; }
+```
+
+**双播的充要条件是两端 key 不对称**（客户端有、服务器没有），不是「窗口内/外」这种模糊说法。57.10 那张表里的「`To Owner` + 窗口外 → 2 次」应改用这张。
+
+第四格（0 次）是最隐蔽的坑：客户端把 key 同步给了服务器、但自己的 cue 是异步执行的，就会出现"服务器带有效 key 多播回来、客户端以为是自己播过的于是跳过"。
+
+#### 怎么判断客户端有没有 key
+
+`ASC->ScopedPredictionKey` 是 public 成员（`AbilitySystemComponent.h:252`），但**没有 `UPROPERTY`，蓝图完全读不到**。三个间接判据：
+
+**判据 1：看日志顺序**
+
+| 日志 | 含义 |
+|---|---|
+| `Client` 在 `Server` 之前 | 有 key，两端对齐 → 零延迟 |
+| `Client` 在 `Server` 之后，只有 1 行 | 没 key → 半 RTT |
+| `Client` 出现 2 行 | 有 key 但服务器没 key → 双播 |
+
+**判据 2：结构判据（不用跑）**
+
+> 从 cue 节点往上走，**中间只要跨了帧，客户端就一定没 key。**
+
+跨帧节点：`Set Timer by Event` / `Delay` / `Retriggerable Delay` / `Play Montage and Wait` 之后的回调 / `Wait Gameplay Event` / `Wait Delay` / 任何被 Timer 或事件触发的 Custom Event。
+
+不跨帧、key 还活着的 **6 个任务白名单**（`Private/Abilities/Tasks/` 下同时含 `FScopedPredictionWindow` 和 `ServerSetReplicatedEvent`）：
+
+`WaitInputPress` / `WaitInputRelease` / `WaitTargetData` / `WaitConfirmCancel` / `WaitCancel` / `NetworkSyncPoint`
+
+**判据 3：时间戳**
+
+在 `Execute` 前后各打一个 `Print String`，拼上 `Get Game Time in Seconds`。客户端两行与 `Server` 行差 ~半个 RTT（30–80ms）就是没 key。
+
+如果确实需要读 key 值，可以在 `My_AuraAbilitySystemLibrary` 里加一个 `BlueprintPure`，读 `ASC->ScopedPredictionKey.IsLocalClientKey()`——**它和 `FlushPendingCues` 用的是同一个判据**，口径完全一致。
+
+#### 技能侧四个节点的选择
+
+| 节点 | 作用目标 | 自动清理 | 场景 |
+|---|---|---|---|
+| `Execute GameplayCue With Params`（`K2_ExecuteGameplayCueWithParams`，`GameplayAbility.cpp:1462`） | 技能 owner 的 ASC | 不需要 | 一次性表现，**最常用** |
+| `Add GameplayCue`（勾 `Remove on Ability End`） | 同上 | ✅ | 持续表现 |
+| `Add GameplayCue`（不勾） | 同上 | ❌ 自己 `Remove` | 跨技能存在 |
+| `Execute / Add GameplayCue On Actor` | 任意 actor | — | **只能服务器调** |
+
+`K2_ExecuteGameplayCueWithParams` 本身**不开窗、无门禁**，只是转发给 `ASC->ExecuteGameplayCue`：
+
+```cpp
+void UGameplayAbility::K2_ExecuteGameplayCueWithParams(FGameplayTag GameplayCueTag, const FGameplayCueParameters& GameplayCueParameters)
+{
+	check(CurrentActorInfo);
+	const_cast<FGameplayCueParameters&>(GameplayCueParameters).AbilityLevel = GetAbilityLevel();
+
+	UAbilitySystemComponent* const AbilitySystemComponent = GetAbilitySystemComponentFromActorInfo_Checked();
+	AbilitySystemComponent->ExecuteGameplayCue(GameplayCueTag, GameplayCueParameters);
+}
+```
+
+所以「它到底有没有预测」完全取决于**它被放在哪个同步栈里**，跟节点本身无关。
+
+#### 异步 Cue 的三种处理
+
+| 方案 | 做法 | 代价 |
+|---|---|---|
+| A. 接受半 RTT | 不改 | 特效晚 50–100ms |
+| B. 客户端直接播（推荐） | 定时器回调里判 `Is Locally Controlled`，客户端 `Spawn System At Location` 直接播 Niagara，不走 cue | 零延迟；表现归表现，逻辑归逻辑 |
+| C. 改 `Add` | 不推荐 | 同样受 key 限制，还多出 `Remove` 负担 |
+
+纯表现（光圈、拖尾、音效）和逻辑（命中、伤害）本来就该拆开——这正是 GameplayCue 设计的本意。
+
+#### 七句记忆锚点
+
+1. **`Execute` = 瞬时，`Add` = 持续。有持续期才 `Add`，`Add` 就一定要 `Remove`。**
+2. **`Burst` / `Static` 只能用 `Execute`，用 `Add` 等于什么都不播。**
+3. **`On Actor` 后缀 = 只能服务器调，客户端调用是静默空操作。**
+4. **Actor cue 用 `Execute` 触发不会自动销毁，要手动 `End (Recycle) GameplayCue`。**
+5. **预测 key 只在「开窗的同步调用栈」里活着，跨帧即归零。**
+6. **key 归零 → 退化成半 RTT（0 本地 + 1 多播），不是双播；双播要两端 key 不对称。**
+7. **日志从上往下就是时间顺序；只有屏幕浮层才是「新的在上」。**
+
+---
+
 第七十四章的 C++ 改动（法阵点位收集器）：
 
 | 文件 / 位置 | 改动 | 对应章节 |
