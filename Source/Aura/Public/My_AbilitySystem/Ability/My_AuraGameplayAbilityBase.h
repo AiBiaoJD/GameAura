@@ -17,7 +17,7 @@ class AURA_API UMy_AuraGameplayAbilityBase : public UGameplayAbility
 public:
 
 	//根据InputAction的Tag 和 StartUpInputTag 去激活能力
-	UPROPERTY(EditAnywhere, Category = "My_Input")
+	UPROPERTY(EditAnywhere, Category = "My_Ability|Common|Input")
 	FGameplayTag StartUpInputTag;
 
 	virtual FString GetDescription(int32 Level);

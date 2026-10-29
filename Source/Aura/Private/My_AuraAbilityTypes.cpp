@@ -69,11 +69,27 @@ bool FMY_AuraGamePlayEffectContext::NetSerialize(FArchive& Ar, class UPackageMap
 		{
 			RepBits |= 1 << 15;
 		}
+		if (bIsRadialDamage)
+		{
+			RepBits |= 1 << 16;
+		}
+		if (RadialDamageInnerRadius > 0.f)
+		{
+			RepBits |= 1 << 17;
+		}
+		if (RadialDamageOuterRadius > 0.f)
+		{
+			RepBits |= 1 << 18;
+		}
+		if (!RadialDamageOrigin.IsZero())
+		{
+			RepBits |= 1 << 19;
+		}
 	}
 
-	// ★★ 位数 = 最大位号 + 1。当前最大位号是 15，所以写 16。
+	// ★★ 位数 = 最大位号 + 1。当前最大位号是 19，所以写 20。
 	//     加了新字段却忘了改这里 -> 新字段静默丢失（不报错，只是客户端收不到）
-	Ar.SerializeBits(&RepBits, 16);
+	Ar.SerializeBits(&RepBits, 20);
 
 	if (RepBits & (1 << 0))
 	{
@@ -150,6 +166,24 @@ bool FMY_AuraGamePlayEffectContext::NetSerialize(FArchive& Ar, class UPackageMap
 	if (RepBits & (1 << 15))
 	{
 		Knockback.NetSerialize(Ar, Map, bOutSuccess);
+	}
+	if (RepBits & (1 << 16))
+	{
+		// bIsRadialDamage 是总开关：它不发，后面三个半径/圆心一律不发
+		Ar << bIsRadialDamage;
+
+		if (RepBits & (1 << 17))
+		{
+			Ar << RadialDamageInnerRadius;
+		}
+		if (RepBits & (1 << 18))
+		{
+			Ar << RadialDamageOuterRadius;
+		}
+		if (RepBits & (1 << 19))
+		{
+			RadialDamageOrigin.NetSerialize(Ar, Map, bOutSuccess);
+		}
 	}
 	if (Ar.IsLoading())
 	{

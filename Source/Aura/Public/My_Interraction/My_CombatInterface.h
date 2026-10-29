@@ -12,6 +12,7 @@ class UNiagaraSystem;
 
 DECLARE_MULTICAST_DELEGATE_OneParam(FMy_ASCRegisteredSignature, UAbilitySystemComponent*)
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FMy_DeathSignature, AActor*, DeadActor);
+DECLARE_MULTICAST_DELEGATE_OneParam(FMy_OnDamageSignature, float);
 
 USTRUCT(BlueprintType)
 struct FMy_TaggedMontage
@@ -92,4 +93,7 @@ public:
 
 	virtual FMy_ASCRegisteredSignature& GetOnASCRegistered() = 0;
 	virtual FMy_DeathSignature& GetOnDeath() = 0;
+
+	// 伤害广播：TakeDamage 里喊一声，让 ExecCalc 能截获引擎算好的衰减伤害
+	virtual FMy_OnDamageSignature& GetOnDamageSignature() = 0;
 };

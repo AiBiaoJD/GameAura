@@ -123,6 +123,21 @@ FMy_DeathSignature& AMyCharacter_Base::GetOnDeath()
 	return OnDeath;
 }
 
+FMy_OnDamageSignature& AMyCharacter_Base::GetOnDamageSignature()
+{
+	return OnDamageDelegate;
+}
+
+float AMyCharacter_Base::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent,
+                                    AController* EventInstigator, AActor* DamageCauser)
+{
+	// Super 内部会调 InternalTakeRadialDamage 算完距离衰减，返回值就是实际伤害
+	const float DamageTaken = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
+	// 喊一声，让 ExecCalc 里绑的 lambda 能截获这个值
+	OnDamageDelegate.Broadcast(DamageTaken);
+	return DamageTaken;
+}
+
 USkeletalMeshComponent* AMyCharacter_Base::GetWeapon_Implementation()
 {
 	return Weapon;

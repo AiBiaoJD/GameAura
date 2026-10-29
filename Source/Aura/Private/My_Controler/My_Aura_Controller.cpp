@@ -31,6 +31,14 @@ void AMy_Aura_Controller::PlayerTick(float DeltaTime)
 
 void AMy_Aura_Controller::ShowMagicCircle(UMaterialInterface* DecalMaterial)
 {
+	/*
+	 * 技能指示器是「操作者自己的 UI」，不是世界里的物体：
+	 *   - 服务器没有真实鼠标，CursorHit 永远是零，生成出来只会钉在原点
+	 *   - 别的客户端也不该看到，那是别人的准星
+	 * 所以只在本地控制器上生成，配合 MagicCircle 的 bReplicates=false 保证不复制出去。
+	 */
+	if (!IsLocalController()) return;
+
 	// 注意：光标显隐不在这里管，统一由 CursorTrace() 按"是否指着敌人"决定
 	if (!IsValid(MagicCircle)) // 无效才创建
 	{
@@ -45,6 +53,8 @@ void AMy_Aura_Controller::ShowMagicCircle(UMaterialInterface* DecalMaterial)
 
 void AMy_Aura_Controller::HideMagicCircle()
 {
+	if (!IsLocalController()) return;
+
 	if (IsValid(MagicCircle))
 	{
 		MagicCircle->Destroy();
@@ -53,7 +63,14 @@ void AMy_Aura_Controller::HideMagicCircle()
 
 void AMy_Aura_Controller::UpdateMagicCircleLocation()
 {
-	if (IsValid(MagicCircle))
+	if (!IsLocalController()) return;
+
+	/*
+	 * 必须要求 bBlockingHit：鼠标指向天空时射线打不到东西，
+	 * CursorHit.ImpactPoint 会是零向量，圆环直接被拽到世界原点 —— 看起来就是「位置固定不动」。
+	 * 打空时保持上一帧位置，圆环停在原地，比瞬移合理。
+	 */
+	if (IsValid(MagicCircle) && CursorHit.bBlockingHit)
 	{
 		MagicCircle->SetActorLocation(CursorHit.ImpactPoint);
 	}
@@ -101,6 +118,14 @@ void AMy_Aura_Controller::CursorTrace()
 	// 本帧鼠标是否停在敌人身上（默认不是）
 	bool bOverEnemy = false;
 
+	/*
+	 * 射线每帧都要更新，不能因为「禁止高亮」就整段跳过：
+	 * MagicCircle 的位置完全靠 CursorHit 驱动，而施法期间玩家身上挂着
+	 * Block_CursorTrace 标签 —— 一旦这里提前返回，圆环就钉在原地不动了。
+	 * 所以「要不要高亮」和「要不要更新射线」是两件事，拆开处理。
+	 */
+	GetHitResultUnderCursor(ECC_Visibility, false, CursorHit);
+
 	if (GetAuraASC() && GetAuraASC()->HasMatchingGameplayTag(FMy_AuraGameplayTags::GetInstance().My_Player_Block_CursorTrace))
 	{
 		if (LastActor) LastActor->UnHighlightActor();
@@ -110,7 +135,6 @@ void AMy_Aura_Controller::CursorTrace()
 	}
 	else
 	{
-		GetHitResultUnderCursor(ECC_Visibility, false, CursorHit);
 		// 没打到东西就直接跳过：ThisActor 保持原样，高亮会残留（教程原行为）
 		if (CursorHit.bBlockingHit)
 		{

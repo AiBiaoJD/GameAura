@@ -1,4 +1,4 @@
-// Copyright ABiao
+﻿// Copyright ABiao
 
 #pragma once
 
@@ -28,18 +28,18 @@ public:
 	UFUNCTION(BlueprintImplementableEvent)
 	void AdditionalTargetDie(AActor* DeadActor);
 protected:
-	UPROPERTY(BlueprintReadWrite, Category="Beam")
+	UPROPERTY(BlueprintReadWrite, Category = "My_Ability|Beam")
 	FVector MouseHitLocation;
 
-	UPROPERTY(BlueprintReadWrite, Category="Beam")
+	UPROPERTY(BlueprintReadWrite, Category = "My_Ability|Beam")
 	TObjectPtr<AActor> MouseHitActor;
 
-	UPROPERTY(BlueprintReadWrite, Category="Beam")
+	UPROPERTY(BlueprintReadWrite, Category = "My_Ability|Beam")
 	TObjectPtr<APlayerController> OwnerController;
 
-	UPROPERTY(BlueprintReadWrite, Category="Beam")
+	UPROPERTY(BlueprintReadWrite, Category = "My_Ability|Beam")
 	TObjectPtr<ACharacter> OwnerCharacter;
 
-	UPROPERTY(EditDefaultsOnly, Category="Beam")
+	UPROPERTY(EditDefaultsOnly, Category = "My_Ability|Beam")
 	int32 MaxNumShockTargets = 5;
 };

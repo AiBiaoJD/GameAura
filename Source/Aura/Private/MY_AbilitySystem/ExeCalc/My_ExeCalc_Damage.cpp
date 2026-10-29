@@ -11,6 +11,8 @@
 #include "Aura/AuraLogChannels.h"
 #include "Aura/Public/My_AbilitySystem/My_AuraAbilitySystemLibrary.h"
 #include "My_Interraction/My_CombatInterface.h"
+#include "Kismet/GameplayStatics.h"
+#include "GameFramework/DamageType.h"
 
 
 struct My_AuraDamageStatics
@@ -321,6 +323,69 @@ void UMy_ExeCalc_Damage::Execute_Implementation(const FGameplayEffectCustomExecu
 			UE_LOG(LogTemp, Warning, TEXT("Critical Hit! Damage: %f"), Damage);
 		}
 		UE_LOG(LogTemp, Warning, TEXT("Critical Hit: %s"), bIsCritical ? TEXT("true") : TEXT("false"));
+	}
+
+	/*
+	 * 6. 径向伤害：按目标到球心的距离衰减
+	 *
+	 * 放在最后一步、且在抗性循环之外，有两个原因：
+	 *   ① DamageToResistance 里注册了 4 种伤害类型，循环会跑 4 次。
+	 *      写进循环里就会被衰减 4 次（100 → 40 → 16 …），伤害直接打骨折。
+	 *   ② 这里是 Damage 的最终值，衰减只需要乘一次。
+	 *
+	 * 调引擎函数不是为了「打出范围伤害」，而是借它算一次距离衰减 ——
+	 * 它不扣血、也不返回伤害值：内部遍历球体查询到的所有 Actor，
+	 * 把「基础伤害 + 距离信息」打包成 FRadialDamageEvent 丢给每个 Actor 的
+	 * TakeDamage()，真正的衰减在 TakeDamage → InternalTakeRadialDamage 里算，
+	 * 而那个返回值被 ApplyRadialDamageWithFalloff 直接丢弃了。
+	 *
+	 * 所以先给目标挂一个临时 lambda 截住它 —— 这就是接口里 OnDamageDelegate 的用途。
+	 * 换成 Cast 到具体角色类也能做，但每加一种可受伤对象就要回来改这里。
+	 */
+	if (UMy_AuraAbilitySystemLibrary::IsRadialDamage(EffectContextHandle))
+	{
+		if (TargetAvatar->Implements<UMy_CombatInterface>())
+		{
+			if (IMy_CombatInterface* CombatInterface = Cast<IMy_CombatInterface>(TargetAvatar))
+			{
+				/*
+				 * ① 先挂监听
+				 *
+				 * 顺序不能反：真正触发广播的是下面那个引擎函数 ——
+				 * ApplyRadialDamageWithFalloff 内部会对目标调 TakeDamage，
+				 * TakeDamage 里再 OnDamageDelegate.Broadcast(实际伤害)。
+				 * 所以监听必须挂在调函数之前，挂晚了这次广播就漏掉了，Damage 保持原值。
+				 *
+				 * [&Damage] 是按引用捕获：lambda 里改的就是外面这个 Damage。
+				 * 写成 [Damage]（按值）会拷一份副本，改完外面的还是原值，等于没写。
+				 */
+				FDelegateHandle DamageHandle = CombatInterface->GetOnDamageSignature().AddLambda(
+					[&Damage](float DamageAmount)
+					{
+						// 引擎算完的距离衰减伤害，覆盖掉前面累加出来的原值
+						Damage = DamageAmount;
+					});
+
+				// ② 再调引擎函数：它内部触发 Broadcast，回到上面那个 lambda 改写 Damage
+				UGameplayStatics::ApplyRadialDamageWithFalloff(
+					TargetAvatar,	// 只为取 World
+					Damage,			// BaseDamage：内圈吃满的伤害
+					0.f,			// MinimumDamage：0 = 完全按衰减比例，没有保底伤害
+					UMy_AuraAbilitySystemLibrary::GetRadialDamageOrigin(EffectContextHandle),
+					UMy_AuraAbilitySystemLibrary::GetRadialDamageInnerRadius(EffectContextHandle),
+					UMy_AuraAbilitySystemLibrary::GetRadialDamageOuterRadius(EffectContextHandle),
+					1.f,			// Falloff：1 = 线性衰减，越大越靠外掉得越狠
+					UDamageType::StaticClass(),
+					TArray<AActor*>(),
+					SourceAvatar,	// DamageCauser：会被自动排除，避免打到自己
+					nullptr);
+
+				// ③ 用完立刻摘掉
+				// ★ 教程漏了这行。lambda 捕获的是栈变量 Damage 的引用，
+				// 函数返回后这个引用就悬空了；不摘掉的话，下一次广播会写到已释放的栈内存上。
+				CombatInterface->GetOnDamageSignature().Remove(DamageHandle);
+			}
+		}
 	}
 
 	// ===== 输出最终伤害值 =====

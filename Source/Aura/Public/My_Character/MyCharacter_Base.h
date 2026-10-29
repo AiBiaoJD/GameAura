@@ -52,6 +52,11 @@ public:
 	virtual void BurnTagChanged(const FGameplayTag CallBackTag, int32 NewCount);
 
 
+	/* 伤害 */
+	// 引擎算完径向衰减后会调这里，我们在里面把结果广播出去
+	virtual float TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent,
+	                         AController* EventInstigator, AActor* DamageCauser) override;
+
 	/** Combat interface **/
 	virtual FVector GetWeaponSockLocation_Implementation(const FGameplayTag& MontageTag) override;
 	virtual void Die(const FVector& DeathImpulse) override;
@@ -65,10 +70,12 @@ public:
 	virtual EMy_CharacterClass GetCharacterClass_Implementation() override;
 	virtual FMy_ASCRegisteredSignature& GetOnASCRegistered() override;
 	virtual FMy_DeathSignature& GetOnDeath() override;
+	virtual FMy_OnDamageSignature& GetOnDamageSignature() override;
 	virtual USkeletalMeshComponent* GetWeapon_Implementation() override;
 	/** end Combat interface **/
 	FMy_ASCRegisteredSignature OnASCRegistered;
 	FMy_DeathSignature OnDeath;
+	FMy_OnDamageSignature OnDamageDelegate;
 
 	UPROPERTY(EditAnywhere, Category = "My_Combat")
 	TArray<FMy_TaggedMontage> AttackMontage;
