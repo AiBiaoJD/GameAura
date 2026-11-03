@@ -9,6 +9,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Animation/AnimInstance.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Components/CapsuleComponent.h"
 #include "Aura/Public/My_AbilitySystem/My_AuraAbilitySystemComponent.h"
 #include "Aura/Public/My_AbilitySystem/My_AuraAbilitySystemLibrary.h"
 #include "Aura/Public/My_AbilitySystem/My_AuraAttributeSet.h"
@@ -69,6 +70,11 @@ AEnemy_Characte::AEnemy_Characte()
 	*/
 	GetMesh()->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
 
+	// My_ExcludePlayer 是鼠标射线的「只打地面」通道，敌人身上所有部件都忽略，
+	// 否则 MagicCircle 会贴在胶囊/网格表面，鼠标扫过时位置来回跳
+	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_MyExcludePlayer, ECR_Ignore);
+	GetMesh()->SetCollisionResponseToChannel(ECC_MyExcludePlayer, ECR_Ignore);
+
 	//GAS
 	AbilitySystemComponent = CreateDefaultSubobject<UMy_AuraAbilitySystemComponent
 	>("AbilitySystemComponent");
@@ -103,6 +109,19 @@ void AEnemy_Characte::PossessedBy(AController* NewController)
 	AuraAIController->GetBlackboardComponent()->SetValueAsBool(FName("HitReacting"), false);
 	AuraAIController->GetBlackboardComponent()->SetValueAsBool(FName("RangeAttack"), CharacterClass != EMy_CharacterClass::Warrior);
 	AuraAIController->GetBlackboardComponent()->SetValueAsFloat(FName("CombatDistance"), CombatDistance);
+}
+
+void AEnemy_Characte::PostInitializeComponents()
+{
+	Super::PostInitializeComponents();
+
+	/*
+	 * 蓝图子类（BP_Goblin / My_BP_Demon_* 等）只要动过 Collision，整个 BodyInstance
+	 * 就会被快照进子类资产，构造函数里对 CDO 的设置不会跟过来。
+	 * 这里在实例初始化后强制再设一次，保证所有子类实例都忽略 My_ExcludePlayer。
+	 */
+	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_MyExcludePlayer, ECR_Ignore);
+	GetMesh()->SetCollisionResponseToChannel(ECC_MyExcludePlayer, ECR_Ignore);
 }
 
 void AEnemy_Characte::BeginPlay()

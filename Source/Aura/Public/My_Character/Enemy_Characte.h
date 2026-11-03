@@ -62,6 +62,9 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
+	// 蓝图子类可能把 BodyInstance 整体快照下来，构造函数对 CDO 的设置不会跟过来，
+	// 这里在实例初始化后强制再设一次碰撞响应
+	virtual void PostInitializeComponents() override;
 
 	// 停掉正在播放的蒙太奇（服务器 StunTagChanged / 客户端 OnRep_Stunned 共用）
 	void StopStunMontages();

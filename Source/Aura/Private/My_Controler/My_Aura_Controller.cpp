@@ -2,6 +2,7 @@
 
 
 #include "My_Controler/My_Aura_Controller.h"
+#include "Aura/Aura.h"
 #include "AbilitySystemBlueprintLibrary.h"
 #include "EnhancedInputSubsystems.h"
 #include "EnhancedInputComponent.h"
@@ -63,16 +64,19 @@ void AMy_Aura_Controller::HideMagicCircle()
 
 void AMy_Aura_Controller::UpdateMagicCircleLocation()
 {
-	if (!IsLocalController()) return;
+	if (!IsLocalController() || !IsValid(MagicCircle)) return;
 
 	/*
+	 * 圆环位置单独发一条射线，用 My_ExcludePlayer 通道：
+	 * 角色在这个通道上 Ignore，射线穿过他们直接打到地面，命中点不会在胶囊表面来回跳。
+	 *
 	 * 必须要求 bBlockingHit：鼠标指向天空时射线打不到东西，
-	 * CursorHit.ImpactPoint 会是零向量，圆环直接被拽到世界原点 —— 看起来就是「位置固定不动」。
-	 * 打空时保持上一帧位置，圆环停在原地，比瞬移合理。
+	 * ImpactPoint 是零向量，圆环会被拽到世界原点。打空时保持上一帧位置，比瞬移合理。
 	 */
-	if (IsValid(MagicCircle) && CursorHit.bBlockingHit)
+	GetHitResultUnderCursor(ECC_MyExcludePlayer, false, MagicCircleHit);
+	if (MagicCircleHit.bBlockingHit)
 	{
-		MagicCircle->SetActorLocation(CursorHit.ImpactPoint);
+		MagicCircle->SetActorLocation(MagicCircleHit.ImpactPoint);
 	}
 }
 
@@ -123,6 +127,10 @@ void AMy_Aura_Controller::CursorTrace()
 	 * MagicCircle 的位置完全靠 CursorHit 驱动，而施法期间玩家身上挂着
 	 * Block_CursorTrace 标签 —— 一旦这里提前返回，圆环就钉在原地不动了。
 	 * 所以「要不要高亮」和「要不要更新射线」是两件事，拆开处理。
+	 *
+	 * 这里固定用 ECC_Visibility：它要能打到敌人，高亮和光标显隐都靠它。
+	 * 圆环的位置由 UpdateMagicCircleLocation 单独发一条 My_ExcludePlayer 射线拿，
+	 * 两条射线互不干扰，所以圆环显示期间鼠标指到敌人依然会高亮、光标依然会隐藏。
 	 */
 	GetHitResultUnderCursor(ECC_Visibility, false, CursorHit);
 

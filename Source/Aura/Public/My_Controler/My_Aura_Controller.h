@@ -66,7 +66,8 @@ private:
 	 * 鼠标高亮部分
 	 */
 	void CursorTrace();
-	FHitResult CursorHit;
+	FHitResult CursorHit;         // 高亮 / 光标判定用：ECC_Visibility，能打到敌人
+	FHitResult MagicCircleHit;    // 圆环定位用：My_ExcludePlayer，穿过角色直接打地面
 	//TObjectPtr 只能用于 UObject 的派生类，不能用于接口，所以这里不用Tobject建立指针
 	IMy_Enemy_Interface* LastActor = nullptr;
 	IMy_Enemy_Interface* ThisActor = nullptr;
