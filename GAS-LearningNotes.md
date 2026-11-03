@@ -12873,3 +12873,211 @@ void UGameplayAbility::K2_ExecuteGameplayCueWithParams(FGameplayTag GameplayCueT
 BP 侧：`My_BP_PointCollection` 按 74.8 摆 11 个点位（Z 全 0）；`My_GA_ArcaneShards`
 按 74.10 用 `Set Timer by Event` 逐点生成（**不再**用 `For Each Loop` + `Delay`），
 `GetGroundPoints` 只调一次存成员变量，spawn Niagara 时传 `GetComponentRotation()`。
+
+
+## 七十五、自定义碰撞通道：从「圆环抖」到「只打地面」的射线（★）
+
+### 75.1 起因：圆环在敌人身上抖
+
+`My_BP_MagicCircle` 的位置完全由 `CursorHit.ImpactPoint` 驱动。
+
+鼠标扫过敌人时，`GetHitResultUnderCursor(ECC_Visibility)` 打到的是**胶囊表面**（Z ≈ 88~176），
+而不是地面（Z ≈ 0）。命中点沿胶囊滑动，圆环就被顶到半空乱窜。
+
+```
+鼠标在地面   → ImpactPoint.Z ≈ 0       圆环贴地 ✅
+鼠标扫到敌人 → ImpactPoint.Z ≈ 88~176  圆环跳上去 ❌
+```
+
+**不是计算错了，是射线打到了不该打的东西。**
+
+### 75.2 教程方案：圆环存在时换通道
+
+`AuraPlayerController.cpp:123`：
+
+```cpp
+const ECollisionChannel TraceChannel = IsValid(MagicCircle) ? ECC_ExcludePlayers : ECC_Visibility;
+GetHitResultUnderCursor(TraceChannel, false, CursorHit);
+```
+
+思路：换一条「角色忽略、地面 Block」的通道，射线穿人打地。
+
+前提：**角色必须对该通道设 Ignore**。ini 里 `DefaultResponse=ECR_Block` 意味着默认全 Block，
+不显式设 Ignore 就等于没换通道。
+
+### 75.3 Object Channel vs Trace Channel
+
+ini 里 6 个自定义 channel 全是 `bTraceType=False`，即 **Object Channel（物体类型）**，不是 Trace Channel。
+
+UE 从 4.x 起把 Object 和 Trace 的编号放进同一个 `ECC_GameTraceChannelN` 池子共用，
+靠 `bTraceType` 区分归属。**所以 `GameTraceChannel` 这个名字有误导性。**
+
+| 用途 | 需要什么 |
+|---|---|
+| `SetCollisionObjectType` | Object Channel ✅ |
+| `SetCollisionResponseToChannel` | 任意 channel ✅ |
+| `FCollisionObjectQueryParams` | Object Channel ✅ |
+| `LineTraceSingleByChannel` 的 TraceChannel 参数 | 名义上 Trace Channel，**Object Channel 也能用** |
+
+**编号规则**：`ECC_GameTraceChannelN` 的 N = 在 Project Settings > Collision 里从上往下排第几个。
+删中间一条或拖动排序 → 后面全部前移，C++ 宏静默指错（不崩不报错）。
+规矩：**只往末尾追加，永远别删中间用过的。**
+
+### 75.4 ★ 坑一：InvisibleWall 只对 Visibility 开绿灯
+
+换通道后圆环**完全不显示**了。打日志才看到：
+
+```
+[圆环] hit=1 actor=BlockingVolume_2 impact=(-3337, -19, 904)
+```
+
+`impact.Z = 904` —— 射线被关卡里的 `BlockingVolume` 挡住，圆环被送到半空。
+
+根因在 `DefaultEngine.ini:97`：
+
+```ini
++Profiles=(Name="InvisibleWall",...,CustomResponses=((Channel="Visibility",Response=ECR_Ignore)),...)
+```
+
+`BlockingVolume` 用的是 `InvisibleWall` preset，它**只对 Visibility 显式 Ignore**，
+其他通道一律走 `DefaultResponse = Block`。
+
+| 通道 | 对 BlockingVolume | 结果 |
+|---|---|---|
+| `ECC_Visibility` | Ignore（preset 显式配的） | 穿过去打到地板 ✅ |
+| `ECC_MyExcludePlayer` | Block（默认值） | 被挡住 ❌ |
+
+`InvisibleWall` 是引擎内置 preset，ini 里 `bCanModify=False`，编辑器里改不了。
+**要通道方案生效，必须手动把关卡里每个 BlockingVolume 的 Collision 改成对该通道 Ignore。**
+
+> **教训**：换通道前先查关卡里有没有「对 Visibility 特意开绿灯」的碰撞体
+> （`BlockingVolume` / `TriggerVolume` / 天空盒包围盒）。它们平时不挡 Visibility，
+> 换通道后会突然变成墙。
+
+### 75.5 ★ 坑二：蓝图继承的 BodyInstance 是整体快照
+
+在父类 `MY_BP_EnemyBase` 的 Mesh 上把 `My_ExcludePlayer` 设成 Ignore，
+子类 `BP_Goblin` / `My_BP_Demon_*` 打开还是 Block。
+
+原因：`Collision` 整块是结构体 `BodyInstance`，包含 `CollisionEnabled`、`ObjectType`、
+`CollisionResponses`（32 个通道）。**蓝图继承对结构体是「整体」的**——
+子类只要动过其中任何一项，整个 `BodyInstance` 就被完整复制一份存进子类资产。
+从那一刻起，父类再怎么改，子类都不看。
+
+**判断方法**：子类里选中组件 → Details → Collision，属性行右边有**黄色回退箭头** = 被子类覆盖了。
+
+**解法：`PostInitializeComponents` 运行时强制**
+
+```cpp
+void AEnemy_Characte::PostInitializeComponents()
+{
+	Super::PostInitializeComponents();
+
+	// 蓝图子类可能把 BodyInstance 整体快照下来，构造函数对 CDO 的设置不会跟过来
+	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_MyExcludePlayer, ECR_Ignore);
+	GetMesh()->SetCollisionResponseToChannel(ECC_MyExcludePlayer, ECR_Ignore);
+}
+```
+
+它在**蓝图序列化值加载完之后**执行，所以不管子类存了什么都会被改回来。
+
+| 位置 | 作用 | 局限 |
+|---|---|---|
+| 构造函数 | 写进 CDO，蓝图继承时读到 | 子类快照过就失效 |
+| `PostInitializeComponents` | 实例初始化后强制覆盖 | 无 |
+
+### 75.6 ★ 坑三：一条射线不能干两件事
+
+通道通了之后，圆环位置对了，但出现新问题：
+
+- 圆环显示时，鼠标移到敌人身上**不高亮**了
+- **光标也不隐藏**了
+
+因为圆环存在时 `CursorHit` 走 `ECC_MyExcludePlayer`，角色 Ignore，射线穿过敌人打地面：
+
+```
+CursorHit.GetActor() = 地板
+  → Cast<IMy_Enemy_Interface> 失败
+    → ThisActor = nullptr
+      → bOverEnemy = false
+        → UpdateMouseCursor(false)  → 不隐藏
+        → 不高亮
+```
+
+**一条射线同时服务「高亮判定」和「圆环定位」，两个需求方向相反，必然打架。**
+
+**解法：拆成两条射线，各存各的**
+
+```cpp
+// .h
+FHitResult CursorHit;         // 高亮 / 光标判定用：ECC_Visibility，能打到敌人
+FHitResult MagicCircleHit;    // 圆环定位用：My_ExcludePlayer，穿过角色直接打地面
+```
+
+```cpp
+// CursorTrace()：永远 Visibility，只服务高亮和光标
+GetHitResultUnderCursor(ECC_Visibility, false, CursorHit);
+
+// UpdateMagicCircleLocation()：自己发一条，只服务圆环
+if (!IsLocalController() || !IsValid(MagicCircle)) return;
+GetHitResultUnderCursor(ECC_MyExcludePlayer, false, MagicCircleHit);
+if (MagicCircleHit.bBlockingHit)
+{
+	MagicCircle->SetActorLocation(MagicCircleHit.ImpactPoint);
+}
+```
+
+圆环不存在时提前 return，所以平时只有一条射线。
+
+| 射线 | 通道 | 结果存到 | 用途 |
+|---|---|---|---|
+| `CursorTrace()` | `ECC_Visibility` | `CursorHit` | 高亮 + 光标显隐 |
+| `UpdateMagicCircleLocation()` | `ECC_MyExcludePlayer` | `MagicCircleHit` | 圆环贴地位置 |
+
+> 第 73 章里 `GetHitResultUnderCursor` 还在 `if/else` 的 else 分支里，
+> 后来为了「施法期间圆环也要跟随鼠标」提到了外面，本章沿用提出来之后的版本。
+
+### 75.7 排查方法：打 hit / actor / impact
+
+这类问题光看「圆环没显示」会误判成 Spawn 失败。必须打三个字段：
+
+```cpp
+UE_LOG(LogTemp, Warning, TEXT("[圆环] hit=%d actor=%s impact=%s"),
+       Hit.bBlockingHit ? 1 : 0,
+       Hit.GetActor() ? *Hit.GetActor()->GetName() : TEXT("None"),
+       *Hit.ImpactPoint.ToString());
+```
+
+| 现象 | 结论 |
+|---|---|
+| `Spawned=0` | `MagicCircleClass` 没配，跟通道无关 |
+| `hit=0, actor=None` | 射线打空，位置永远不更新 → 圆环停在 Spawn 原点 |
+| `hit=1, actor=BlockingVolume, impact.Z=904` | 被不该挡的东西挡住了 |
+| `hit=1, actor=Landscape` | 正常 |
+
+**`impact.Z` 是最快的判断依据**：贴地应该在 0 附近，几百就是被顶到半空了。
+
+### 75.8 改动汇总
+
+| 文件 | 改动 |
+|---|---|
+| `Aura.h:16` | `#define ECC_MyExcludePlayer ECollisionChannel::ECC_GameTraceChannel6` |
+| `Config/DefaultEngine.ini:126` | `+DefaultChannelResponses=(...,Name="My_ExcludePlayer")` |
+| `My_Aura_Controller.h` | 新增 `FHitResult MagicCircleHit` |
+| `My_Aura_Controller.cpp` `CursorTrace` | 固定 `ECC_Visibility` |
+| `My_Aura_Controller.cpp` `UpdateMagicCircleLocation` | 改发 `ECC_MyExcludePlayer` 射线，写 `MagicCircleHit` |
+| `Enemy_Characte.h` | 新增 `PostInitializeComponents` 声明 |
+| `Enemy_Characte.cpp` | 构造函数 + `PostInitializeComponents` 各设一次 Ignore（Capsule + Mesh） |
+
+**`Weapon` 不用设**：`AMyCharacter_Base` 构造函数里 `Weapon->SetCollisionEnabled(NoCollision)`，
+死亡时变 `PhysicsOnly`，两者都不参与 Query，射线永远打不到它。
+
+| CollisionEnabled | 参与射线 | 要不要设通道 |
+|---|---|---|
+| `NoCollision` | ❌ | 不用 |
+| `PhysicsOnly` | ❌ | 不用 |
+| `QueryOnly` | ✅ | 需要 |
+| `QueryAndPhysics` | ✅ | 需要 |
+
+**BP 侧**：`MY_BP_EnemyBase` / `My_BP_Aura` 的 Capsule + Mesh 对 `My_ExcludePlayer` 设 Ignore；
+关卡里所有 `BlockingVolume` 也要设 Ignore（否则会挡住射线）。
