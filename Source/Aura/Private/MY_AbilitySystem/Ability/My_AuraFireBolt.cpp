@@ -17,12 +17,12 @@ FString UMy_AuraFireBolt::GetDescription(int32 Level)
 	if (Level == 1)
 	{
 		// 1 级专属文案：发射数写死为 1，并额外提示升级后的成长
-		return FString::Printf(TEXT("<Title>焰矢</>\n\n<Small>当前等级 </><Level>1</>\n<Small>消耗蓝量 </><ManaCost>%.1f</>\n<Small>冷却时间 </><CoolDown>%.1f</>\n\n<Default>发射 </><Level>1</><Default> 枚焰矢，撞击目标时爆炸，造成 </><Damage>%d</><Default> 点火焰伤害，并有几率使目标灼烧。</>\n\n<Small>升级后可同时发射更多焰矢。</>"), ManaCost, Cooldown, ScaledDamage);
+		return FString::Printf(TEXT("<Title>焰矢</>\n\n<Small>当前等级 </><Level>1</>\n<Small>消耗蓝量 </><ManaCost>%.1f</>\n<Small>冷却时间 </><CoolDown>%.1f</>\n\n<Default>发射 </><Level>1</><Default> 枚焰矢，撞击目标时爆炸，造成 </><Damage>%d</><Default> 点火焰伤害，并有 </><Level>%.0f%%</><Default> 的基础几率使目标灼烧。</>\n\n<Small>升级后可同时发射更多焰矢。</>"), ManaCost, Cooldown, ScaledDamage, DebuffChance);
 	}
 
 	// 高等级：发射数随等级增加，上限为 NumProjectiles
 	const int32 NumProj = FMath::Min(Level, NumProjectiles);
-	return FString::Printf(TEXT("<Title>焰矢</>\n\n<Small>当前等级 </><Level>%d</>\n<Small>消耗蓝量 </><ManaCost>%.1f</>\n<Small>冷却时间 </><CoolDown>%.1f</>\n\n<Default>发射 </><Level>%d</><Default> 枚焰矢，撞击目标时爆炸，造成 </><Damage>%d</><Default> 点火焰伤害，并有几率使目标灼烧。</>"), Level, ManaCost, Cooldown, NumProj, ScaledDamage);
+	return FString::Printf(TEXT("<Title>焰矢</>\n\n<Small>当前等级 </><Level>%d</>\n<Small>消耗蓝量 </><ManaCost>%.1f</>\n<Small>冷却时间 </><CoolDown>%.1f</>\n\n<Default>发射 </><Level>%d</><Default> 枚焰矢，撞击目标时爆炸，造成 </><Damage>%d</><Default> 点火焰伤害，并有 </><Level>%.0f%%</><Default> 的基础几率使目标灼烧。</>"), Level, ManaCost, Cooldown, NumProj, ScaledDamage, DebuffChance);
 }
 
 FString UMy_AuraFireBolt::GetNextLevelDescription(int32 Level)
@@ -31,7 +31,7 @@ FString UMy_AuraFireBolt::GetNextLevelDescription(int32 Level)
 	const int32 NumProj = FMath::Min(Level, NumProjectiles);
 	const float ManaCost = FMath::Abs(GetManaCost(Level));
 	const float Cooldown = GetCooldown(Level);
-	return FString::Printf(TEXT("<Title>下一等级</>\n\n<Small>当前等级 </><Level>%d</>\n<Small>消耗蓝量 </><ManaCost>%.1f</>\n<Small>冷却时间 </><CoolDown>%.1f</>\n\n<Default>发射 </><Level>%d</><Default> 枚焰矢，撞击目标时爆炸，造成 </><Damage>%d</><Default> 点火焰伤害，并有几率使目标灼烧。</>"), Level, ManaCost, Cooldown, NumProj, ScaledDamage);
+	return FString::Printf(TEXT("<Title>下一等级</>\n\n<Small>当前等级 </><Level>%d</>\n<Small>消耗蓝量 </><ManaCost>%.1f</>\n<Small>冷却时间 </><CoolDown>%.1f</>\n\n<Default>发射 </><Level>%d</><Default> 枚焰矢，撞击目标时爆炸，造成 </><Damage>%d</><Default> 点火焰伤害，并有 </><Level>%.0f%%</><Default> 的基础几率使目标灼烧。</>"), Level, ManaCost, Cooldown, NumProj, ScaledDamage, DebuffChance);
 }
 
 void UMy_AuraFireBolt::SpawnProjectiles(const FVector& ProjectileTargetLocation, const FGameplayTag& SocketTag, bool bOverridePitch, float PitchOverride, AActor* HomingTarget)
@@ -69,6 +69,10 @@ void UMy_AuraFireBolt::SpawnProjectiles(const FVector& ProjectileTargetLocation,
 	NumProjectiles = FMath::Min(NumProjectiles, GetAbilityLevel());
 	TArray<FRotator> Rotations = UMy_AuraAbilitySystemLibrary::GetEvenSpreadRotators(BaseRotation.Vector(), FVector::UpVector, SpawnSpread, NumProjectiles);
 
+	// 扇形的侧向轴：绕 UpVector 转出来的扇面，偏移方向落在水平面内、垂直于瞄准方向
+	const FVector AimDir = (ProjectileTargetLocation - SockLoc).GetSafeNormal();
+	const FVector LateralAxis = FVector::CrossProduct(FVector::UpVector, AimDir).GetSafeNormal();
+
 	for (FRotator& Rot : Rotations)
 	{
 		FTransform SpawnTransform;
@@ -100,8 +104,15 @@ void UMy_AuraFireBolt::SpawnProjectiles(const FVector& ProjectileTargetLocation,
 			{
 				// 目标是地面上的一个点 → 造一个虚拟组件放在那里当追踪点。
 				// 必须存进投射物的强引用成员，否则 TWeakObjectPtr 会被 GC 回收。
+				//
+				// 追踪点要按这颗火球在扇形里的偏角往侧面挪一点：
+				// 全部追同一个点的话，强追踪会把它们拉成一条线，远距离看着像一颗。
+				const float YawOffset = FRotator::NormalizeAxis(Rot.Yaw - BaseRotation.Yaw);
+				const FVector HomingPoint = ProjectileTargetLocation
+					+ LateralAxis * FMath::Sin(FMath::DegreesToRadians(YawOffset)) * HomingSpreadRadius;
+
 				Projectile->HomingTargetSceneComponent = NewObject<USceneComponent>(USceneComponent::StaticClass());
-				Projectile->HomingTargetSceneComponent->SetWorldLocation(ProjectileTargetLocation);
+				Projectile->HomingTargetSceneComponent->SetWorldLocation(HomingPoint);
 				Projectile->ProjectileMovement->HomingTargetComponent = Projectile->HomingTargetSceneComponent;
 			}
 

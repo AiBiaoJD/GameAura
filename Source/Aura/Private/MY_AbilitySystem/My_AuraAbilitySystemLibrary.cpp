@@ -422,10 +422,6 @@ void UMy_AuraAbilitySystemLibrary::GetLivePlayersWithRadius(const UObject* World
 				{
 					OutOverLappingActors.Add(Avatar);
 				}
-				else if (Avatar)
-				{
-					UE_LOG(LogTemp, Warning, TEXT("Ignore same Character: %s"), *Avatar->GetName());
-				}
 			}
 		}
 	}

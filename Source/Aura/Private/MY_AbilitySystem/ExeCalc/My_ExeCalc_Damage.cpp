@@ -129,12 +129,8 @@ static void My_DetermineDebuff(const FGameplayEffectCustomExecutionParameters& E
 		// ④ 有效几率 = 几率 × (100 - 抗性) / 100
 		const float EffectiveDebuffChance = SourceDebuffChance * (100.f - TargetDebuffResistance) / 100.f;
 
-		// ⑤ 掷骰：本次是否触发
-		const bool bDebuff = FMath::RandRange(1, 100) < EffectiveDebuffChance;
-
-		UE_LOG(LogAura, Warning, TEXT("[Debuff判定] 类型=%s  几率=%.1f  抗性=%.1f  有效几率=%.1f  触发=%s"),
-		       *DamageType.ToString(), SourceDebuffChance, TargetDebuffResistance, EffectiveDebuffChance,
-		       bDebuff ? TEXT("是") : TEXT("否"));
+		// ⑤ 掷骰：本次是否触发（0~99 对 0~100，填 100 就是必中）
+		const bool bDebuff = FMath::RandRange(0, 99) < EffectiveDebuffChance;
 
 		if (bDebuff)
 		{
@@ -292,8 +288,6 @@ void UMy_ExeCalc_Damage::Execute_Implementation(const FGameplayEffectCustomExecu
 		// 格挡成功，伤害减半
 		Damage *= 0.5f;
 	}
-	UE_LOG(LogTemp, Warning, TEXT("Block: %s"), bIsBlocked ? TEXT("true") : TEXT("false"));
-
 	// 3. 护甲穿透计算
 	// 计算实际护甲穿透效果(限制在0-1范围内)
 	const float EffectivePenetration = FMath::Clamp(SourceArmorPenetration * ArmorPenetrationCoefficient, 0.f, 1.f);
@@ -311,7 +305,6 @@ void UMy_ExeCalc_Damage::Execute_Implementation(const FGameplayEffectCustomExecu
 	{
 		// 计算实际暴击几率(考虑目标的暴击抗性)
 		const float EffectiveCritChance = FMath::Max(0.f, SourceCriticalHitChance - TargetCriticalHitResistance * CriticalHitResistanceCoefficient);
-		UE_LOG(LogTemp, Warning, TEXT("EffectiveCritChance: %f"), EffectiveCritChance);
 
 		// 是否暴击
 		const bool bIsCritical = FMath::RandRange(0.f, 1.f) < EffectiveCritChance;
@@ -320,9 +313,7 @@ void UMy_ExeCalc_Damage::Execute_Implementation(const FGameplayEffectCustomExecu
 		{
 			// 应用暴击伤害倍率
 			Damage *= SourceCriticalHitDamage;
-			UE_LOG(LogTemp, Warning, TEXT("Critical Hit! Damage: %f"), Damage);
 		}
-		UE_LOG(LogTemp, Warning, TEXT("Critical Hit: %s"), bIsCritical ? TEXT("true") : TEXT("false"));
 	}
 
 	/*

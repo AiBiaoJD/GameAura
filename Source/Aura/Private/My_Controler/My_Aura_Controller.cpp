@@ -82,7 +82,6 @@ void AMy_Aura_Controller::UpdateMagicCircleLocation()
 
 void AMy_Aura_Controller::ClientShowDamageNum_Implementation(float DamageAmount, ACharacter* TargetCharacter, bool IsBlockedHit, bool IsCriticalHit)
 {
-	UE_LOG(LogTemp, Warning, TEXT("4. Client RPC actually executing on client"));
 	// 防御性检查：确保目标有效、组件类有效，且是本地客户端
 	if (IsValid(TargetCharacter) && DamageTextComponentClass && IsLocalController())
 	{
@@ -336,10 +335,6 @@ void AMy_Aura_Controller::AbilityInputTagReleased(FGameplayTag InputTag)
 					CachedDestination = NavigationPath->PathPoints[NavigationPath->PathPoints.Num() - 1];
 				}
 				bAutoRunning = true;
-			}
-			else
-			{
-				UE_LOG(LogTemp, Warning, TEXT("No valid path found!"));
 			}
 			if (GetAuraASC() && !GetAuraASC()->HasMatchingGameplayTag(FMy_AuraGameplayTags::GetInstance().My_Player_Block_InputPressed))
 			{

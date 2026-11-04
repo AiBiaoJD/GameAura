@@ -62,6 +62,21 @@
 - [五十九、动态 GE 的致命缺陷：无法网络复制（★重要）](#五十九动态-ge-的致命缺陷无法网络复制重要)
 - [六十、ASC 复制的两套过滤机制（★修正第 59 章）](#六十asc-复制的两套过滤机制修正第-59-章)
 - [六十一、投射物追踪的复制方案简化（SetReplicateMovement）](#六十一投射物追踪的复制方案简化setreplicatemovement)
+- [六十二、长按电击蓝量耗尽 → `TargetASC == nullptr`：弱指针 + PendingKill](#六十二长按电击蓝量耗尽--targetasc--nullptr弱指针--pendingkill)
+- [六十三、电击连锁只打敌人：多目标筛选与阵营判定](#六十三电击连锁只打敌人多目标筛选与阵营判定)
+- [六十四、能力结束时的清理：位置决定一切（★ 本章最有价值）](#六十四能力结束时的清理位置决定一切-本章最有价值)
+- [六十五、`0x80000003`：GameplayCue 参数里的等级只有 5 bit（★）](#六十五0x80000003gameplaycue-参数里的等级只有-5-bit)
+- [六十六、主动能力 vs 被动能力：两条生命周期（★ 实现被动能力前的必读）](#六十六主动能力-vs-被动能力两条生命周期-实现被动能力前的必读)
+- [六十七、技能槽位系统：InputTag 驱动的 UI 与装备链（★）](#六十七技能槽位系统inputtag-驱动的-ui-与装备链)
+- [六十八、`ServerEquipAbility` 重写 + FastArray 标脏机制（★）](#六十八serverequipability-重写--fastarray-标脏机制)
+- [六十九、被动技能特效：为什么不用 tag 事件，而用 Multicast RPC（★）](#六十九被动技能特效为什么不用-tag-事件而用-multicast-rpc)
+- [七十、Decal 组件、Actor 载体与魔法阵指示器（★）](#七十decal-组件actor-载体与魔法阵指示器)
+- [七十一、原生 Tag 结构体重排：技能树内 vs 技能树外（★）](#七十一原生-tag-结构体重排技能树内-vs-技能树外)
+- [七十二、`WaitInputPress` 的真实触发链 + 法阵重现的根因（★）](#七十二waitinputpress-的真实触发链--法阵重现的根因)
+- [七十三、鼠标光标按「是否指着敌人」显隐（★）](#七十三鼠标光标按是否指着敌人显隐)
+- [七十四、法阵点位收集器：`GetGroundPoints` 的实现与坑（★）](#七十四法阵点位收集器getgroundpoints-的实现与坑)
+- [七十五、自定义碰撞通道：从「圆环抖」到「只打地面」的射线（★）](#七十五自定义碰撞通道从圆环抖到只打地面的射线)
+- [七十六、技能描述系统：文案公式、Debuff 几率与多火球追踪点分离（★）](#七十六技能描述系统文案公式debuff-几率与多火球追踪点分离)
 
 ---
 
@@ -13081,3 +13096,266 @@ UE_LOG(LogTemp, Warning, TEXT("[圆环] hit=%d actor=%s impact=%s"),
 
 **BP 侧**：`MY_BP_EnemyBase` / `My_BP_Aura` 的 Capsule + Mesh 对 `My_ExcludePlayer` 设 Ignore；
 关卡里所有 `BlockingVolume` 也要设 Ignore（否则会挡住射线）。
+
+## 七十六、技能描述系统：文案公式、Debuff 几率与多火球追踪点分离（★）
+
+### 76.1 GetDescription 的三段式
+
+所有技能描述都长一个样，套模板即可：
+
+```cpp
+FString UMy_Xxx::GetDescription(int32 Level)
+{
+	const int32 ScaledDamage = Damage.GetValueAtLevel(Level);
+	const float ManaCost = FMath::Abs(GetManaCost(Level));
+	const float Cooldown = GetCooldown(Level);
+	if (Level == 1)
+	{
+		return FString::Printf(TEXT("<Title>技能名</>\n\n<Small>当前等级 </><Level>1</>\n..."), ManaCost, Cooldown, ScaledDamage);
+	}
+	return FString::Printf(TEXT("..."), Level, ManaCost, Cooldown, ScaledDamage);
+}
+```
+
+三个数据源都在 `UMy_AuraGameplayAbilityBase` 里：
+
+| 函数 | 返回 | 说明 |
+|---|---|---|
+| `Damage.GetValueAtLevel(Level)` | int32 | `FScalableFloat` 按等级查表 |
+| `GetManaCost(Level)` | float | 返回**负数**（表示消耗），要套 `FMath::Abs` |
+| `GetCooldown(Level)` | float | 直接可用 |
+
+**为什么 1 级单独一个分支**：1 级要写死「发射 1 枚」，并额外加一句
+`<Small>升级后...</>` 的成长提示；高等级是「发射 N 枚」。硬塞进一个分支反而更乱。
+
+**`GetNextLevelDescription` 的入参是「下一级」**，不是当前级：
+
+```cpp
+// My_AuraAbilitySystemComponent.cpp:602
+OutNextLevelDescription = AuraAbility->GetNextLevelDescription(Level + 1);
+```
+
+### 76.2 Printf 的两个坑
+
+**① 百分号要写 `%%`**
+
+```cpp
+TEXT("...并有 </><Level>%.0f%%</><Default> 的几率...")   // 输出 20%
+```
+
+单个 `%` 会被当成格式符，后面的字符被吃掉，输出乱码。
+
+**② 参数顺序必须和占位符一一对应**
+
+一个描述里有 4~6 个占位符，顺序写错**不会报错**，只会安静地显示错数字。
+写完一定要数：字符串里第几个 `%`，对应实参第几个。
+
+**③ 富文本标签大小写**
+
+样式表 `My_DT_RichTextStyle` 的行名是 `CoolDown`（大写 D）。`<Cooldown>` 也能用，
+因为查表走 `FName` 比较、不区分大小写 —— 但**建议跟表里的写法保持一致**，省得以后排查。
+
+### 76.3 描述是在 CDO 上调的（所以 EditDefaultsOnly 生效）
+
+```cpp
+// My_AuraAbilitySystemComponent.cpp:601  spec 已就位
+OutDescription = AuraAbility->GetDescription(Level);   // AbilitySpec->Ability 就是该技能类的 CDO
+
+// My_AuraAbilitySystemComponent.cpp:617  spec 还没复制过来的兜底
+UMy_AuraGameplayAbilityBase* AbilityCDO = Info.AbilityClass->GetDefaultObject<UMy_AuraGameplayAbilityBase>();
+OutDescription = AbilityCDO->GetDescription(Level);
+```
+
+两条路径都是 **CDO**。所以：
+
+- C++ 里 `float DebuffChance = 20.f` 只是 **C++ CDO 的初值**
+- 在蓝图 Class Defaults 改成 100，写进的是**蓝图 CDO**，运行时盖住 C++ 的 20
+- 描述里读 `DebuffChance` 拿到的是 **100**，不是 20
+
+| 情况 | 读到什么 |
+|---|---|
+| 蓝图 CDO 没覆盖过（Details 里有黄色回退箭头） | C++ 初值 20 |
+| 蓝图 CDO 覆盖过（改成 100） | **100** |
+| 改了 UPROPERTY 名字 | 回退到 C++ 初值（蓝图里存的值丢了） |
+
+### 76.4 电击 / 奥术的数量算法
+
+| 技能 | 数量规则 | 实现 |
+|---|---|---|
+| 电击 | 等级 N → 1 个主目标 + (N-1) 个连锁 | `FMath::Min(Level - 1, MaxNumShockTargets)` |
+| 奥术碎片 | 等级 N → N 个点位 | 直接用 `Level` |
+
+**文案和行为对不上时，先查被注释掉的临时改动**。
+`My_AuraBeamSpell.cpp` 的 `StoreAdditionalTargets` 里就有一处：
+
+```cpp
+// int32 NumAdditionalTargets = FMath::Min(MaxNumShockTargets, GetAbilityLevel()-1);
+int32 NumAdditionalTargets = 5;
+```
+
+描述按等级写、实际永远连锁 5 个 —— 测试时为了省事写死的，别忘了改回来。
+本次已改回 `FMath::Min(MaxNumShockTargets, GetAbilityLevel()-1)`。
+
+### 76.5 Debuff 几率：显示基础值 + 掷骰 off-by-one
+
+**显示的是基础几率**，实际结算还要过抗性：
+
+```cpp
+// My_ExeCalc_Damage.cpp:130
+EffectiveDebuffChance = SourceDebuffChance * (100.f - TargetDebuffResistance) / 100.f;
+```
+
+描述阶段不知道打谁（每个敌人抗性不同），所以只能写「基础几率」。
+玩家看到 100%、实际 88.5%（敌人 11.5 抗性）—— 这是设计使然，不是 bug。
+
+**off-by-one 是真 bug**：
+
+```cpp
+// 改前：填 100 实际只有 99%
+FMath::RandRange(1, 100) < Ch     // 掷到 100 时，100 < 100 为假
+// 改后：100 就是必中，0 就是永不触发
+FMath::RandRange(0, 99) < Ch
+```
+
+### 76.6 多火球合并：把「同一个追踪点」拆成「各自一个」（★）
+
+**现象**：火球技能近距离 5 颗散开，远距离合成一颗。
+
+**根因**：追踪是「纯朝目标拉」，不是「限制转向速度」：
+
+```cpp
+// ProjectileMovementComponent.cpp:486
+return (HomingTargetComponent->GetComponentLocation() - UpdatedComponent->GetComponentLocation())
+       .GetSafeNormal() * HomingAccelerationMagnitude;
+```
+
+`HomingAccelerationMagnitude = 6500`、`MaxSpeed = 550`，比值 12 —— 60 帧下每帧方向掰 ~108，
+速度总共才 550，**七八帧就对齐**。5 颗追同一个点，飞出约 300 单位就并成一条线。
+远距离时前 15% 的路程合并、剩下 85% 全重叠，看着就是一颗。
+
+| 飞行时间 | 已飞距离 | 偏离目标线 |
+|---|---|---|
+| 0 帧 | 0 | 60° |
+| 8 帧 | 73 | 23° |
+| 30 帧（0.5 秒） | 275 | 8° |
+
+**为什么不能降加速度**：降下来扇形是撑住了，但初始朝上的分量也压不住，
+火球变成高抛物线（实测 1000/2000 飞得太高）。
+**加速度是压平轨迹用的，不能动。**
+
+**解法**：每颗火球追**自己那个落点**。
+
+```cpp
+// 侧向轴：绕 UpVector 转出来的扇面，偏移方向落在水平面内、垂直于瞄准方向
+const FVector AimDir = (ProjectileTargetLocation - SockLoc).GetSafeNormal();
+const FVector LateralAxis = FVector::CrossProduct(FVector::UpVector, AimDir).GetSafeNormal();
+
+// 每颗按自己在扇形里的偏角，把追踪点往侧面挪
+const float YawOffset = FRotator::NormalizeAxis(Rot.Yaw - BaseRotation.Yaw);
+const FVector HomingPoint = ProjectileTargetLocation
+	+ LateralAxis * FMath::Sin(FMath::DegreesToRadians(YawOffset)) * HomingSpreadRadius;
+```
+
+三个变量各管一件事：
+
+| 变量 | 是什么 | 单位 |
+|---|---|---|
+| `YawOffset` | 这颗球起飞时偏了几度 | 角度 |
+| `LateralAxis` | 「偏左/偏右」在世界坐标里是哪边 | 单位向量 |
+| `sin(YawOffset) × 80` | 落点偏离点击点多少 | 厘米 |
+
+**`LateralAxis` 必须现算**：写死 `(0,1,0)` 只在朝 +X 瞄准时对。
+朝 +Y 瞄时「右边」变成 `(-1,0,0)`。
+
+**关键前提**：开了追踪之后，`YawOffset` 不再决定落点。
+它只影响起飞那一下的方向，几十厘米后就被拽到目标线上。
+**落点完全由 `HomingTargetComponent` 的坐标决定。**
+
+### 76.7 为什么不能用「距离 × sin」
+
+`YawOffset` 是在**施法者**那里量的角度，不是点击点那里量的。
+同一个 60°，从 500 单位外和 2000 单位外看，落到地面的横向距离差好几倍：
+
+| 点击距离 | 直线飞行的横向偏移 = 距离 × tan(60°) |
+|---|---|
+| 500 | 866（8.7 米） |
+| 1000 | 1732（17 米） |
+| 2000 | 3464（35 米） |
+
+点到 20 米外，边上那颗要落在 35 米开外，战场都不够大。
+
+固定半径的写法：
+
+| 点击距离 | 横向偏移 = sin(60°) × 80 |
+|---|---|
+| 500 / 1000 / 2000 | **恒为 69** |
+
+**不管点多远，散开宽度永远是 1.4 米。**
+
+### 76.8 5 球算例
+
+枪口 `(0,0,100)`、点击 `(1000,0,0)`，`SpawnSpread=120`、`HomingSpreadRadius=80`：
+
+```
+AimDir      = (1000,0,-100) / 1005 = (0.995, 0, -0.0995)
+LateralAxis = Cross((0,0,1), AimDir) = (0, 0.995, 0) → 归一化 (0,1,0)
+BaseRotation.Yaw = 0°
+```
+
+| 第几颗 | 偏角 | `YawOffset` | `sin` | `sin×80` | 落点 |
+|---|---|---|---|---|---|
+| 0 | -60° | -60 | -0.866 | -69.3 | (1000, -69.3, 0) |
+| 1 | -30° | -30 | -0.500 | -40.0 | (1000, -40.0, 0) |
+| 2 | 0° | 0 | 0 | 0 | (1000, 0, 0) |
+| 3 | +30° | +30 | +0.500 | +40.0 | (1000, 40.0, 0) |
+| 4 | +60° | +60 | +0.866 | +69.3 | (1000, 69.3, 0) |
+
+X 全是 1000：`LateralAxis` 没有 X 分量，只往左右推，不会提前落地或飞过头。
+
+### 76.9 调试日志清理清单
+
+`LogTemp, Warning` 级别、每次伤害都打的那批，测完必须删：
+
+| 文件 | 内容 |
+|---|---|
+| `My_Aura_Controller.cpp` | `4. Client RPC actually executing on client` |
+| `My_ExeCalc_Damage.cpp` | `Block:` / `EffectiveCritChance` / `Critical Hit! Damage` / `Critical Hit:` |
+| `My_ExeCalc_Damage.cpp` | `LogAura` 的 `[Debuff判定] ...` |
+| `My_AuraAbilitySystemLibrary.cpp` | `Ignore same Character` |
+| `My_Aura_Controller.cpp` | `No valid path found!` |
+
+**保留** `Error` 级的真实配置报错（InputAction 缺失、抗性类型没配、AI 半径没设）——
+只在配错时触发，有它在能救命。
+
+### 76.10 附：构建崩成 `0xE0434352`（中文路径 + git quotePath）
+
+**现象**：Rider 构建报 `MSB3073 ... 已退出，代码为 -532462766`，代码没改却突然编不过。
+
+`-532462766` = `0xE0434352` = **.NET 未处理异常**，不是 C++ 编译错误。
+查 Windows 事件查看器（`应用日志 → .NET Runtime, ID 1026`）能看到真实栈：
+
+```
+System.ArgumentException: Path fragment '"\346\270\270..."' contains invalid directory separators.
+   at UnrealBuildTool.GitSourceFileWorkingSet.AddPath(...)
+```
+
+**因果链**：
+
+1. UBT 为了自适应 unity build 会跑 `git status`
+2. git 默认 `core.quotePath=true`，**非 ASCII 路径被转义成 `"\346\270\270..."`**（八进制 + 反斜杠）
+3. UBT 把整行原样交给 `FileReference.Combine`，而它把 `\` 也当路径分隔符
+4. 切到 `/\` 相邻处产生空片段 → 抛异常 → 线程池回调里没人接 → dotnet 进程崩
+
+**触发条件**：仓库里有「中文名 + 位于子目录」的未提交文件（`/\` 相邻）。
+只有中文文件名、没有子目录，不会触发。
+
+**修复**：
+
+```bash
+git config core.quotePath false     # 仓库级
+```
+
+**排查入口**：`%LOCALAPPDATA%\UnrealBuildTool\Log.txt` 会在崩溃处**直接截断**
+（本次停在 `Generated code is up to date.`，看着像 UHT 出错，其实是下一步 git 解析炸的）。
+
+---
