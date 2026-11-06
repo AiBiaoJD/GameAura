@@ -13,6 +13,8 @@
 #include "My_Controler/My_Aura_Controller.h"
 #include "My_Interraction/My_CombatInterface.h"
 #include "My_Interraction/My_PlayerInterface.h"
+#include "My_Character/MyCharacter_Base.h"
+#include "TimerManager.h"
 #include "Net/UnrealNetwork.h"
 
 UMy_AuraAttributeSet::UMy_AuraAttributeSet()
@@ -107,17 +109,22 @@ void UMy_AuraAttributeSet::PostAttributeChange(const FGameplayAttribute& Attribu
 {
 	Super::PostAttributeChange(Attribute, OldValue, NewValue);
 
-	//升级补满：此刻MMC已完成聚合器刷新，MaxHealth/MaxMana已是新值，
-	//GetMaxHealth()/GetMaxMana()读到的才是新Max（旧写法在GE执行中读的是旧Max）
-	if (bTopOffHealthOnLevelUp && Attribute == GetMaxHealthAttribute())
+	//四个 Primary 属性都是 Secondary GE 里那些公式的输入（Vigor→MaxHealth、
+	//Intelligence→MaxMana、Strength/Resilience→Armor 等），任意一个变了都要重算。
+	//但 Infinite GE 里的 MMC 只在应用那一刻求值一次，输入变了它不会自己重算。
+	//这里延迟到帧末重新应用 Secondary GE，放帧末是为了避开当前 GE 的执行栈
+	//（在栈内移除/重加 GE 容易撞到聚合器重入）。
+	if (Attribute == GetStrengthAttribute() || Attribute == GetIntelligenceAttribute() ||
+		Attribute == GetResilienceAttribute() || Attribute == GetVIgorAttribute())
 	{
-		SetHealth(GetMaxHealth());
-		bTopOffHealthOnLevelUp = false;
-	}
-	if (bTopOffManaOnLevelUp && Attribute == GetMaxManaAttribute())
-	{
-		SetMana(GetMaxMana());
-		bTopOffManaOnLevelUp = false;
+		if (AMyCharacter_Base* Char = Cast<AMyCharacter_Base>(GetOwningActor()))
+		{
+			if (UWorld* World = GetWorld())
+			{
+				World->GetTimerManager().SetTimerForNextTick(
+					FTimerDelegate::CreateUObject(Char, &AMyCharacter_Base::RefreshSecondaryAttributes, false));
+			}
+		}
 	}
 }
 
@@ -296,12 +303,19 @@ void UMy_AuraAttributeSet::HandleIncomingXP(const FMy_EffectProperties& Props)
 			IMy_PlayerInterface::Execute_AddToAttributePoint(Props.SourceCharacter, AttributePointReward);
 			IMy_PlayerInterface::Execute_AddToSpellPoint(Props.SourceCharacter, SpellPointReward);
 
-			//升级补满不再在GE执行中做：此刻MMC还没刷新，GetMaxHealth()读到的是旧Max
-			//只置标记，等MMC刷新MaxHealth/MaxMana后在PostAttributeChange里补满
-			bTopOffHealthOnLevelUp = true;
-			bTopOffManaOnLevelUp = true;
-
+			//等级变了，但 Secondary GE 里的 MMC 只在应用时求值一次，不会自己重算。
+			//重新应用一次（内部会先移除旧的），顺便把 Health / Mana 补满。
+			//放帧末执行：此刻还在 XP GE 的执行栈里，不能直接增删 GE。
 			IMy_PlayerInterface::Execute_LevelUp(Props.SourceCharacter);
+
+			if (AMyCharacter_Base* Char = Cast<AMyCharacter_Base>(Props.SourceCharacter))
+			{
+				if (UWorld* World = GetWorld())
+				{
+					World->GetTimerManager().SetTimerForNextTick(
+						FTimerDelegate::CreateUObject(Char, &AMyCharacter_Base::RefreshSecondaryAttributes, true));
+				}
+			}
 		}
 
 		IMy_PlayerInterface::Execute_AddToXP(Props.SourceCharacter, LocalIncomingXP);
@@ -400,7 +414,12 @@ void UMy_AuraAttributeSet::OnRep_MaxHealth(const FGameplayAttributeData& OldMaxH
 void UMy_AuraAttributeSet::OnRep_Mana(const FGameplayAttributeData& OldMana) const
 {
 	GAMEPLAYATTRIBUTE_REPNOTIFY(UMy_AuraAttributeSet, Mana, OldMana);
-	const_cast<UMy_AuraAttributeSet*>(this)->SetMana(FMath::Min(GetMana(), GetMaxMana()));
+	//只在真的超出上限时才写回。GetMana()读的是CurrentValue（含聚合器修饰），
+	//无条件SetMana会把聚合器上的临时修饰固化进Base
+	if (GetMana() > GetMaxMana())
+	{
+		const_cast<UMy_AuraAttributeSet*>(this)->SetMana(GetMaxMana());
+	}
 }
 
 void UMy_AuraAttributeSet::OnRep_MaxMana(const FGameplayAttributeData& OldMaxMana) const

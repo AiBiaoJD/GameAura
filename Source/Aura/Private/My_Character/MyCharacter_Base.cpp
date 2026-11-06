@@ -10,6 +10,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "Aura/Public/My_AbilitySystem/My_AuraAbilitySystemComponent.h"
 #include "Aura/Public/My_AbilitySystem/Passive/My_PassiveNiagaraComponent.h"
+#include "Aura/Public/My_AbilitySystem/My_AuraAttributeSet.h"
 #include "Net/UnrealNetwork.h"
 
 
@@ -270,6 +271,31 @@ void AMyCharacter_Base::InitializeDefaultAttribute() const
 	ApplyEffectToSelf(DefaultPrimaryAttributeEffectClass, 1.0f);
 	ApplyEffectToSelf(DefaultSecondAttributeEffectClass, 1.0f);
 	ApplyEffectToSelf(InitVitalAttributeEffectClass, 1.0f);
+}
+
+void AMyCharacter_Base::RefreshSecondaryAttributes(bool bTopOff)
+{
+	if (!HasAuthority() || !AbilitySystemComponent || !DefaultSecondAttributeEffectClass) return;
+
+	UMy_AuraAttributeSet* MyAS = Cast<UMy_AuraAttributeSet>(AttributeSet);
+	if (!MyAS) return;
+
+	//先记下当前值：移除 GE 的瞬间 MaxHealth/MaxMana 会掉回基础值，
+	//而 PreAttributeChange 里对 Max 变化的钳制会把当前 Health/Mana 一起压下去
+	const float PrevHealth = MyAS->GetHealth();
+	const float PrevMana = MyAS->GetMana();
+
+	//必须先移除旧的那一份：Secondary GE 的 modifier 是 Add，
+	//直接重复应用会叠加成双倍 Max
+	AbilitySystemComponent->RemoveActiveGameplayEffectBySourceEffect(
+		DefaultSecondAttributeEffectClass, AbilitySystemComponent, -1);
+
+	//重新应用，MMC 会在 ApplyGameplayEffectSpec 里按当前的 Level / Vigor / Intelligence 重新求值
+	ApplyEffectToSelf(DefaultSecondAttributeEffectClass, 1.0f);
+
+	//恢复当前值：升级补满到新 Max，加点则保持刷新前的量（只涨上限）
+	MyAS->SetHealth(bTopOff ? MyAS->GetMaxHealth() : FMath::Min(PrevHealth, MyAS->GetMaxHealth()));
+	MyAS->SetMana(bTopOff ? MyAS->GetMaxMana() : FMath::Min(PrevMana, MyAS->GetMaxMana()));
 }
 
 void AMyCharacter_Base::AddCharacterAbilities()

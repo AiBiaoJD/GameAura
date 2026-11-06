@@ -77,6 +77,12 @@ public:
 	FMy_DeathSignature OnDeath;
 	FMy_OnDamageSignature OnDamageDelegate;
 
+	/* 重新应用 Secondary GE，强制 MMC 重算 MaxHealth / MaxMana。
+	 * Infinite GE 里的 MMC 只在 ApplyGameplayEffectSpec 那一刻求值一次，
+	 * 之后 Level / Vigor / Intelligence 再变它也不会自己重算。
+	 * bTopOff 为 true 时顺手把 Health / Mana 补满（升级用，加点不补）。 */
+	void RefreshSecondaryAttributes(bool bTopOff);
+
 	UPROPERTY(EditAnywhere, Category = "My_Combat")
 	TArray<FMy_TaggedMontage> AttackMontage;
 

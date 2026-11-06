@@ -13359,3 +13359,248 @@ git config core.quotePath false     # 仓库级
 （本次停在 `Generated code is up to date.`，看着像 UHT 出错，其实是下一步 git 解析炸的）。
 
 ---
+
+## 七十七、属性的两输入一输出 + GE 生命周期全景（★ 理解 GAS 数值系统的地基）
+
+### 77.1 一个属性 = 两个输入，一个输出
+
+`FGameplayAttributeData` 里躺着两个 float，但它们不是「同一个值的两种写法」：
+
+| 字段 | 谁写它 | 用途 |
+|---|---|---|
+| `BaseValue` | `SetBaseAttributeValue`（Instant GE、手动 `SetX()`、属性复制） | 权威值 |
+| `CurrentValue` | **没人直接写**，由聚合器算出来 | 界面显示 |
+
+`CurrentValue` 不是被「修改」的，是被「算出来」的：
+
+```
+CurrentValue = 聚合器.EvaluateWithBase(BaseValue, 各通道修饰)
+```
+
+聚合器（`FAggregator`）是 **ASC 里每个属性各一个**，和「GE 列表」不是一个东西：
+
+- `FActiveGameplayEffectsContainer` 管「有哪些 GE 还活着」
+- `FAggregator` 管「这个属性身上挂了多少修饰」，内部按 `EGameplayModOp` 分通道
+
+```
+AddBase           [-50]
+MultiplyAdditive  []
+DivideAdditive    []
+MultiplyCompound  []
+AddFinal          []
+Override          []
+```
+
+### 77.2 为什么有两条写入路径
+
+**Instant GE 改 BaseValue，Infinite / HasDuration 挂聚合器。** 三个理由：
+
+1. **可撤销** —— Infinite GE 移除时要能恢复原值。直接改 Base 的话，移除时没人知道原来是多少。
+2. **可叠加、可分别移除** —— 三件装备各 +50，聚合器记三条，脱任意一件只摘一条。改 Base 的话只知道总数，分不清谁加的。
+3. **有优先级** —— `Override` 会无视前面所有计算直接覆盖，这个顺序只能在聚合器里统一执行。
+
+**Instant 为什么不挂聚合器**：它应用完就销毁，没有对象持有那条修饰。没有主人的修饰既撤不掉也管不了——这正是 77.7 那个 bug 的成因。
+
+用工资打比方：`BaseValue` 是底薪，聚合器是这个月的奖金扣款，`CurrentValue` 是到手。
+Instant 是转正调薪（永久），Infinite 是项目奖金（项目结束就摘掉，底薪没动）。
+
+### 77.3 Infinite 是「快照」，不是「活公式」（★ 最容易误解的一条）
+
+`Infinite` 只决定「GE 什么时候被移除」，**不决定「modifier 什么时候重算」**。
+
+GE 应用的那一刻，`CalculateModifierMagnitudes()` 把每个 modifier 算成一个 **float** 存进 Spec，
+再把这个 float 挂到聚合器上。**之后挂在聚合器上的是数字，不是公式。**
+
+```cpp
+// My_MMC_MaxHealth.cpp
+return 100.0f + 8.0f * (Vigor + 30.0f) + 10.0f * Level;
+```
+
+这个函数**只在 `ApplyGameplayEffectSpec` 时跑一次**。Vigor 从 10 变 20、Level 从 1 变 4，
+它都不会再跑。`RelevantAttributesToCapture.Add(VigorDef)` 只告诉 MMC「求值时去哪读」，
+**不会注册依赖**。
+
+**会重算的只有**：GE 被重新应用（新 Spec）、移除后重新加上、`SetActiveGameplayEffectLevel` 改 GE 等级。
+
+**不会重算的**：依赖属性变化、时间流逝、每帧 tick。
+
+**为什么这么设计**：依赖图容易成环，一个属性变化可能牵动几十个 Infinite GE，
+战斗中属性每帧都在变，遍历成本不可控。GAS 把重算责任交给使用者。
+
+**症状**（本章起因）：
+
+- 升级后 Level 变了，MaxHealth / MaxMana 不变 → 补满逻辑等不到 `PostAttributeChange(Max)`
+- 加点 Vigor / Intelligence，上限不变
+
+### 77.4 三种 DurationPolicy 的回调触发矩阵（★）
+
+| 回调 | Instant | HasDuration | Infinite |
+|---|---|---|---|
+| `PreGameplayEffectExecute` | 每个 modifier 一次 | 不会 | 不会 |
+| `PreAttributeChange` | 改 Base 时 | 不会 | 不会 |
+| `PostAttributeChange` | 值变时 | 值变时 | 值变时 |
+| `PostGameplayEffectExecute` | 每个 modifier 一次 | 不会 | 不会 |
+| modifier 落在 | BaseValue | 聚合器 | 聚合器 |
+| 怎么消失 | 执行完即销毁 | 到期自动摘 | 手动移除 |
+
+**三个必须记住的细节：**
+
+1. **`PostGameplayEffectExecute` 是「每个 modifier 一次」，不是「每个 GE 一次」**。
+   一个 GE 有 3 个 modifier 就调 3 次，所以里面必须用 `Data.EvaluatedData.Attribute` 判断是哪个属性。
+2. **`HasDuration` 配了 `Period > 0`（DOT / HOT）时，每个周期重新走一遍执行流程**，四个回调全触发。
+   这就是 `IncomingDamage` 存在的意义——DOT 的 modifier 不直接改 Health，而是每周期加一笔
+   `IncomingDamage`，再在 `PostGameplayEffectExecute` 里转成血量并清零。直接改 Health 会叠加。
+3. **客户端收到属性复制时 `PreAttributeChange` 会触发**（走 `SetBaseAttributeValueFromReplication` → 改 Base）。
+   所以同一个 Infinite GE，服务器只触发 `PostAttributeChange`，客户端两端都触发，**两端行为不对称**。
+
+**选回调对照：**
+
+| 想做的事 | 放哪个 |
+|---|---|
+| 属性钳制 | `PreAttributeChange` |
+| UI 刷新、补满、属性联动 | `PostAttributeChange` |
+| 伤害结算、经验、消耗 | `PostGameplayEffectExecute` |
+| 换自定义聚合器 | `OnAttributeAggregatorCreated` |
+| 监听「有 GE 生效」 | `OnGameplayEffectAppliedDelegateToSelf` |
+
+**只有 `PostAttributeChange` 能覆盖全部四种变化来源**（Instant GE / Infinite GE / 手动 Set / 客户端复制）。
+
+### 77.5 修复：RefreshSecondaryAttributes
+
+```cpp
+void AMyCharacter_Base::RefreshSecondaryAttributes(bool bTopOff)
+{
+	if (!HasAuthority() || !AbilitySystemComponent || !DefaultSecondAttributeEffectClass) return;
+
+	UMy_AuraAttributeSet* MyAS = Cast<UMy_AuraAttributeSet>(AttributeSet);
+	if (!MyAS) return;
+
+	//先记下当前值：移除 GE 的瞬间 Max 会掉回基础值，
+	//PreAttributeChange 里对 Max 变化的钳制会把当前 Health/Mana 一起压下去
+	const float PrevHealth = MyAS->GetHealth();
+	const float PrevMana = MyAS->GetMana();
+
+	//先移除：modifier 是 Add，直接重复应用会叠加成双倍
+	AbilitySystemComponent->RemoveActiveGameplayEffectBySourceEffect(
+		DefaultSecondAttributeEffectClass, AbilitySystemComponent, -1);
+
+	//重新应用，MMC 按当前的 Level / Vigor / Intelligence 重新求值
+	ApplyEffectToSelf(DefaultSecondAttributeEffectClass, 1.0f);
+
+	MyAS->SetHealth(bTopOff ? MyAS->GetMaxHealth() : FMath::Min(PrevHealth, MyAS->GetMaxHealth()));
+	MyAS->SetMana(bTopOff ? MyAS->GetMaxMana() : FMath::Min(PrevMana, MyAS->GetMaxMana()));
+}
+```
+
+**三个必须遵守的点：**
+
+1. **先移除再应用** —— modifier 是 `Add`，直接重复应用会叠加。全是 `Override` 时可以省，
+   但留着更安全（以后往同一个 GE 加 Add 类型 modifier 不会踩坑）。
+2. **先记 Prev 再改** —— 移除瞬间 Max 掉回基础值，`PreAttributeChange` 里的
+   `SetHealth(Min(GetHealth(), NewValue))` 会把当前血量一起压下去。不还原的话加点一次血条掉到底。
+3. **延迟一帧执行** —— 调用点都在 GE 执行栈内，栈内增删 GE 会撞聚合器重入，还可能递归。
+   用 `SetTimerForNextTick` 推到帧末。
+
+**触发点（两处）：**
+
+```cpp
+// PostAttributeChange：四个 Primary 属性变了就刷（覆盖 Instant 和 Infinite 两种来源）
+if (Attribute == GetStrengthAttribute() || Attribute == GetIntelligenceAttribute() ||
+	Attribute == GetResilienceAttribute() || Attribute == GetVIgorAttribute())
+{
+	if (AMyCharacter_Base* Char = Cast<AMyCharacter_Base>(GetOwningActor()))
+	{
+		if (UWorld* World = GetWorld())
+		{
+			World->GetTimerManager().SetTimerForNextTick(
+				FTimerDelegate::CreateUObject(Char, &AMyCharacter_Base::RefreshSecondaryAttributes, false));
+		}
+	}
+}
+```
+
+```cpp
+// HandleIncomingXP：升级后刷，顺便补满（bTopOff = true）
+IMy_PlayerInterface::Execute_LevelUp(Props.SourceCharacter);
+// 同样走 SetTimerForNextTick，因为此刻还在 XP GE 的执行栈里
+```
+
+**为什么放 `PostAttributeChange` 而不是 `PostGameplayEffectExecute`**：
+加点走 `GE_EventBaseEffect`（Instant），两个都能跑；但以后装备 / buff 改 Primary 是 Infinite，
+`PostGameplayEffectExecute` 一次都不会来。
+
+### 77.6 加点链路（别以为没用 GE）
+
+```
+UI 点加号
+  → My_WBP_AttributePointRow
+    → ASC->UpgradeAttribute(Tag)
+      → ServerUpgradeAttribute_Implementation
+        → SendGameplayEventToActor(Tag, Magnitude=1)
+          → My_GA_ListenForEvent（被动技能，WaitGameplayEvent 监听 My_Attribute）
+            → BP_ApplyGameplayEffectSpecToSelf(My_GE_EventBaseEffect)
+              → Instant GE，SetByCaller 决定改哪个属性
+                → Vigor.BaseValue +1
+```
+
+`My_GE_EventBaseEffect` 一个 GE 应付四种 Primary 属性，靠 `SetByCaller` 的 Tag 动态指定目标。
+
+### 77.7 坑：CommitAbility 放在预测窗口外 → 孤儿修饰
+
+**现象**：Listen Server 2 人，客户端放奥术碎片扣 3 倍蓝（430 → 280），服务器正常，等 3 秒不修正。
+
+**根因链**：
+
+1. `CommitAbility` 放在 `WaitGameplayEvent` 的 `EventReceived` 后面，距技能激活已过 0.5 秒
+2. 预测键（`FPredictionKey`）在服务器 ack 后已作废
+3. `ApplyCost` 既非权威又无有效键 → 落到 fallback：把消耗挂成聚合器修饰
+4. 这个修饰没有 GE 持有、没有键跟踪 → 服务器不认、客户端不回滚
+
+**日志特征（决定性）**：
+
+```
+客户端：[ManaChg] 三条，[ManaProbe] 零条
+服务器：[ManaChg] 一条，[ManaProbe] 一条
+```
+
+客户端没有 `PostGameplayEffectExecute` 说明它没走 GE 执行路径，挂的是聚合器。
+
+**修复**：`CommitAbility` 挪回 `WaitInputPress` 的 `On Press` 后面，
+`Return Value` 接 `Branch`，false 走 `End Ability`。
+
+### 77.8 坑：OnRep 里无条件 Set 会把聚合器修饰固化进 Base
+
+```cpp
+GAMEPLAYATTRIBUTE_REPNOTIFY(UMy_AuraAttributeSet, Mana, OldMana);
+const_cast<UMy_AuraAttributeSet*>(this)->SetMana(FMath::Min(GetMana(), GetMaxMana()));
+```
+
+`GetMana()` 读的是 `CurrentValue`（含聚合器修饰），`SetMana()` 写的是 `BaseValue`。
+聚合器上有 -50 时，这句会把「430-50=380」写进 Base，**等于把临时修饰固化成了永久扣减**。
+
+修复：只在真的超上限时才写。
+
+```cpp
+GAMEPLAYATTRIBUTE_REPNOTIFY(UMy_AuraAttributeSet, Mana, OldMana);
+if (GetMana() > GetMaxMana())
+{
+	const_cast<UMy_AuraAttributeSet*>(this)->SetMana(GetMaxMana());
+}
+```
+
+`OnRep_Health` 是同样的写法，有相同隐患。
+
+### 77.9 Curve Table 三种插值模式
+
+| 模式 | 行为 | 用在哪 |
+|---|---|---|
+| `Constant` | 阶梯，保持左值 | 数量类（火球个数） |
+| `Linear` | 直线 | 伤害、蓝耗、冷却 |
+| `Cubic` | 三次样条，经过关键帧且切线连续，会超出关键帧范围 | 很少用在数值表 |
+
+只在**关键帧之间**采样才有区别；踩在关键帧上三者结果相同。
+`FScalableFloat::GetValueAtLevel` 传整数等级，所以每级都有键时三者无差别。
+
+新建对话框**默认选中 Cubic**，只问一次，作用是把所有行的插值模式设成默认值。
+
+---
