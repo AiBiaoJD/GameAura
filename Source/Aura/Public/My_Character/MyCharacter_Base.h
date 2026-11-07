@@ -37,10 +37,10 @@ public:
 	 * 且 ASC 的 minimal 复制 Tag 带 COND_SkipOwner —— owner 自己收不到。
 	 * 所以用复制的 bool 让 owner 客户端也能知道状态（AnimBP 读这个，不读 Tag）
 	*/
-	UPROPERTY(ReplicatedUsing = OnRep_Stunned, BlueprintReadOnly, Category = "My_Combat")
+	UPROPERTY(ReplicatedUsing = OnRep_Stunned, BlueprintReadOnly, Category = "My_Character|Common|Combat")
 	bool bIsStunned = false;
 
-	UPROPERTY(ReplicatedUsing = OnRep_Burned, BlueprintReadOnly, Category = "My_Combat")
+	UPROPERTY(ReplicatedUsing = OnRep_Burned, BlueprintReadOnly, Category = "My_Character|Common|Combat")
 	bool bIsBurned = false;
 
 	UFUNCTION()
@@ -83,30 +83,30 @@ public:
 	 * bTopOff 为 true 时顺手把 Health / Mana 补满（升级用，加点不补）。 */
 	void RefreshSecondaryAttributes(bool bTopOff);
 
-	UPROPERTY(EditAnywhere, Category = "My_Combat")
+	UPROPERTY(EditAnywhere, Category = "My_Character|Common|Combat", meta = (ToolTip = "【通用】近战连击列表：Tag → 蒙太奇 + 插槽。玩家和敌人共用。"))
 	TArray<FMy_TaggedMontage> AttackMontage;
 
 protected:
 	virtual void BeginPlay() override;
 
 	//创建武器
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "My_Combat")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "My_Character|Common|Combat", meta = (ToolTip = "【通用】武器骨骼网格。玩家和敌人都用。"))
 	TObjectPtr<USkeletalMeshComponent> Weapon;
-	UPROPERTY(EditAnywhere, Category = "My_Combat")
+	UPROPERTY(EditAnywhere, Category = "My_Character|Common|Combat", meta = (ToolTip = "【通用】武器尖端插槽名。近战判定点和焰矢发射点都读它。"))
 	FName WeaponTipSockName;
 
-	UPROPERTY(EditAnywhere, Category = "My_Combat")
+	UPROPERTY(EditAnywhere, Category = "My_Character|Common|Combat", meta = (ToolTip = "【通用】左手插槽，施法动画用。"))
 	FName LeftHandSockName;
 
-	UPROPERTY(EditAnywhere, Category = "My_Combat")
+	UPROPERTY(EditAnywhere, Category = "My_Character|Common|Combat", meta = (ToolTip = "【通用】右手插槽，施法动画用。"))
 	FName RightHandSockName;
 
-	UPROPERTY(EditAnywhere, Category = "My_Combat")
+	UPROPERTY(EditAnywhere, Category = "My_Character|Common|Combat", meta = (ToolTip = "【通用】尾巴插槽，施法动画用。"))
 	FName TailSockName;
 
 	bool bDead = false;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "My_Combat")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "My_Character|Common|Combat", meta = (ToolTip = "【通用】基础移动速度。"))
 	float BaseWalkSpeed = 600.f;
 	/*
 	 * GAS
@@ -119,14 +119,14 @@ protected:
 	TObjectPtr<UAttributeSet> AttributeSet;
 
 	//Effect 初始化相关属性
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Attribute")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "My_Character|Common|Attribute", meta = (ToolTip = "【通用】初始化主属性（力量/智力/韧性/活力）。Aura 用 My_GE_PrimaryAttribute_Aura；敌人走 CharacterClassInfo 里对应职业的 GE。"))
 	TSubclassOf<UGameplayEffect> DefaultPrimaryAttributeEffectClass;
 
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Attribute")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "My_Character|Common|Attribute", meta = (ToolTip = "【通用】初始化次属性（护甲/暴击/抗性/MaxHealth/MaxMana）。"))
 	TSubclassOf<UGameplayEffect> DefaultSecondAttributeEffectClass;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Attribute")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "My_Character|Common|Attribute", meta = (ToolTip = "【通用】把当前 Health/Mana 拉满到 Max。玩家和敌人可以共用同一个资产。"))
 	TSubclassOf<UGameplayEffect> InitVitalAttributeEffectClass;
 
 	void ApplyEffectToSelf(TSubclassOf<UGameplayEffect> GamePlayEffect, float Level) const;
@@ -145,22 +145,22 @@ protected:
 	UFUNCTION(BlueprintImplementableEvent)
 	void StartWeaponDissolveTimeline(UMaterialInstanceDynamic* MaterialInstanceDynamic);
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "My_Character|Common|Dissolve", meta = (ToolTip = "【通用】身体死亡溶解材质。"))
 	TObjectPtr<UMaterialInstance> DissolveMaterialInstance;
-	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "My_Character|Common|Dissolve", meta = (ToolTip = "【通用】武器死亡溶解材质。"))
 	TObjectPtr<UMaterialInstance> WeaponDissolveMaterialInstance;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "My_Combat")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "My_Character|Common|Combat", meta = (ToolTip = "【通用】近战命中时播放的血花特效。"))
 	UNiagaraSystem* MeleeBloodEffect;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "My_Combat")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "My_Character|Common|Combat", meta = (ToolTip = "【通用】死亡音效。"))
 	USoundBase* DeathSound;
 
 	/* Minions */
 	int32 MinionCount = 0;
 
 	/* Character Class*/
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Character Class Default")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "My_Character|Common|Class", meta = (ToolTip = "【通用】角色职业。玩家影响 UI 图标；敌人在 CharacterClassInfo 里决定用哪套属性 GE。"))
 	EMy_CharacterClass CharacterClass = EMy_CharacterClass::Warrior;
 
 	/* Debuff*/
@@ -184,12 +184,12 @@ private:
 	/* 这些变量刚好没被Enemy使用,只是给Aura的
 	 * Enemy的设置在UMy_CharacterClassInfo这里DataAsset 
 	 */
-	UPROPERTY(EditAnywhere, Category = "My_Abilities")
+	UPROPERTY(EditAnywhere, Category = "My_Character|Aura|Abilities", meta = (ToolTip = "【仅玩家 Aura】进关卡时自动授予的技能。敌人走 My_CharacterClassInfo 的 StartupAbilities，不读这里。"))
 	TArray<TSubclassOf<UGameplayAbility>> StartupAbility;
 
-	UPROPERTY(EditAnywhere, Category = "My_Abilities")
+	UPROPERTY(EditAnywhere, Category = "My_Character|Aura|Abilities", meta = (ToolTip = "【仅玩家 Aura】开局直授的被动技能。"))
 	TArray<TSubclassOf<UGameplayAbility>> StartupPassiveAbility;
 
-	UPROPERTY(EditAnywhere, Category = "My_Combat")
+	UPROPERTY(EditAnywhere, Category = "My_Character|Common|Combat", meta = (ToolTip = "【通用】受击蒙太奇。敌人必须配；玩家可以留空。"))
 	TObjectPtr<UAnimMontage> HitReactMontage;
 };

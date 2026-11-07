@@ -13604,3 +13604,190 @@ if (GetMana() > GetMaxMana())
 新建对话框**默认选中 Cubic**，只问一次，作用是把所有行的插值模式设成默认值。
 
 ---
+## 七十八、Details 面板的组织：分类、搜索与归属提示（★ 工程规范篇）
+
+这一章不涉及 GAS 运行时，全是「怎么让编辑器好用」。项目越往后越大，
+找不到属性、改错属性会比写错逻辑更费时间。
+
+### 78.1 Category 是树，不是标签
+
+`Category = "A|B|C"` 会被 UE 渲染成三级嵌套：`A` 根 → `B` 子块 → `C` 孙块。
+
+技能侧一直是这个写法：
+
+```cpp
+UPROPERTY(EditDefaultsOnly, Category = "My_Ability|Common|Damage")
+FScalableFloat Damage;
+```
+
+角色侧原来散着 `Attribute` / `My_Combat` / `My_Abilities` / `Character Class Default`
+四个互不相干的顶层分类，现在统一成：
+
+```
+My_Character|Common|Combat     12 项
+My_Character|Common|Attribute   3 项
+My_Character|Common|Class       1 项
+My_Character|Common|Dissolve    2 项
+My_Character|Aura|Abilities     2 项   ← 仅玩家
+My_Character|Enemy|Combat       4 项   ← 仅敌人
+My_Character|Enemy|Class        1 项
+My_Character|Enemy|AI           1 项
+```
+
+**Common / Aura / Enemy 这一层是为了「别改错」。** 原来 `StartupAbility` 和
+`LifeSpan` 混在同一个分类里，前者只对玩家生效、后者只对敌人生效，肉眼分不出来。
+
+归属是查代码定的，不是猜的：`AddCharacterAbilities()` 只在
+`Aura_Character.cpp:56` 调用，所以 `StartupAbility` / `StartupPassiveAbility` 是玩家专属；
+敌人走 `My_CharacterClassInfo` 那套 DataAsset。
+
+### 78.2 ★ 坑一：搜索匹配「原始名」，不是显示名
+
+`Category = "My_Character|Combat"` 在面板上显示成 **My Character → Combat**
+（UE 把 `_` 换成空格显示），但**搜索框里必须打 `My_Character`（带下划线）**。
+
+照显示名打 `My Character`（带空格）→ 一个都匹配不到 → 面板只剩组件块裸露着，
+看起来像「分类没生效」。
+
+所以全项目统一用下划线，不要混用空格：
+
+| 命名 | 例子 |
+|---|---|
+| 技能 | `My_Ability\|Common\|Damage` |
+| GAS 其他 | `My_GAS\|Attributes` |
+| 工具类 | `My_Input` / `My_Impact` / `My_Mouse` |
+| 角色 | `My_Character\|Common\|Combat` |
+
+### 78.3 ★ 坑二：组件子对象不能设 Category
+
+给 `UMy_DebuffNiagaraComponent::DebuffTag` 加 `Category = "My_Character|Debuff Niagara"`，
+Details 面板里这个分类会**重复 N+1 份**：
+
+| 分类 | 组件数 | 重复块数 |
+|---|---|---|
+| Debuff Niagara | 2（Burn / Stun） | 3 |
+| Passive Niagara | 3（Halo / LifeSiphon / ManaSiphon） | 4 |
+
+原因是 UE 把「角色本体」和「每个组件子对象」当成**独立的 object root**，
+各建一个同名分类节点。
+
+**结论：`Category` 只用在普通 UPROPERTY 上。** 组件指针、组件内部的属性都别碰，
+让它们保持「一个组件类一块」的原生分组。
+
+### 78.4 ToolTip meta：把「归属」写在属性上
+
+分类只解决「在哪」，`meta = (ToolTip = "...")` 解决「这是什么」：
+
+```cpp
+UPROPERTY(EditAnywhere, Category = "My_Character|Aura|Abilities",
+          meta = (ToolTip = "【仅玩家 Aura】进关卡时自动授予的技能。敌人走 My_CharacterClassInfo 的 StartupAbilities，不读这里。"))
+TArray<TSubclassOf<UGameplayAbility>> StartupAbility;
+```
+
+前缀统一三种：**【通用】/【仅玩家 Aura】/【仅敌人】**，鼠标悬停一眼看出该不该动。
+
+### 78.5 一个资产，两个入口：`My_GE_Vitale_Common`
+
+这个 GE 只有两条 modifier，都是 `Override` + `AttributeBased(Target)`：
+
+| Attribute | Magnitude | Op |
+|---|---|---|
+| `Health` | `MaxHealth` | `Override` |
+| `Mana` | `MaxMana` | `Override` |
+
+`DurationPolicy` 没序列化 = 默认 Instant。**作用就是把血蓝拉满。**
+
+它被两处引用，走两条完全不同的链：
+
+```
+玩家：My_BP_Aura → InitVitalAttributeEffectClass
+      PossessedBy / OnRep_PlayerState → My_InitAbilityActorInfo
+        → InitializeDefaultAttribute() → ApplyEffectToSelf(...)
+
+敌人：My_DA_CharacterClassInfo → VitalAttributes（三个职业共用）
+      AEnemy_Characte::BeginPlay → InitializeDefaultAttribute()
+        → GiveDefaultAttributes() → MakeOutgoingSpec(VitalAttributes)
+```
+
+所以它本来就是通用资产，原来叫 `My_GE_Vitale_Enemy` 纯属建在了 `Enemy/` 目录下。
+**资产命名要跟着「谁在用」走，不是跟着「文件放在哪」走。**
+
+### 78.6 FireBlast：多发投射物 + 回程 + 爆炸
+
+和 FireBolt（单发直线、命中即毁）不同，FireBlast 是个 AOE：
+
+```
+SpawnFireBalls()
+  EvenlySpacedRotators(Forward, Up, 360, NumFireBalls)   // 360° 均分
+  → SpawnActorDeferred 生成 N 个 AAuraFireBall
+      DamageEffectParams     ← 沿途直接伤害
+      ExplosionDamageParams  ← 回到身边时的径向伤害
+      ReturnToActor          ← 回程追踪目标
+```
+
+`AAuraFireBall : AAuraProjectile` 有两处关键改写：
+
+- **`OnSphereOverlap` 不再 `Destroy()`** —— 基类命中即自毁，火球只 `ApplyDamageEffect`，
+  所以一个火球能连续打穿多个敌人
+- **`OnHit` 改成执行 `GameplayCue_FireBlast`**，播爆炸特效并停掉循环音效
+
+位移和爆炸时机全在 `BP_FireBall` 的两条 Timeline 里
+（`OutgoingTimeline` / `ReturningTimeline`），C++ 只负责生成和伤害参数。
+
+### 78.7 AbilityInfo 里的 `AbilityClass` 为什么必须有
+
+`FMy_AuraAbilityInfo` 里除了 Icon / LevelUpRequirement，还有一个
+`TSubclassOf<UGameplayAbility> AbilityClass`。它有两个用途，**都不只是为了 UI**：
+
+**① 授予技能（主要用途）**
+
+```cpp
+// My_AuraAbilitySystemComponent.cpp:414 UpdateAbilityStatuses
+if (!info.AbilityTag.IsValid() || !info.AbilityClass || Level < info.LevelUpRequirement) continue;
+if (GetSpecFromAbilityTag(info.AbilityTag) == nullptr)
+{
+	FGameplayAbilitySpec AbilitySpec = FGameplayAbilitySpec(info.AbilityClass, 1);
+	AbilitySpec.DynamicAbilityTags.AddTag(My_Abilities_Status_Eligible);
+	GiveAbility(AbilitySpec);        // ← 技能此刻才真正进入 ASC
+}
+```
+
+不填 → 直接 `continue` → 技能永远不授予。
+
+**② UI 兜底描述**
+
+Spec 还没复制到客户端时（刚进关，或 Client RPC 先于技能数组到达），
+`GetSpecFromAbilityTag` 返回 nullptr，只能用 `AbilityClass->GetDefaultObject()`
+取 CDO 调 `GetDescription()`。
+
+关键事实（`GameplayAbilitySpec.h:184` 引擎注释）：
+
+```cpp
+/** Ability of the spec (Always the CDO. ...) */
+TObjectPtr<UGameplayAbility> Ability;
+```
+
+**`Spec->Ability` 永远是 CDO。** 所以「用 Spec 取」和「用 AbilityClass 取 CDO」
+拿到的是同一个对象，结果必然一致——兜底分支不是另一套算法，只是另一条路径。
+
+顺带一个反证：`GetSpecFromAbilityTag` 里是 `Spec.Ability.Get()->AbilityTags`
+直接解引用、没有判空。这说明「只要 spec 在数组里，`Ability` 就一定是有效 CDO」，
+所以返回 nullptr 只可能是「数组里根本没这个技能」。
+
+### 78.8 为什么 UI 必须知道是哪个 GA
+
+因为**描述文本是 GA 算出来的，不是存在 DataAsset 里的**：
+
+```cpp
+const int32 ScaledDamage = Damage.GetValueAtLevel(Level);   // 读 CT_Damage
+const float ManaCost = FMath::Abs(GetManaCost(Level));      // 读 GE_Cost_*
+const float Cooldown = GetCooldown(Level);                  // 读 GE_CoolDown_*
+```
+
+这些数字只有 GA 知道，而且**随等级变化**，写成静态 `FText` 就死了。
+
+一句话：**`AbilityInfo` 管「是什么、长什么样、几级解锁」；
+GA 管「打多少、耗多少、怎么放」。**
+
+---
+

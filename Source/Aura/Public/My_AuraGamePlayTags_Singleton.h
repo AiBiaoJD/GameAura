@@ -93,6 +93,7 @@ public:
 
 	// 主动技能
 	FGameplayTag My_Abilities_Fire_FireBolt;
+	FGameplayTag My_Abilities_Fire_FireBlast;
 	FGameplayTag My_Abilities_Lighting_Electrocute;
 	FGameplayTag My_Abilities_Arcane_ArcaneShards;
 
@@ -134,6 +135,7 @@ public:
 	// 与技能一一对应，GE_Cooldown_XXX 用 SetByCaller 读它
 
 	FGameplayTag My_CoolDown_Fire_FireBolt;
+	FGameplayTag My_CoolDown_Fire_FireBlast;
 	FGameplayTag My_CoolDown_Arcane_ArcaneShards;
 
 

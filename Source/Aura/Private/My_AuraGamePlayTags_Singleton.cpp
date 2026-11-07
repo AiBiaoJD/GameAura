@@ -205,6 +205,11 @@ void FMy_AuraGameplayTags::InitializeNativeGameplayTags()
 		FString("FireBolt Ability Tag")
 	);
 
+	GameplayTagsInstance.My_Abilities_Fire_FireBlast = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("My_Abilities.Fire.FireBlast"),
+		FString("FireBlast Ability Tag")
+	);
+
 	GameplayTagsInstance.My_Abilities_Lighting_Electrocute = UGameplayTagsManager::Get().AddNativeGameplayTag(
 		FName("My_Abilities.Lighting.Electrocute"),
 		FString("Electrocute  Ability Tag")
@@ -278,6 +283,11 @@ void FMy_AuraGameplayTags::InitializeNativeGameplayTags()
 	GameplayTagsInstance.My_CoolDown_Fire_FireBolt = UGameplayTagsManager::Get().AddNativeGameplayTag(
 		FName("My_CoolDown.Fire.FireBolt"),
 		FString("FireBolt CoolDown Tag")
+	);
+
+	GameplayTagsInstance.My_CoolDown_Fire_FireBlast = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("My_CoolDown.Fire.FireBlast"),
+		FString("FireBlast CoolDown Tag")
 	);
 
 	GameplayTagsInstance.My_CoolDown_Arcane_ArcaneShards = UGameplayTagsManager::Get().AddNativeGameplayTag(

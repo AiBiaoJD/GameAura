@@ -49,15 +49,15 @@ public:
 	// 客户端靠复制的 bIsStunned 触发：本地停掉正在播的蒙太奇
 	virtual void OnRep_Stunned() override;
 
-	UPROPERTY(BlueprintReadOnly, Category = "My_Combat")
+	UPROPERTY(BlueprintReadOnly, Category = "My_Character|Enemy|Combat", meta = (ToolTip = "【仅敌人】运行时受击状态，不用手改。"))
 	bool bHitReacting = false;
 
 
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "My_Combat")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "My_Character|Enemy|Combat", meta = (ToolTip = "【仅敌人】死亡后尸体存在时长（秒）。"))
 	float LifeSpan = 5.f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "My_Combat")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "My_Character|Enemy|Combat", meta = (ToolTip = "【仅敌人】AI 判定「已进入攻击范围」的距离。"))
 	float CombatDistance = 100.f;
 
 protected:
@@ -73,7 +73,7 @@ protected:
 
 
 	//只关心检查敌人Level在服务器上,不需要Replied
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Character Class Default")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "My_Character|Enemy|Class", meta = (ToolTip = "【仅敌人】敌人等级。技能等级和属性曲线都按它缩放。"))
 	int32 Level = 1;
 
 
@@ -87,12 +87,12 @@ protected:
 	/*
 	 * AI
 	 */
-	UPROPERTY(EditAnywhere, Category = "My_AI")
+	UPROPERTY(EditAnywhere, Category = "My_Character|Enemy|AI", meta = (ToolTip = "【仅敌人】PossessedBy 时启动的行为树。"))
 	TObjectPtr<UBehaviorTree> BehaviorTree;
 
 	UPROPERTY()
 	TObjectPtr<AMy_AuraAIController> AuraAIController;
 
-	UPROPERTY(BlueprintReadWrite, Category = "My_Combat")
+	UPROPERTY(BlueprintReadWrite, Category = "My_Character|Enemy|Combat", meta = (ToolTip = "【仅敌人】运行时记录的战斗目标，不用手改。"))
 	TObjectPtr<AActor> CombatTarget;
 };
