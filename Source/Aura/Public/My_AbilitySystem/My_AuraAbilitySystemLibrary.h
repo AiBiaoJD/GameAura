@@ -144,9 +144,17 @@ public:
 	static FGameplayEffectContextHandle ApplyDamageEffect(const FMy_DamageEffectParams& Params);
 
 
-	// 均匀间隔的一组旋转朝向
+	/*
+	 * 均匀间隔的一组旋转朝向
+	 *
+	 * bClosedLoop 决定首尾是否相接，直接决定传 360 会不会出重复点：
+	 *   false（默认，扇形）：区间 [-θ/2, +θ/2] 内均分 Count 个点，步长 θ/(Count-1)
+	 *                        首尾是两个独立点，FireBolt 这种 90° 散射用这个
+	 *   true （整圆）：     步长 θ/Count，绕一圈回到起点前就停，首尾不重叠
+	 *                        360° 必须用这个，否则 -180 和 +180 是同一个方向
+	 */
 	UFUNCTION(BlueprintCallable, Category="Aura|Math")
-	static TArray<FRotator> GetEvenSpreadRotators(const FVector& Forward, const FVector& RotateAxis, float TotalSpreadAngle, int32 Count);
+	static TArray<FRotator> GetEvenSpreadRotators(const FVector& Forward, const FVector& RotateAxis, float TotalSpreadAngle, int32 Count, bool bClosedLoop = false);
 
 	// 经过旋转得到的均匀方向向量
 	UFUNCTION(BlueprintCallable, Category="Aura|Math")

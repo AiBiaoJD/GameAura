@@ -16,6 +16,29 @@ AMy_ProjectileActor::AMy_ProjectileActor()
 	PrimaryActorTick.bCanEverTick = false;
 	bReplicates = true;
 
+	/*
+	 * 打开"移动复制"。放在构造函数而不是 BeginPlay，有两个原因：
+	 *   1. CDO 里就是 true，蓝图 Details 的 Replicate Movement 勾选能如实反映。
+	 *      之前写在 BeginPlay，等于把蓝图勾选架空了 —— 勾不勾运行时都是 true。
+	 *   2. 复制从 Actor 出生那一刻就生效，不用等 BeginPlay 才打开。
+	 *
+	 * UProjectileMovementComponent 一个属性都不复制（bIsHomingProjectile /
+	 * HomingTargetComponent / HomingAccelerationMagnitude 全是纯本地的），
+	 * 而追踪只在服务器的 SpawnProjectiles 里设置（那边开头就 HasAuthority 返回）。
+	 *
+	 * 打开这个之后，服务器算出来的位置和速度会随 FRepMovement 复制到客户端
+	 * （引擎 Actor.cpp: DOREPLIFETIME_ACTIVE_OVERRIDE_FAST(AActor, ReplicatedMovement, ...)）。
+	 * 客户端靠 AActor::PostNetReceiveVelocity 把 LinearVelocity 塞回
+	 * ProjectileMovement->Velocity，自己积分就行 —— 不需要知道追踪目标是谁。
+	 *
+	 * 注意：bReplicateMovement 是 AActor 的 private 位域，子类不能直接赋值。
+	 * 这里用非虚的 SetReplicatingMovement 而不是 SetReplicateMovement ——
+	 * 后者在 UE5.2 是 virtual（Actor.h:588），构造函数里调会触发
+	 * "在编译时解析了对构造函数内虚拟函数的调用"警告；
+	 * 而 SetReplicatingMovement 只写位、没有副作用，正是为这种场景准备的。
+	 */
+	SetReplicatingMovement(true);
+
 	Sphere = CreateDefaultSubobject<USphereComponent>("Sphere");
 	SetRootComponent(Sphere);
 	Sphere->SetCollisionObjectType(ECC_MyProjectile);
@@ -37,19 +60,6 @@ void AMy_ProjectileActor::BeginPlay()
 	Super::BeginPlay();
 
 	SetLifeSpan(LifeSpan);
-
-	/*
-	 * ★ 打开"移动复制"。
-	 *
-	 * UProjectileMovementComponent 一个属性都不复制（bIsHomingProjectile /
-	 * HomingTargetComponent / HomingAccelerationMagnitude 全是纯本地的），
-	 * 而追踪只在服务器的 SpawnProjectiles 里设置（那边开头就 HasAuthority 返回）。
-	 *
-	 * 打开这个之后，服务器算出来的位置会随 FRepMovement 复制到客户端
-	 * （引擎 Actor.cpp: DOREPLIFETIME_ACTIVE_OVERRIDE_FAST(AActor, ReplicatedMovement, ...)），
-	 * 客户端跟着服务器的轨迹走即可 —— 不需要自己知道追踪目标是谁。
-	 */
-	SetReplicateMovement(true);
 
 	Sphere->OnComponentBeginOverlap.AddDynamic(this, &AMy_ProjectileActor::OnSphereOverlap);
 	LoopingSoundComponent = UGameplayStatics::SpawnSoundAttached(LoopingSound, GetRootComponent());

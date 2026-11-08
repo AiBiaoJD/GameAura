@@ -13791,3 +13791,259 @@ GA 管「打多少、耗多少、怎么放」。**
 
 ---
 
+## 七十九、FireBlast 火球：Timeline 驱动位移 + 网络复制全链路（★）
+
+这一章是「火球发射」从零到能在联机下正常显示的全过程。核心不是代码量，
+而是三个容易反复踩的判断：**位移由谁驱动、数据谁该复制、复制什么时候到**。
+
+### 79.1 C++ 与蓝图的分工
+
+| 层 | 负责 |
+|---|---|
+| `UMy_AuraFireBlast::SpawnFireBalls` | 算 12 个方向、生成火球、填参数（伤害 / 爆炸 / 回程目标 / 最远点） |
+| `AMy_FireBall` | 数据载体 + 碰撞判定；暴露两个事件让蓝图开播 |
+| `My_BP_FireBall` | 两条 Timeline + `VLerp` + 距离判定 + 爆炸特效 |
+
+★ `StartOutgoingTimeline` / `StartReturningTimeline` 是 `BlueprintImplementableEvent`，
+**只能由 C++ 调用，蓝图里只能"实现"不能"自调用"**。所以
+`AMy_FireBall::BeginPlay` 里必须有一行调用，否则蓝图那个红色 Event 节点永远不执行。
+这是新手最容易卡住的点：节点明明接好了，就是不跑。
+
+### 79.2 360° 均分：`Count - 1` 是扇形语义，不是整圆
+
+原来的 `GetEvenSpreadRotators`：
+
+```cpp
+CurrentAngle = -TotalSpread / 2.f + TotalSpread * (float)i / (Count - 1);
+```
+
+传 `TotalSpread = 360` 时，`i = 0` 得 `-180`，`i = 11` 得 `+180`。
+`Forward.RotateAngleAxis(-180, Up)` 和 `RotateAngleAxis(+180, Up)` 转出来是
+**同一个方向**（完全反向）—— 12 颗球只有 11 个方向，身后那两颗完全重叠。
+
+根因是语义错配：
+
+- `Count - 1` = 「N 个点之间有 N-1 段」→ **扇形**（FireBolt 的 90° 散射必须用它）
+- 整圆是 **N 段**，分母要用 N
+
+修法是加一个开关，默认保持扇形行为，FireBolt 的调用一行都不用改：
+
+```cpp
+const float Divisor = bClosedLoop ? (float)Count : (float)(Count - 1);
+```
+
+教程原版 `EvenlySpacedRotators` 也是 `NumRotators - 1`，只是作者从没传过 360，
+所以这个坑一直没暴露。
+
+### 79.3 Timeline 能画弧线，但改曲线形状不能
+
+`VLerp(A, B, Alpha)` 是两点之间的**直线**插值。Timeline 的 Float 曲线只控制
+「沿这条直线走到哪儿」（进度），**不控制路径形状**：
+
+- 曲线 K 成 `0 → 1 → 0` → 火球沿直线走一半又缩回去，不是弧线
+- 曲线 K 成 S 形 → 只改速度（起步慢、中间快、到点慢），路径仍是直线
+
+要弧线必须额外叠一个垂直偏移：
+
+```cpp
+const FVector Base = FMath::Lerp(Initial, Apex, Alpha);
+const FVector Arc  = FVector(0, 0, FMath::Sin(Alpha * PI) * ArcHeight);
+SetActorLocation(Base + Arc);
+```
+
+或者加第二条 Float 轨道 K 成 `0 → 1 → 0` 当高度用，让美术能在编辑器里调。
+
+### 79.4 一帧之内的顺序，决定了「谁的位置算数」
+
+```
+TickDispatch（帧首，收包并应用）→ Actor Tick（Timeline 写位置）→ TickFlush（帧尾，服务器打包发送）
+```
+
+- `TickDispatch`：客户端从 socket 收数据、反序列化 bunch、把属性 / RPC /
+  `ReplicatedMovement` 写到 Actor 上
+- `TickFlush`：服务器跑 `ServerReplicateActors()`，决定这帧给谁发什么，然后写 socket
+
+**复制的位置在帧首落地，Timeline 在帧中写，渲染在帧尾。**
+所以本地写入永远赢——这就是为什么给 Timeline 驱动的 Actor 打开
+`bReplicateMovement` 也没用：发来的位置刚写进来就被覆盖了。
+
+### 79.5 FireBolt 为什么只靠 `bReplicateMovement` 就够
+
+关键在 `FRepMovement` 里带了 **`LinearVelocity`**，而引擎收到后会把它分发给所有运动组件：
+
+```cpp
+// AActor::OnRep_ReplicatedMovement() 内部
+PostNetReceiveVelocity(ReplicatedMovement.LinearVelocity);
+
+// AActor::PostNetReceiveVelocity()
+TArray<UMovementComponent*> Components;
+GetComponents<UMovementComponent>(Components);
+for (UMovementComponent* Comp : Components)
+{
+    Comp->Velocity = NewVelocity;    // 直接塞给组件
+}
+```
+
+链路：
+
+```
+服务器算出真实速度（含追踪拐弯）
+  → FRepMovement.LinearVelocity
+  → 客户端 PostNetReceiveVelocity() 分发
+  → ProjectileMovement->Velocity = 服务器速度
+  → 组件自己 Tick 积分 → 位置跟上
+```
+
+**客户端不需要知道"追谁"，它只要被喂速度。** 追踪的拐弯体现在速度方向的变化里。
+
+★ 顺带澄清一个常被误解的点：「组件不复制」≠「客户端没有这个组件」。
+`ProjectileMovement` 是 `CreateDefaultSubobject` 创建的，**每个端各有一份本地实例**，
+能 Tick、能积分、能写位置。"不复制"指的是它的**属性值**不复制
+（`bIsHomingProjectile` / `HomingTargetComponent` 这些服务器改了客户端不知道）。
+
+### 79.6 FireBlast 必须手动复制，而且不能让客户端立刻开播
+
+Timeline 靠 `ApexLocation` 这个**数据**算位置，引擎没有对应的自动回填通道。
+`ApexLocation` 和 `ReturnToActor` 都只在服务器的 `SpawnFireBalls` 里赋值，
+不标 `Replicated` 客户端拿到的就是默认值。
+
+```cpp
+UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_ApexLocation)
+FVector ApexLocation = FVector::ZeroVector;
+
+UPROPERTY(BlueprintReadOnly, Replicated)
+TObjectPtr<AActor> ReturnToActor;
+```
+
+★ **光复制还不够**：客户端 `BeginPlay` 跑的时候复制数据还没到，
+`ApexLocation` 仍是 `(0,0,0)`，此时开播照样朝世界原点飞。必须等 `OnRep`：
+
+```cpp
+void AMy_FireBall::BeginPlay()
+{
+    Super::BeginPlay();
+    if (HasAuthority()) StartOutgoingTimeline();   // 服务器数据齐全，直接开
+}
+
+void AMy_FireBall::OnRep_ApexLocation()
+{
+    StartOutgoingTimeline();                       // 客户端等数据到了再开
+}
+```
+
+### 79.7 哪些该复制、哪些不该
+
+| 属性 | 复制 | 理由 |
+|---|---|---|
+| `ApexLocation` | 是（`ReplicatedUsing`） | 客户端算轨迹必需，且要等它到达再开播 |
+| `ReturnToActor` | 是 | 回程 VLerp 的目标 |
+| `ExplosionDamageParams` | **否** | 伤害是服务器权威的，客户端只要播特效（用位置就够） |
+
+第三条是反直觉的：复制过去反而有害。客户端拿到真实半径后会真的去
+`GetLivePlayersWithinRadius` 再 `ApplyDamageEffect`，**非权威端应用 GE 会让本地属性抖一下**
+（敌人血条闪一下再被复制修正）。正确做法是「不复制 + 蓝图里那段伤害循环用 `HasAuthority` 包住」。
+
+### 79.8 两次独立的伤害判定
+
+一颗火球身上挂了两套参数，各管一件事：
+
+| | `DamageEffectParams` | `ExplosionDamageParams` |
+|---|---|---|
+| 触发时机 | `Sphere` 与敌人 overlap | 回到施法者身边（距离 < `ExplodeDistance`） |
+| 打谁 | 撞到的那一个 | 半径内所有敌人 |
+| `bIsRadialDamage` | false | true |
+| 代码位置 | `AMy_FireBall::OnSphereOverlap` | 蓝图爆炸分支 |
+
+★ 注意 GA 类上的 `bIsRadialDamage` 是给**直接伤害**用的，FireBlast 要留 false，
+爆炸那份在 C++ 里手动开。
+
+### 79.9 重写 `OnSphereOverlap` 的三个坑
+
+```cpp
+if (!HasAuthority()) return;
+if (DamageEffectParams.SourceASC->GetAvatarActor() == OtherActor) return;
+if (!UMy_AuraAbilitySystemLibrary::IsNotFriend(..., OtherActor)) return;
+// 填 DeathImpulse / Knockback，然后 ApplyDamageEffect
+```
+
+| 坑 | 后果 |
+|---|---|
+| 调了 `Super::OnSphereOverlap` | 基类最后一句是 `Destroy()`，火球撞第一个人就没了，飞不回来 |
+| 关了碰撞 `SetCollisionEnabled(NoCollision)` | 基类是为防同帧多次触发；火球撞完还要继续飞，关了再也撞不到人 |
+| `DamageEffectParams.SourceASC` 不判空 | 直接解引用会崩 |
+
+顺带：子类 override 父类的 `UFUNCTION` 时**不能再写 `UFUNCTION()`**，
+UHT 会报 "Override of UFUNCTION ... cannot have a UFUNCTION() declaration above it"。
+UHT 自动把它登记为父类 UFunction 的 override，参数和 specifier 全部继承。
+虚表也不会失效：父类 thunk 内部是 `P_THIS->OnSphereOverlap(...)` 虚调用，正常分发到子类。
+
+### 79.10 三个「知道就行」的行为
+
+- **同一敌人可能被打两次**：出去路上撞一次、回来路上又撞一次（设计如此，教程也一样）
+- **火球会穿墙**：`Sphere` 对 `WorldStatic` 是 Overlap 不是 Block，撞墙拿不到 ASC 就什么都不做
+- **撞人不播 impact 特效**：教程的 `AAuraFireBall::OnSphereOverlap` 里没有调 `OnHit()`，
+  只有回到身边爆炸才播 `NS_FireExplosion`
+
+### 79.11 `bReplicateMovement` 的正确写法
+
+```cpp
+AMy_ProjectileActor::AMy_ProjectileActor()
+{
+    bReplicates = true;
+    SetReplicatingMovement(true);   // 注意不是 SetReplicateMovement
+}
+```
+
+两个坑：
+
+1. `bReplicateMovement` 是 `AActor` 的 **private 位域**（`uint8 : 1`），
+   子类直接赋值会报 C2248「成员无法访问 private 字段」
+2. `SetReplicateMovement` 在 UE5.2 是 **`virtual`**（`Actor.h:588`），
+   构造函数里调会触发「在编译时解析了对构造函数内虚拟函数的调用」警告。
+   引擎给了非虚的 `SetReplicatingMovement`（`Actor.h:4042`，public），
+   注释就是 "Sets the value of bReplicateMovement without causing other side effects"，
+   `SetReplicateMovement` 的实现只有一行转发，两者效果相同
+
+★ 写在构造函数 vs 写在 `BeginPlay` 是两种语义：
+
+| | 构造函数 | `BeginPlay` |
+|---|---|---|
+| CDO 的值 | `true` | `false` |
+| 蓝图勾选框 | 如实显示，**可改** | 显示未勾选，**改了无效** |
+| 语义 | **默认值** | **强制约束** |
+
+之前写在 `BeginPlay`，等于把蓝图勾选架空了——勾不勾运行时都是 true，面板在骗人。
+
+### 79.12 症状 → 根因速查
+
+| 症状 | 根因 |
+|---|---|
+| 客户端只有 1 颗火球，且不返回 | `ApexLocation` / `ReturnToActor` 未复制，12 条路径都指向 `(0,0,0)`，回程 `IsValid` 走 False |
+| 客户端「出去 1 颗、回来 12 个方向」 | 出去时本地 Timeline 在写（数据错 → 路径重合）；回程因 `ReturnToActor` 为空提前退出，没有本地写入，位置纯靠复制 → 反而正确 |
+| 勾不勾 `Replicate Movement` 没区别 | C++ 在 `BeginPlay` 里无条件 `SetReplicateMovement(true)`，把勾选框架空了 |
+| 构造函数里写 `bReplicateMovement` 报 C2248 | private 位域，要用 `SetReplicatingMovement()` |
+
+★ 通用规律：**任何「只在服务器算、蓝图要读」的成员，没标 `Replicated` 客户端拿到的都是默认值。**
+把数据从蓝图变量搬进 C++ 时，复制这件事要跟着一起搬。
+FireBlast 这个 bug 的根源就是：教程里 `ApexLocation` 是蓝图变量（客户端能自己算），
+我们把它挪进了 C++ 的 `SpawnFireBalls`（只有服务器执行）。
+
+---
+
+## 附：本次会话 C++ 改动汇总（全部在 `My_` 目录下，合规）
+
+| 文件 | 改动 |
+|---|---|
+| `My_AbilityActor/My_ProjectileActor.h` | `Sphere` / `LoopingSoundComponent` → `protected`；`OnSphereOverlap` 加 `virtual`；分类统一为 `My_Projectile\|Common\|*` |
+| `My_AbilityActor/My_ProjectileActor.cpp` | `SetReplicateMovement(true)` 从 `BeginPlay` 挪到构造函数，改用 `SetReplicatingMovement(true)` |
+| `My_AbilityActor/My_FireBall.h/.cpp` | **新建**：两个 Timeline 事件、`ReturnToActor` / `ApexLocation`（带复制）、`ExplosionDamageParams`、`ExplodeDistance`、`GetLifetimeReplicatedProps`、`OnRep_ApexLocation` |
+| `My_AbilitySystem/My_AuraAbilitySystemLibrary.h/.cpp` | `GetEvenSpreadRotators` 增加 `bClosedLoop` 参数（默认 false） |
+| `My_AbilitySystem/Ability/My_AuraFireBlast.h` | `FireBallClass` 补 `UPROPERTY`；新增 `FireBallDistance` / `FireBallHeight` / `ExplosionInnerRadius` / `ExplosionOuterRadius` |
+| `My_AbilitySystem/Ability/My_AuraFireBlast.cpp` | `SpawnFireBalls` 重写：`HasAuthority` 守卫、空类守卫、两类伤害参数提到循环外、设 `ReturnToActor` / `ApexLocation` |
+| `My_AbilitySystem/Ability/My_AuraFireBolt.cpp` | 追踪那段注释改为描述真实机制（`bReplicateMovement` + `PostNetReceiveVelocity`） |
+
+### 还没做
+
+- `AMy_FireBall::OnSphereOverlap` 仍是空实现（撞人不掉血），写法见 79.9
+- 蓝图爆炸分支需要补 `HasAuthority` 门
+

@@ -482,7 +482,7 @@ bool UMy_AuraAbilitySystemLibrary::IsNotFriend(AActor* FirstActor, AActor* Secon
 	return !Friends;
 }
 
-TArray<FRotator> UMy_AuraAbilitySystemLibrary::GetEvenSpreadRotators(const FVector& Forward, const FVector& RotateAxis, float TotalSpreadAngle, int32 Count)
+TArray<FRotator> UMy_AuraAbilitySystemLibrary::GetEvenSpreadRotators(const FVector& Forward, const FVector& RotateAxis, float TotalSpreadAngle, int32 Count, bool bClosedLoop)
 {
 	TArray<FRotator> ResultRots;
 	if (Count <= 0) return ResultRots;
@@ -493,12 +493,22 @@ TArray<FRotator> UMy_AuraAbilitySystemLibrary::GetEvenSpreadRotators(const FVect
 		return ResultRots;
 	}
 
+	/*
+	 * 分母决定首尾间距：
+	 * 开环扇形 = Count-1（N 个点之间有 N-1 段）
+	 * 闭环整圆 = Count  （绕一圈的 N 段里，最后一段直接接回起点）
+	 * 传 360 时若还用 Count-1，首尾的 -180 与 +180 转出来是同一个方向，两颗球会重叠
+	 */
+	const float Divisor = bClosedLoop ? static_cast<float>(Count) : static_cast<float>(Count - 1);
+	const float DeltaAngle = TotalSpreadAngle / Divisor;
+	const float StartAngle = -TotalSpreadAngle / 2.f;
+
 	for (int32 i = 0; i < Count; i++)
 	{
 		// 计算当前这一发相对于Forward的偏移角度
-		float CurrentAngle = (-TotalSpreadAngle / 2.f) + (TotalSpreadAngle * (float)i / (Count - 1));
+		const float CurrentAngle = StartAngle + DeltaAngle * i;
 		// 以Forward为基准，绕Axis轴旋转得到方向
-		FVector Dir = Forward.RotateAngleAxis(CurrentAngle, RotateAxis);
+		const FVector Dir = Forward.RotateAngleAxis(CurrentAngle, RotateAxis);
 		ResultRots.Add(Dir.Rotation());
 	}
 	return ResultRots;

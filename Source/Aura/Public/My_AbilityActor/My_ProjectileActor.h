@@ -19,11 +19,11 @@ class AURA_API AMy_ProjectileActor : public AActor
 public:
 	AMy_ProjectileActor();
 
-	UPROPERTY(VisibleAnywhere)
+	UPROPERTY(VisibleAnywhere, Category = "My_Projectile|Common|Movement")
 	TObjectPtr<UProjectileMovementComponent> ProjectileMovement;
 
 	// 暴露给蓝图的变量，并在生成时显示
-	UPROPERTY(BlueprintReadWrite, meta=(ExposeOnSpawn = true))
+	UPROPERTY(BlueprintReadWrite, Category = "My_Projectile|Common|Damage", meta=(ExposeOnSpawn = true))
 	FMy_DamageEffectParams DamageEffectParams;
 
 	/*
@@ -39,29 +39,29 @@ protected:
 	virtual void BeginPlay() override;
 
 	UFUNCTION()
-	void OnSphereOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
+	virtual void OnSphereOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
 
 	virtual void Destroyed() override;
 
 	UFUNCTION(NetMulticast, Reliable)
 	void MulticastPlayImpactEffects();
 
-private:
-	UPROPERTY(EditDefaultsOnly)
-	float LifeSpan = 8.f;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "My_Projectile|Common|Collision")
 	TObjectPtr<USphereComponent> Sphere;
-
-	UPROPERTY(EditAnywhere, Category = "My_Impact")
-	TObjectPtr<UNiagaraSystem> ImpactEffect; 
-
-	UPROPERTY(EditAnywhere, Category = "My_Impact")
-	TObjectPtr<USoundBase> ImpactSound;
-
-	UPROPERTY(EditAnywhere, Category = "My_Impact")
-	TObjectPtr<USoundBase> LoopingSound;
 
 	UPROPERTY()
 	TObjectPtr<UAudioComponent> LoopingSoundComponent;
+
+private:
+	UPROPERTY(EditDefaultsOnly, Category = "My_Projectile|Common|Life")
+	float LifeSpan = 8.f;
+
+	UPROPERTY(EditAnywhere, Category = "My_Projectile|Common|Impact")
+	TObjectPtr<UNiagaraSystem> ImpactEffect; 
+
+	UPROPERTY(EditAnywhere, Category = "My_Projectile|Common|Impact")
+	TObjectPtr<USoundBase> ImpactSound;
+
+	UPROPERTY(EditAnywhere, Category = "My_Projectile|Common|Impact")
+	TObjectPtr<USoundBase> LoopingSound;
 };

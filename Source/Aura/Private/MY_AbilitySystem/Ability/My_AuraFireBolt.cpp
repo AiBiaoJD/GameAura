@@ -91,8 +91,9 @@ void UMy_AuraFireBolt::SpawnProjectiles(const FVector& ProjectileTargetLocation,
 
 		// ========== 远近全部开启追踪（只在服务器设置） ==========
 		// 追踪只是组件上的本地设置，不需要复制给客户端：
-		// 投射物开了 SetReplicateMovement(true)，位置会由服务器复制过去，
-		// 客户端跟着服务器算出来的轨迹走就行。
+		// 投射物在构造函数里开了 bReplicateMovement，服务器算出的位置与速度
+		// 会随 FRepMovement 复制过去；客户端靠 PostNetReceiveVelocity 拿到速度，
+		// 自己积分就能跟着走，不必知道追踪目标是谁。
 		if (bLaunchHomingProjectile)
 		{
 			if (HomingTarget && HomingTarget->Implements<UMy_CombatInterface>())
