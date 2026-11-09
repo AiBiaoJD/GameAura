@@ -14047,3 +14047,270 @@ FireBlast 这个 bug 的根源就是：教程里 `ApexLocation` 是蓝图变量�
 - `AMy_FireBall::OnSphereOverlap` 仍是空实现（撞人不掉血），写法见 79.9
 - 蓝图爆炸分支需要补 `HasAuthority` 门
 
+
+
+---
+
+## 八十、FireBlast 收尾：碰撞伤害、径向爆炸与等级缩放（★）
+
+第 79 章让火球「能飞、能复制」，这一章让它「能打死人」。
+真正花时间的不是代码量，而是三个判断：**伤害在哪一层算、爆炸球心放哪、数量怎么随等级变**。
+中间有两处方案是被推翻重做的，过程比结论更值得记。
+
+### 80.1 碰撞伤害：火球撞完为什么不销毁
+
+基类 `AMy_ProjectileActor::OnSphereOverlap` 里有 `Destroy()` 和关碰撞 —— 那是给 FireBolt 用的
+（一次性投射物）。FireBall 要飞回来，重写时必须把这两行**删掉**：
+
+```cpp
+if (UAbilitySystemComponent* TargetASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(OtherActor))
+{
+    const FVector DeathImpulse = GetActorForwardVector() * DamageEffectParams.DeathImpulseMagnitude;
+    DamageEffectParams.DeathImpulse = DeathImpulse;
+    DamageEffectParams.TargetASC = TargetASC;
+    UMy_AuraAbilitySystemLibrary::ApplyDamageEffect(DamageEffectParams);
+}
+```
+
+★ 代价：火球会在重叠区里反复触发 `OnSphereOverlap`，同一个敌人被打很多次。
+去重交给蓝图侧的「已命中集合」，C++ 这层不做判断。
+
+★ 顺带一个判断标准：**引擎 / 插件自带的函数直接用，只有教程 `Aura` 模块的类才需要在 `My_` 里重写。**
+`UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent` 是 GameplayAbilities 插件自带的，
+一度被我包装进自建库，后来全删了 —— 包装一层没有任何收益，只会让调用点变难搜。
+
+### 80.2 死亡冲量朝哪飞：`GetActorForwardVector()` 读的是 Rotation，不是速度
+
+现象：火球**回程**撞死敌人，尸体却朝**外侧**飞（发射方向），不是朝施法者。
+
+根因是 Forward 的定义：
+
+| 你以为 | 实际 |
+|---|---|
+| `GetActorForwardVector()` = 飞行方向 | = **Actor 的 Rotation** 换算出来的朝向 |
+
+`AMy_FireBall` 全程只 `SetActorLocation`（Timeline + `VLerp` 直接改位置），**从来没 `SetActorRotation`**。
+所以 Forward 永远停在生成时那个朝外的方向，回程也不会变。
+
+那 FireBolt 为什么不出错？因为它的位移走 `ProjectileMovement`，而
+`bRotationFollowsVelocity`（默认 `true`）会持续把 Actor 的 Rotation 对齐速度方向 ——
+Forward 恰好等于飞行方向。**换到 Timeline 驱动的火球上，这个前提就不成立了。**
+
+两条出路：
+
+| 方案 | 做法 | 结果 |
+|---|---|---|
+| A | 冲量方向 = `敌人位置 - 球心` | 朝外炸，方向随球心变化 |
+| B | 回程时补 `SetActorRotation(速度方向)` | Forward 重新变得可信，但影响所有依赖 Forward 的地方 |
+
+最终两个都试过，回到 **A 的简化版**（其实保留 Forward）—— 因为「敌人统一被向外炸开」的手感更好，
+方向上的精确性在这个技能上不重要。
+
+★ 一个被误解的点：`GetSafeNormal()` 返回的是**单位向量**（长度 1），和 `GetActorForwardVector()`
+同一个量级。换成它之后视觉变弱，不是「长度太小需要调大 Magnitude」，而是方向偏斜导致的观感差异。
+
+### 80.3 12 颗球同时爆炸：声音怎么只响一次
+
+12 颗球几乎同帧爆炸，`MulticastPlayImpactEffects` 被调 12 次，声音叠成一声闷雷。
+
+节流的写法最后落在这一行：
+
+```cpp
+static TMap<TWeakObjectPtr<UWorld>, double> LastImpactSoundTimes;
+```
+
+三个设计点，缺一个都不对：
+
+| 写法 | 为什么不行 |
+|---|---|
+| 普通成员变量 | 12 颗球**各有一份**，每颗都认为自己是第一个，节流失效 |
+| 裸 `static double` | PIE 多客户端跑在**同一个进程**里，几个客户端互相节流，只有一边有声音 |
+| `static TMap<UWorld*, double>` | 裸指针做 key **会阻止 GC**，关卡切换后 World 泄漏 |
+
+`TWeakObjectPtr` 做 key 正好：不阻止 GC，World 销毁后自动变 `nullptr`。
+
+★ 只节流**声音**，特效不节流 —— 12 个爆炸圈叠在一起视觉上更饱满，也不会吵。
+`ImpactSoundCooldown = 0.15` 大约留 2~3 声，`0.2` 基本只响 1 声。
+
+★ `NetMulticast` 函数**只能在服务器调用**。客户端发起会被直接丢弃并报
+`Calling Multicast function ... on client`，蓝图侧务必用 `Has Authority` 包住。
+加 `BlueprintCallable` 只是让它能在蓝图里被调用，不会改变这个限制。
+
+### 80.4 径向伤害的三层分工
+
+`ApplyDamageEffect` 本身不处理径向 —— 它只负责把参数塞进 EffectContext。整条链是三层：
+
+| 层 | 干什么 |
+|---|---|
+| 蓝图 `GetLivePlayersWithRadius` | **筛人**：谁进这个循环 |
+| `ApplyDamageEffect` | 把球心 / 内外半径 / `bIsRadialDamage` 写进 EffectContext |
+| `My_ExeCalc_Damage` | 用 `ApplyRadialDamageWithFalloff` **算衰减**，`OnDamageDelegate` lambda 截结果 |
+
+★ `ApplyRadialDamageWithFalloff` 在这里**只当距离衰减计算器**用：不扣血、不返回伤害值，
+真正的数值靠 `OnDamageDelegate` 回调捞出来再写进 SetByCaller。
+
+★ 为什么不在 `ApplyDamageEffect` 里统一补冲量：**冲量朝向是每个技能自己的设计**。
+ArcaneShards 要往上炸、FireBlast 要往外炸，公共函数一刀切必然错一个。
+正确做法是每个技能自己生成参数（见 `AMy_FireBall::MakeExplosionParamsForTarget`）。
+
+### 80.5 爆炸球心放哪：一段绕了两圈的设计
+
+| 球心 | 现象 |
+|---|---|
+| 施法者位置 | 12 个球心**完全重合**、范围也重合 → 每个敌人吃满 12 次伤害 |
+| 玩家**当前**位置 | 同上。玩家站中心、敌人在正东，照样 12 次 |
+| **火球自己位置**（最终） | 12 颗球各炸自己那一小片 → 一个敌人通常命中 2~4 颗 |
+
+判断依据很简单：**12 颗球是「围着玩家撒一圈」，不是「12 个球都炸玩家脚下」。**
+球心放在火球身上，才和「每个方向各管一片」的视觉表现对上。
+
+★ 用火球位置还顺带解决了玩家移动的问题 —— 火球本来就是追着玩家飞回来的。
+
+★ 另一个必须一起改的点：**筛人的球心和算衰减的球心必须是同一个位置**。
+蓝图用玩家位置筛、C++ 用火球位置算衰减，会出现两种错位：
+边缘敌人「筛到了但衰减算成 0」（白跑一次 GE），或者「该打却根本没进循环」。
+
+### 80.6 爆炸半径：`outer` 不是越大越好
+
+球心在半径 `D` 的圆上均分，相邻球心距离：
+
+```
+间距 = 2 × D × sin(180° / N)
+```
+
+`D = ExplodeDistance = 100` 时：
+
+| N | 间距 | outer(100) / 间距 |
+|---|---|---|
+| 6 | 100 | 1.00（相邻球心正好在衰减边界，方向之间有缝） |
+| 8 | 76.5 | 1.31 |
+| 10 | 61.8 | 1.62 |
+| 12 | 51.8 | 1.93 |
+| 14 | 44.5 | 2.25（能覆盖到隔一个的球，伤害开始叠爆） |
+
+★ 结论：`outer / 间距` 落在 **1.3~1.9** 最合适 —— 相邻球有重叠、360° 不留缝，
+但隔一个球心（≥103）都超过 100，够不到对径，仍然「各管一片」。
+
+★ 跨类联动陷阱：`ExplosionOuterRadius` 在 GA 上，`ExplodeDistance` 在 `AMy_FireBall` 上，
+**没有自动联动**，改任何一边都要手动核对另一边。
+
+### 80.7 爆炸伤害与撞人伤害分离
+
+需求是「同一个技能，撞人的伤害和爆炸的伤害要能分别调」。
+
+做法是在 `UMy_AuraFireBlast` 上再挂一条曲线：
+
+```cpp
+UPROPERTY(EditDefaultsOnly, Category = "My_Ability|FireBlast")
+FScalableFloat ExplosionDamage;
+```
+
+```cpp
+const float ExplosionBase = ExplosionDamage.GetValueAtLevel(GetAbilityLevel());
+if (ExplosionBase > 0.f) { ExplosionParams.BaseDamage = ExplosionBase; }
+```
+
+★ 留空时**回落到基类的 `Damage`**，否则爆炸会变成「有特效、有击退，但一点血都不掉」。
+
+★ 这就是「升级只提升 overlap」疑问的答案：两条曲线都在按等级取值，
+但 `ExplosionDamage` 没配时回落成 `Damage`，**两个数字完全一样**，看起来就像爆炸没跟着升。
+
+### 80.8 数量也随等级变：`FScalableFloat` + 线性兜底 + 上限
+
+`NumFireBalls` 从 `int32` 改成 `FScalableFloat`，另加两个字段：
+
+```cpp
+FScalableFloat NumFireBalls = FScalableFloat(8.f);   // 等级 1 发几颗
+int32 FireBallsPerLevel = 1;                          // 曲线留空时每级 +1
+int32 MaxNumFireBalls = 12;                           // 上限
+```
+
+```cpp
+int32 UMy_AuraFireBlast::GetNumFireBallsAtLevel(int32 Level) const
+{
+    const int32 CurveCount = FMath::RoundToInt(NumFireBalls.GetValueAtLevel(Level));
+    const int32 RawCount = NumFireBalls.IsStatic()
+                               ? CurveCount + FireBallsPerLevel * (Level - 1)
+                               : CurveCount;
+    return FMath::Clamp(RawCount, 1, FMath::Max(1, MaxNumFireBalls));
+}
+```
+
+三个细节：
+
+- `Level - 1`：等级 1 必须等于基准值本身，不减一的话整张表右移一格
+- 两条分支**不能叠加**：曲线本身能表达任意形状，再叠一次线性增量，配曲线的人会发现数量比预期多
+- `FMath::Max(1, MaxNumFireBalls)`：防的是有人把上限配成 0，`Clamp(X, 1, 0)` 这种非法区间会返回 0，
+  技能直接空放，还很难查
+
+★ `GetDescription(Level)` 的 `Level` 是**假想等级**（升级菜单要预览「升到 5 级会怎样」），
+所以函数必须收参数，不能内部直接读 `GetAbilityLevel()`。
+
+### 80.9 `FScalableFloat` 是乘法，不是覆盖（★ 最容易踩）
+
+`GetValueAtLevel` 的语义是 `Value × Curve[Level]`，引擎源码就两行：
+
+```cpp
+if (Curve.RowName.IsNone()) return Value;
+return Value * FoundCurve->Eval(Level);
+```
+
+所以「配了曲线，Value 就没用了」是错的 —— Value 变成**乘数**。想 1~5 级发 8/9/10/11/12 颗：
+
+| 配法 | Value | 曲线行 | 结果 |
+|---|---|---|---|
+| A（推荐） | 1 | 8 / 9 / 10 / 11 / 12 | 8 / 9 / 10 / 11 / 12 |
+| B | 8 | 1.0 / 1.125 / 1.25 / 1.375 / 1.5 | 8 / 9 / 10 / 11 / 12 |
+| C（错） | 8 | 8 / 9 / 10 / 11 / 12 | 64 / 72 / 80 / 88 / 96 |
+
+★ 配法 C 最阴的地方：有 `MaxNumFireBalls = 12` 兜着，它**不会崩**，只会永远顶格发 12 颗。
+现象是「曲线怎么改都没反应」，比直接报错难查得多。
+
+★ 为什么设计成乘法：曲线可以**复用**。同一条「每级 +12.5%」的倍率曲线能同时挂到
+`Damage`、`ManaCost`、`Cooldown` 上，各自用不同的 `Value` 当基准。加法或覆盖都做不到这点。
+
+★ 隐蔽坑：`IsStatic()` 判的是 `Curve.RowName.IsNone()`，**只看行名填没填**，
+不看表存不存在、行在不在。行名填了但 `Curve Table` 忘了选 → 走曲线分支 → 找不到曲线 →
+打一条 warning 后返回 `Value`。日志里那条 warning 是唯一线索。
+
+### 80.10 零碎但容易卡住的点
+
+| 现象 | 原因 |
+|---|---|
+| 明明写 `BlueprintCallable`，节点却是纯节点 | `const` 成员函数 + 全输入参数 → UHT 自动加 `FUNC_BlueprintPure`（标志位含 `0x10000000`） |
+| 搜索 `Set Members in` 搜不到 | 节点名是**结构体类型名**：`Set Members in My_DamageEffectParams`，不是变量名 |
+| 范围内没敌人时火球不爆炸、全叠在一点 | `For Each Loop` 数组为空时走 `Completed` 引脚，`Loop Body` 一次都不执行 —— `Multicast` / `Destroy` 要接在 `Completed` 上 |
+| 改了 C++ 默认值，蓝图里没变 | `EditDefaultsOnly` 只改 CDO，**不覆盖蓝图已存的值**，要手动 Reset to Default |
+| 客户端的火球位置是 `(0,0,0)` | 只在服务器算的成员没标 `Replicated`（见第 79 章） |
+
+### 80.11 症状 → 根因速查
+
+| 症状 | 根因 |
+|---|---|
+| 火球撞完敌人就消失 | 重写 `OnSphereOverlap` 时保留了基类的 `Destroy()` |
+| 回程撞死的敌人朝外飞 | `GetActorForwardVector()` 读 Rotation，而火球从不 `SetActorRotation` |
+| 爆炸声只响一声 / 一边有一边没有 | 节流变量用了成员变量 / 裸 static |
+| 敌人吃满 12 次伤害 | 爆炸球心用了施法者位置，12 个球心重合 |
+| 边缘敌人被筛到却没掉血 | 筛人球心与衰减球心不一致 |
+| 爆炸范围调大后伤害暴涨 | `outer` 超过球心间距的 2 倍，开始覆盖隔一个的球 |
+| 配了数量曲线但永远是 12 | `Value` 没改成 1，`Value × 曲线` 乘爆后被上限夹住 |
+
+---
+
+## 附：本次会话 C++ 改动汇总（全部在 `My_` 目录下，合规）
+
+| 文件 | 改动 |
+|---|---|
+| `My_AbilityActor/My_FireBall.h` | 新增 `MakeExplosionParamsForTarget(TargetActor)`；`ExplosionDamageParams` 保持不复制（客户端不跑伤害） |
+| `My_AbilityActor/My_FireBall.cpp` | `OnSphereOverlap` 填伤害并删掉基类的 `Destroy()` / 关碰撞；`MakeExplosionParamsForTarget` 球心 = 火球自身位置、方向 = 球心→目标、Pitch 45°、近距垂直起飞 |
+| `My_AbilityActor/My_ProjectileActor.h` | `MulticastPlayImpactEffects` 加 `BlueprintCallable`；新增 `ImpactSoundCooldown = 0.15f`；分类统一为 `My_Projectile\|Common\|*` |
+| `My_AbilityActor/My_ProjectileActor.cpp` | 爆炸音效用 `static TMap<TWeakObjectPtr<UWorld>, double>` 节流，特效不节流 |
+| `My_AbilitySystem/Ability/My_AuraFireBlast.h` | `NumFireBalls` int32 → `FScalableFloat`；新增 `FireBallsPerLevel` / `MaxNumFireBalls` / `GetNumFireBallsAtLevel` / `ExplosionDamage`；`ExplosionInnerRadius = 30` / `Outer = 100` |
+| `My_AbilitySystem/Ability/My_AuraFireBlast.cpp` | `GetNumFireBallsAtLevel` 双分支 + Clamp；`SpawnFireBalls` 用 `BallCount`、无分摊；描述文本按等级显示数量与爆炸伤害 |
+| `My_AbilitySystem/My_AuraAbilitySystemLibrary.h/.cpp` | `ApplyDamageEffect` 恢复 `const FMy_DamageEffectParams&`；否决掉的 `FillRadialImpulse` 已全删 |
+
+### 还没做
+
+- 爆炸冲量是否单独配一个 `ExplosionDeathImpulseMagnitude`（现在与撞人共用 14000）
+- 同一敌人被 2~4 颗球各 Apply 一次 GE，是否改成只让第一颗生效
+- `GetDescription` 里的爆炸伤害是否要换成「总伤害估算」（单颗 × 期望命中数）

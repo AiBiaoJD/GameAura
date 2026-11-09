@@ -8,6 +8,7 @@
 #include "NiagaraFunctionLibrary.h"
 #include "Aura/Aura.h"
 #include "Components/AudioComponent.h"
+#include "Engine/World.h"
 #include "Kismet/GameplayStatics.h"
 #include "Aura/Public/My_AbilitySystem/My_AuraAbilitySystemLibrary.h"
 
@@ -132,8 +133,33 @@ void AMy_ProjectileActor::Destroyed()
 	Super::Destroyed();
 }
 
+
+
 void AMy_ProjectileActor::MulticastPlayImpactEffects_Implementation()
 {
-	UGameplayStatics::PlaySoundAtLocation(this, ImpactSound, GetActorLocation(), FRotator::ZeroRotator);
+	// 特效不节流：12 个爆炸圈叠在一起视觉上更饱满，也不会吵
 	UNiagaraFunctionLibrary::SpawnSystemAtLocation(this, ImpactEffect, GetActorLocation());
+
+	/*
+	 * 音效节流。
+	 *
+	 * FireBlast 一次甩 12 颗球，它们几乎同一时刻回到身边爆炸，
+	 * 12 个 PlaySoundAtLocation 叠起来音量会翻十几倍，听起来像炸雷。
+	 *
+	 * 按 World 记录上次播放时间，ImpactSoundCooldown 秒内只播一次。
+	 * 用 World 做 key 而不是直接写 static double：PIE 多客户端跑在同一个进程里，
+	 * 裸静态变量会让几个客户端互相节流，导致只有一边有声音。
+	 */
+	static TMap<TWeakObjectPtr<UWorld>, double> LastImpactSoundTimes;
+
+	UWorld* World = GetWorld();
+	if (!World) return;
+
+	double& LastTime = LastImpactSoundTimes.FindOrAdd(World);
+	const double Now = World->GetTimeSeconds();
+
+	if (Now - LastTime < ImpactSoundCooldown) return;
+
+	LastTime = Now;
+	UGameplayStatics::PlaySoundAtLocation(this, ImpactSound, GetActorLocation(), FRotator::ZeroRotator);
 }

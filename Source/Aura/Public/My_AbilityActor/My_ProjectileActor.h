@@ -43,7 +43,13 @@ protected:
 
 	virtual void Destroyed() override;
 
-	UFUNCTION(NetMulticast, Reliable)
+	/*
+	 * 播放命中特效 + 音效（所有端）。
+	 *
+	 * ★ 只能在服务器调用。NetMulticast 从客户端发起会被丢弃，
+	 *   日志报 "Calling Multicast function ... on client"，蓝图侧务必用 Has Authority 包住。
+	 */
+	UFUNCTION(NetMulticast, Reliable, BlueprintCallable)
 	void MulticastPlayImpactEffects();
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "My_Projectile|Common|Collision")
@@ -51,6 +57,7 @@ protected:
 
 	UPROPERTY()
 	TObjectPtr<UAudioComponent> LoopingSoundComponent;
+
 
 private:
 	UPROPERTY(EditDefaultsOnly, Category = "My_Projectile|Common|Life")
@@ -61,6 +68,19 @@ private:
 
 	UPROPERTY(EditAnywhere, Category = "My_Projectile|Common|Impact")
 	TObjectPtr<USoundBase> ImpactSound;
+
+	/*
+	 * 爆炸音效的最小间隔（秒）。
+	 *
+	 * FireBlast 一次甩 12 颗球，它们几乎同一时刻回到身边爆炸，
+	 * 12 个 PlaySoundAtLocation 叠加会把音量放大十几倍。
+	 * 这个值控制「多久之内只允许响一声」：
+	 *   0    → 不节流（每颗球都响）
+	 *   0.1  → 大约连响 2~3 声
+	 *   0.2  → 基本只响 1 声
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "My_Projectile|Common|Impact")
+	float ImpactSoundCooldown = 0.15f;
 
 	UPROPERTY(EditAnywhere, Category = "My_Projectile|Common|Impact")
 	TObjectPtr<USoundBase> LoopingSound;

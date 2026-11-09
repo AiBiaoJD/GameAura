@@ -52,6 +52,23 @@ public:
 	UPROPERTY(BlueprintReadWrite)
 	FMy_DamageEffectParams ExplosionDamageParams;
 
+	/*
+	 * 为单个目标生成一份爆炸伤害参数。
+	 *
+	 * 在 SpawnFireBalls 填好的 ExplosionDamageParams 基础上补两件事：
+	 *   ① TargetASC —— 这次要打谁（爆炸循环里每个目标各不相同）
+	 *   ② 死亡冲量 / 击退 —— 方向 = 从球心（施法者位置）指向目标，
+	 *      也就是「四面八方围着角色的怪，被从角色身边往外炸飞」。
+	 *
+	 * 蓝图在 GetLivePlayersWithinRadius 的循环里对每个目标调一次，
+	 * 返回值直接喂给 ApplyDamageEffect，不需要再手搓 Set Members。
+	 *
+	 * 放在这里而不是公共库：冲量朝向是每个技能自己的设计（ArcaneShards 要往上炸、
+	 * FireBlast 要往外炸），不该由 ApplyDamageEffect 统一决定。
+	 */
+	UFUNCTION(BlueprintCallable, Category = "My_Projectile|FireBall")
+	FMy_DamageEffectParams MakeExplosionParamsForTarget(AActor* TargetActor) const;
+
 protected:
 	virtual void BeginPlay() override;
 
