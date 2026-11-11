@@ -14314,3 +14314,268 @@ return Value * FoundCurve->Eval(Level);
 - 爆炸冲量是否单独配一个 `ExplosionDeathImpulseMagnitude`（现在与撞人共用 14000）
 - 同一敌人被 2~4 颗球各 Apply 一次 GE，是否改成只让第一颗生效
 - `GetDescription` 里的爆炸伤害是否要换成「总伤害估算」（单颗 × 期望命中数）
+
+---
+
+## 八十一、GameplayCue 本地播放：迁移失败复盘与 cue 的真实边界（★）
+
+这一章没有代码产出，全部是排查和结论 —— 因为最后**回滚了**。
+但过程值得完整记下来：一个「教程说这样做更好」的方案，在多人环境下把能跑的功能改坏了，
+而真正的原因不在 cue 系统本身，在「谁有资格做判定」。
+
+### 81.1 起因
+
+FireBlast 的火球爆炸表现原本走 `AMy_ProjectileActor::MulticastPlayImpactEffects`：
+服务器 `OnSphereOverlap` 判定爆炸 → Reliable Multicast 广播 → 各端播特效。
+工作正常，音效还做了节流。
+
+教程用的是 `UGameplayCueManager::ExecuteGameplayCue_NonReplicated`，理由是「本地播放不占 RPC」。
+于是尝试迁移，包含四件事：
+
+| 改动 | 位置 |
+|---|---|
+| 新增原生标签 `GameplayCue.My_FireBlast` | `My_AuraGamePlayTags_Singleton` |
+| 新增 `PlayExplosionCue()` | `My_FireBall` |
+| 新建 `GameplayCueNotify_Burst` 资产 | `Content/MyBlueprints/AbilitySystem/GamePlayCueNotify/` |
+| 把爆炸判定从服务器搬到客户端 | 蓝图 `My_BP_FireBall` |
+
+### 81.2 现象演进：三轮排查
+
+症状一直在变，每一步排除一个假设：
+
+| 阶段 | 现象 | 手段 | 结论 |
+|---|---|---|---|
+| ① | 服务器有 cue，客户端完全没有 | `AbilitySystem.DisplayGameplayCues 1` | 客户端**有绿字** |
+| ② | 客户端有绿字，但没有特效和声音 | 读 `HandleGameplayCue` 源码 | 绿字在 `CueSet` 查找**之前**画，说明标签没匹配到 notify |
+| ③ | 修正后客户端只触发 1~2 次，且只在玩家移动时 | 打印 `IsWithin ExplodeDistance` | 判定为 true 的次数：服务器 12 次，客户端 1~2 次 |
+
+★ 阶段 ② 的方法值得记住：`DisplayGameplayCues 1` 的绿字**不代表 cue 播放成功**，
+它只代表「有人调了 HandleGameplayCue」。要看是否真的匹配到 notify，得看 `OnBurst` 有没有执行。
+
+### 81.3 被证伪的三个假设
+
+排查过程中有三个看起来很合理的假设，全错了：
+
+| 假设 | 验证方式 | 结果 |
+|---|---|---|
+| `ReturnToActor` 复制时序有问题，客户端拿到时是空 | 加 `OnRep_ReturnToActor` 打日志 | `retrun is false` **一次都没打印**，客户端一直有值 |
+| 蓝图的 `IsWithin ExplodeDistance` 用了 Alpha 估算距离 | 把判定搬进 C++ `Tick` | 症状完全不变 |
+| 爆炸位置应该挪到 `Finished` 之后 | — | **被直接否决**：`Finished` 时火球已贴在角色身上，爆炸位置全错 |
+
+★ 第三个是明显的错，记下来提醒自己：**改之前先想清楚「这一刻物体在哪」**。
+Timeline 结束 = 火球已到达终点，这时候爆炸等于炸在自己脚下。
+
+★ 前两个假设错的共同原因：都在**判定逻辑**里找问题，而真正错的是**判定的输入**。
+
+### 81.4 真正的根因：客户端火球的位置是「显示用」的
+
+`AMy_ProjectileActor::OnSphereOverlap` 第一行：
+
+```cpp
+if (!HasAuthority()) return;
+```
+
+这一行决定了客户端火球**从不参与判定**。它的位置纯粹用来渲染。
+
+| 版本 | 客户端火球的职责 | 位置不准的后果 |
+|---|---|---|
+| Multicast 版 | 只负责**播** | 无影响（判定在服务器） |
+| Cue 版 | 负责**判** | 直接判错 |
+
+**同一份数据，责任变了，容错空间就没了。** 这就是「同样代码，一个行一个不行」的全部原因。
+
+### 81.5 客户端位置为什么天生滞后
+
+`AMy_FireBall::BeginPlay`：
+
+```cpp
+if (HasAuthority())
+{
+    StartOutgoingTimeline();
+}
+```
+
+位移不是 `ProjectileMovementComponent`，而是蓝图 Timeline。客户端要等 `OnRep_ApexLocation`
+才开播，而且是从 Timeline 的 **0 秒**重新播。所以客户端的整条轨迹**整体向后平移一个网络单程**。
+
+时间轴上于是出现两条错开的线：
+
+```
+服务器  ●────────────────────────●   T：爆炸 + Destroy()
+客户端      ●────────────────────────●╎╌╌●   本该到达爆炸距离
+                                     ↑
+                               Destroy 复制到达
+```
+
+- 客户端火球走到爆炸距离：`T + 一个单程`
+- 销毁指令到达客户端：`T + 一个单程`
+
+**两个延迟几乎相等 → 变成抢跑。** 而销毁几乎必胜：
+
+```
+UWorld::Tick
+  NetDriver->TickDispatch()      ← 收到销毁包，立刻 Destroy()，标记 pending kill
+  TG_PrePhysics 的 Actor Tick    ← 火球 Tick 在这里，但它已经不存在了
+```
+
+**同一帧内网络更新永远排在 Actor Tick 前面。** 销毁包一到，火球连判断的机会都没有。
+
+★ 推论：PIE 里偶尔能成 1~2 颗是**假象**。真实网络 80ms ping 下基本 0 颗，150ms 下必输。
+这个方案不是「没调好」，是结构上不成立。
+
+★ 玩家移动时偶尔能触发，是因为 `ReturnToActor` 位置在客户端也在变，距离曲线被扰动，
+偶尔提前跌破阈值。**这是时序噪声，不是逻辑对。**
+
+### 81.6 关键发现：`ExecuteGameplayCueOnActor` 根本不是 local cue
+
+之前用的蓝图函数一直是 `ExecuteGameplayCueOnActor`，从没出过问题。读源码才明白原因
+（`GameplayCueFunctionLibrary.cpp:25`，注释是 Epic 自己写的）：
+
+```cpp
+UAbilitySystemComponent* ASC = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Target);
+if (ASC)
+{
+    // The actor has an ability system so the event will fire on authority only and will be replicated.
+    if (Target->GetLocalRole() == ROLE_Authority)
+    {
+        ASC->ExecuteGameplayCue(GameplayCueTag, Parameters);
+    }
+}
+else
+{
+    // The actor does not have an ability system so the event will only be fired locally.
+    UGameplayCueManager::ExecuteGameplayCue_NonReplicated(Target, GameplayCueTag, Parameters);
+}
+```
+
+目标身上有 ASC（Aura 角色都有）→ **只在服务器执行，然后复制**。
+客户端调用被 `if (Target->GetLocalRole() == ROLE_Authority)` 挡掉，静默返回。
+
+再往下 `ASC->ExecuteGameplayCue` → `UGameplayCueManager::FlushPendingCues()`：
+
+```cpp
+if (bHasAuthority)
+{
+    RepInterface->ForceReplication();
+    RepInterface->Call_InvokeGameplayCueExecuted_WithParams(...);   // RPC
+}
+else if (bLocalPredictionKey)
+{
+    // 只有本地预测 key 才在本地播
+}
+```
+
+而这个 RPC 的声明（`AbilitySystemComponent.h:848`）：
+
+```cpp
+UFUNCTION(NetMulticast, unreliable)
+void NetMulticast_InvokeGameplayCueExecuted_WithParams(...);
+```
+
+**结论：`ExecuteGameplayCueOnActor` 本质就是一个 NetMulticast RPC，只是穿了 GameplayCue 的马甲。**
+它和 `MulticastPlayImpactEffects` 是同一个机制 —— 服务器判定、广播、客户端被动接收。
+所以它不会有位置滞后问题，因为它压根不让客户端做判定。
+
+### 81.7 `net.MaxRPCPerNetUpdate` 的真实作用域
+
+一直以为「Unreliable RPC 一帧只能发几个」，查源码才发现限定条件很具体。
+
+限流点：`DataReplication.cpp:2122` `FObjectReplicator::QueueRemoteFunctionBunch`
+
+```cpp
+// This is a pretty basic throttling method - just don't let same func be called more than
+// twice in one network update period.
+if (++RemoteFuncInfo[InfoIdx].Calls > CVarMaxRPCPerNetUpdate.GetValueOnAnyThread())
+{
+    return;   // 丢弃，不排队
+}
+```
+
+`RemoteFuncInfo` 挂在 `FObjectReplicator` 上 → 计数维度是三个条件的交集：
+
+| 维度 | 含义 |
+|---|---|
+| 同一个对象 | 每个 Actor / 组件各算各的 |
+| 同一个函数 | 按 `Func->GetFName()` 分组 |
+| 同一个 net update | 每次 flush 后 `RemoteFuncInfo.Empty()` 清零 |
+
+生效范围：`NetDriver.cpp:2237`
+
+```cpp
+case ERemoteFunctionSendPolicy::Default:
+    QueueBunch = (!Bunch.bReliable && Function->FunctionFlags & FUNC_NetMulticast);
+    break;
+```
+
+**只有 `Unreliable` + `NetMulticast` 才被限流。**
+
+| RPC 声明 | 走 QueueBunch | 受限 |
+|---|---|---|
+| `NetMulticast, Reliable` | 否 | 不受限 |
+| `NetMulticast, Unreliable` | 是 | 受限（默认 2） |
+| `Server` / `Client` RPC | 否 | 不受限 |
+
+★ 本项目 `Config/DefaultEngine.ini:2` 设了 `net.MaxRPCPerNetUpdate=10`（教程要求改的）。
+这只在走 Unreliable Multicast 时才有意义，其他路径读都读不到。
+
+★ 一个反直觉的推论：
+
+> **每颗火球自己发自己的 Multicast RPC，各自独立计数，反而不受限。**
+> **统一从 ASC 发 cue，12 颗球全部挤进同一个计数，反而会被丢掉一部分。**
+
+`ExecuteGameplayCueOnActor` 的 RPC 发在 ASC（PlayerState）身上，12 颗球共用一条计数。
+默认值 2 时只有 2 颗有特效。现在这套「每球各自 Multicast」的写法在这个维度上恰好最优。
+
+### 81.8 local cue 的正确使用前提
+
+`ExecuteGameplayCue_NonReplicated` 的存在意义不是「省 RPC 的通用手段」，
+而是「当我已经确定这件事发生了，只想本地播个表现」。
+
+它的前提只有一条：**触发点在每端是天然同步的**。
+
+| 触发点 | 各端同步？ | 合适？ |
+|---|---|---|
+| AnimNotify（动画通知） | 同步，AnimBP 各端同时播 | 合适（引擎自己就这么用，`AnimNotify_GameplayCue.cpp:85`） |
+| GE 里配 GameplayCue | 同步，服务器授权、客户端收同一个 GE | 最主流用法 |
+| 技能预测激活 | 同步，本地预测 + 服务器确认 | 合适 |
+| **客户端火球的距离判定** | **不同步，位置滞后一个单程** | **本次踩的坑** |
+
+### 81.9 回滚清单
+
+```
+git checkout -- \
+  Content/MyBlueprints/.../My_BP_FireBall.uasset \
+  Source/Aura/Private/My_AbilityActor/My_FireBall.cpp \
+  Source/Aura/Private/My_AuraGamePlayTags_Singleton.cpp \
+  Source/Aura/Public/My_AbilityActor/My_FireBall.h \
+  Source/Aura/Public/My_AuraGamePlayTags_Singleton.h
+```
+
+`My_GC_FireBlast_Explosion.uasset` 为未跟踪文件，直接删除。
+两个无关资产改动（`My_GE_CoolDown_FireBlast`、`My_WBP_SpellGloble`）**保留不动**。
+
+★ 回滚前先 `git status` 分类，别把无关改动一起 checkout 掉。
+
+### 81.10 结论：什么时候该用哪种
+
+| 需求 | 用什么 | 理由 |
+|---|---|---|
+| 一次性技能表现（火球爆炸、命中） | **Reliable Multicast** | 服务器判定，不受限流，量小 |
+| 高频 / 多目标的持续表现 | **GE 触发 GameplayCue** | 完全不占 RPC 通道 |
+| 客户端预测的表现 | local cue | 触发点是预测事件，各端同步 |
+| 动画驱动的表现 | `AnimNotify_GameplayCue` | 动画进度各端一致 |
+| 一批同帧表现 | **一个 RPC 传位置数组** | 1 次调用，无限个特效 |
+
+★ 判断标准只有一句话：
+
+> **这个触发事件，客户端和服务器是不是同一时刻、同一个依据？**
+> 不是 → 不能让客户端自己判定 → 用 Multicast 或 GE。
+> 是 → local cue 可以放心用。
+
+★ 另一个值得记住的：**教程很多内容是在单机 PIE 下验证的，延迟接近 0，这类问题不会暴露。**
+多客户端一测就出来了 —— 这不是坏事，是暴露得早。
+
+### 还没做
+
+- `net.MaxRPCPerNetUpdate` 保持 10 还是恢复默认 2（当前没有依赖 Unreliable Multicast 的地方，理论上可以恢复）
+- Burn debuff（后续章节）是 local cue 的主场，到那时再回来验证这一章的结论
