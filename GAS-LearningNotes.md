@@ -14579,3 +14579,295 @@ git checkout -- \
 
 - `net.MaxRPCPerNetUpdate` 保持 10 还是恢复默认 2（当前没有依赖 Unreliable Multicast 的地方，理论上可以恢复）
 - Burn debuff（后续章节）是 local cue 的主场，到那时再回来验证这一章的结论
+
+---
+
+## 八十二、主菜单与存档界面：MVVM 的来龙去脉与适用边界（★）
+
+这一章把 UI 的两代写法摆在一起对比：前面所有界面用的是自己搭的 `WidgetController`，
+存档界面开始用 Epic 官方的 MVVM 插件。**两者不是「新旧替换」关系，是「手搓 vs 官方积木」**。
+
+### 82.1 本章做了什么
+
+| 部分 | 内容 |
+|---|---|
+| 地图 | 新增 `MainMenu.umap`、`LoadMenu.umap`，`GameDefaultMap` 改为 `MainMenu` |
+| 界面资产 | `My_WBP_MainMenu`、`My_WBP_Title`、`My_WBP_LoadMenu`、三个槽位 WBP（Vacant / Taken / EnterName） |
+| C++ | `MVVM_LoadScreen`、`MVVM_LoadSlot`（`UMVVMViewModelBase` 子类） |
+| HUD | `ALoadScreenHUD` 创建并持有 `UMVVM_LoadScreen` |
+
+插件依赖在 `Aura.uproject` 里已开：`ModelViewViewModel`。
+
+### 82.2 WidgetController 与 MVVM 的实际差别
+
+| 维度 | `WidgetController`（之前） | MVVM（存档界面） |
+|---|---|---|
+| 数据载体 | 持有 ASC / AttributeSet 强引用 | 纯 UObject，只装显示数据 |
+| 通知方式 | 手写 `DECLARE_DYNAMIC_MULTICAST_DELEGATE` + `Broadcast` | `FieldNotify` 说明符，UHT 生成描述符 |
+| 接线位置 | 蓝图 Event Graph，手连 `Bind Event` | Widget 的 **View Bindings** 面板，填字段路径 |
+| 解绑 | 自己管，忘了就是悬空指针 | 引擎自动，Widget 销毁即解绑 |
+| 值未变化 | 照样刷一遍 | 直接跳过 |
+| 双向绑定 | 没有 | `TwoWay` 一行 |
+| 编辑器预览 | 不能 | 能（Design Time View Model） |
+
+### 82.3 ★ FieldNotify 到底做了什么
+
+关键在 `MVVMViewModelBase.h:27` 的 `SetPropertyValue`：
+
+```cpp
+template<typename T, typename U>
+bool SetPropertyValue(T& Value, const U& NewValue, UE::FieldNotification::FFieldId FieldId)
+{
+    if (Value == NewValue) { return false; }   // ★ 值没变直接返回
+    Value = NewValue;
+    BroadcastFieldValueChanged(FieldId);
+    return true;
+}
+```
+
+`UE_MVVM_SET_PROPERTY_VALUE(MemberName, NewValue)` 就是这个模板的包装。
+所以 `MVVM_LoadSlot::SetPlayerName` 一行就够：
+
+```cpp
+void UMVVM_LoadSlot::SetPlayerName(FString InPlayerName)
+{
+    UE_MVVM_SET_PROPERTY_VALUE(PlayerName, InPlayerName);
+}
+```
+
+**和 `Broadcast()` 的实质区别**：委托广播是无条件刷，FieldNotify 是「变了才通知」。
+血条这种每帧都在变的 UI，差别明显。
+
+### 82.4 MVC / MVP / MVVM 的引用方向
+
+那句话说「十个架构师讨论 MVC 会得到十二种意见」，吵的其实是**引用方向**：
+
+| 模式 | 谁持有谁的引用 | 特点 |
+|---|---|---|
+| MVC | Controller → View（直接持有） | Controller 知道界面细节，耦合紧 |
+| MVP | View ↔ Presenter（通过接口） | View 只认接口，Presenter 不认控件 |
+| MVVM | View → ViewModel（单向依赖） | ViewModel 完全不知道 View 存在 |
+
+★ **Aura 那套严格说不是 MVC，是 MVP / 手写 ViewModel。**
+证据：`My_OverlayWidgetController` 的成员是 ASC / AttributeSet / PC / PS，**一个 Widget 指针都没有**。
+它只 `Broadcast`，谁在听、听了干什么一概不管 —— 这是 Presenter 的特征，不是 MVC。
+教程起名带 `Controller` 只是为了对初学者友好。
+
+### 82.5 UE 版本演进（本机核实）
+
+| 版本 | 状态 | 证据 |
+|---|---|---|
+| 5.0 | **完全没有** | `/d/UE Engine/UE_5.0/Engine/Plugins` 下搜 `*ViewModel*` 零结果 |
+| 5.1 | 以「UMG Viewmodel（测试版）」引入 | 官方说明：不建议在发布项目中使用 |
+| 5.2 | 改名 `ModelViewViewModel`，仍是 Beta | `.uplugin` 里 `IsBetaVersion: true` + `IsExperimentalVersion: true` + `EnabledByDefault: false` |
+
+★ 所以「以前 MVC、后来 MVVM」的准确说法是：
+**以前引擎不提供任何 UI 数据框架，教程自己搭了一套；后来 Epic 把 MVVM 做成了插件。**
+变的是「谁提供」，不是「哪种模式更对」。
+
+### 82.6 工程里的实际结构
+
+比教程那张抽象图多一层聚合：
+
+```
+WBP_LoadScreen        ⟷  MVVM_LoadScreen（持有 3 个 LoadSlot）
+WBP_LoadSlot_0/1/2    ⟷  MVVM_LoadSlot_0/1/2（各自独立）
+                              ↓
+                       ULoadScreenSaveGame（同一份）
+```
+
+`MVVM_LoadScreen::InitializeLoadSlots` 里 `NewObject<UMVVM_LoadSlot>(this, LoadSlotViewModelClass)`。
+
+★ 这里藏着 MVVM 与 MVC 最本质的区别之一：
+**ViewModel 是一个类，可以 new 出任意多个实例**；而传统 Controller 通常和 Widget 一对一写死。
+右边那张图能画成「三个一样的齿轮」，正是因为它们是同一个类的三个实例。
+
+### 82.7 ★★ 回写不靠绑定，靠函数调用
+
+这是最容易误解的一点。属性加点看起来「没有双向绑定怎么把值给 Model」，
+实际上**回写从来不需要绑定，只需要一个能调用的函数**。
+
+完整链路：
+
+```cpp
+// ① 界面点加号 → WidgetController（只是转发）
+void UMy_AttributeMenuWidgetController::UpgradeAttribute(const FGameplayTag& AttributeTag)
+{
+    GetAuraASC()->UpgradeAttribute(AttributeTag);
+}
+
+// ② 本地检查点数
+void UMy_AuraAbilitySystemComponent::UpgradeAttribute(const FGameplayTag& AttributeTag)
+{
+    if (IMy_PlayerInterface::Execute_GetAttributePointFormPlayerState(GetAvatarActor()) > 0)
+    {
+        ServerUpgradeAttribute(AttributeTag);   // ③ Server RPC
+    }
+}
+
+// ④ 服务器执行：发事件 + 扣点
+void UMy_AuraAbilitySystemComponent::ServerUpgradeAttribute_Implementation(const FGameplayTag AttributeTag)
+{
+    if (IMy_PlayerInterface::Execute_GetAttributePointFormPlayerState(GetAvatarActor()) <= 0) return;
+    FGameplayEventData EventData;
+    EventData.EventTag = AttributeTag;
+    EventData.EventMagnitude = 1.f;
+    UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(GetAvatarActor(), AttributeTag, EventData);
+    IMy_PlayerInterface::Execute_AddToAttributePoint(GetAvatarActor(), -1);
+}
+```
+
+**去程是纯函数调用 + Server RPC，一个绑定都没有。**
+回程才是广播：AttributeSet 变化 → `PostGameplayEffectExecute` → `OnAttributeChanged.Broadcast` → UI 刷新。
+
+★ **两笔独立的账，缺一不可：**
+
+| | 谁在改 | 改什么 | 靠什么生效 |
+|---|---|---|---|
+| 加属性 | `SendGameplayEventToActor` → `My_GE_EventBaseEffect` | `AttributeSet` 里的 Strength / Vigor | GE 的 modifier |
+| 扣点数 | `AddToAttributePoint(-1)` | `PlayerState` 里的 `AttributePoint` 余额 | 直接 `+=` |
+
+只做第一笔 → 可以无限加点；只做第二笔 → 点数白花。
+
+### 82.8 单向数据流 + 权威回显
+
+```
+UI 只发意图  →  服务器改数据  →  数据变化触发广播  →  UI 被动刷新
+```
+
+**UI 从来不自己改值，也从来不自己算结果。** 发出去的是请求，收回来的是事实。
+
+★ **为什么联机游戏不能用双向绑定做这件事：**
+
+假设把 `AttributePoint` 双向绑到界面。玩家点一下加号，客户端 VM 立刻从 3 变 2，界面显示 2。
+但服务器可能拒绝（点数不够 / 包丢了 / 防作弊拦下）—— **界面显示 2，服务器还是 3，玩家看到假数据。**
+
+更严重的是：双向绑定意味着客户端**有直接改这个字段的能力**，
+那 `if (AttributePoint > 0)` 这个检查就成了摆设。
+
+**双向绑定在服务器权威的数据上是反模式。**
+
+### 82.9 双向绑定的适用边界
+
+关键在于：**按钮没有「值」可以绑。** 它只有按下/弹起，表达的是一个**请求**，不是一个状态。
+
+请求只能靠调用函数传递。
+
+| 场景 | 该用吗 |
+|---|---|
+| 输入框（存档名） | **用**，输入内容要写回 VM |
+| 音量 / 灵敏度滑条 | **用**，本地设置，不需服务器确认 |
+| 开关（垂直同步、显示血条） | **用**，同上 |
+| 属性点 / 技能点加点 | **不用**，服务器权威 |
+| 血条 / 蓝条 | **不用**，`OneWayToDestination` 纯展示 |
+
+判断标准一句话：**这个值改了之后，需不需要服务器点头？需要就不用双向绑定。**
+
+★ 教程的 MVVM 自己也是这么做的 —— `MVVM_LoadScreen` 里
+`NewSlotButtonPressed` / `NewGameButtonPressed` / `SelectSlotButtonPressed` / `DeleteButtonPressed` /
+`PlayButtonPressed` **全是 `BlueprintCallable` 普通函数**，跟 `UpgradeAttribute` 一模一样。
+双向绑定只用在那三个纯显示字段上。
+
+原因是 **UE 的 UMG Viewmodel 插件没有 Command 机制**（不像 WPF 的 `ICommand`）。
+所以在 UE 里，MVVM 对「按钮触发逻辑」这件事零改进。
+
+### 82.10 SendGameplayEventToActor 与事件分发
+
+```cpp
+// AbilitySystemBlueprintLibrary.cpp:25
+void UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(AActor* Actor, FGameplayTag EventTag, FGameplayEventData Payload)
+{
+    if (::IsValid(Actor))
+    {
+        UAbilitySystemComponent* ASC = GetAbilitySystemComponent(Actor);
+        if (ASC != nullptr && IsValidChecked(ASC))
+        {
+            FScopedPredictionWindow NewScopedWindow(ASC, true);
+            ASC->HandleGameplayEvent(EventTag, &Payload);   // ★ 真正干活的是这句
+        }
+    }
+}
+```
+
+它自己不做逻辑，全部转交 `HandleGameplayEvent`（`AbilitySystemComponent_Abilities.cpp:2237`）。
+后者同时走三条路：
+
+| 路径 | 谁在用 |
+|---|---|
+| `GameplayEventTriggeredAbilities` | 能力里配了 `AbilityTriggers` 的 |
+| `GenericGameplayEventCallbacks` | **`WaitGameplayEvent` 走这条** |
+| `GameplayEventTagContainerDelegates` | 按标签容器过滤的委托 |
+
+★ 还有一个细节：第一条路是 `while (CurrentTag.IsValid())` 循环，
+**会沿标签父级逐层向上找**（`RequestDirectParent()`）。
+所以配一个监听 `Attribute` 的粗粒度能力，能收下所有属性变化。
+
+**工程里的监听者是 `My_GA_ListenForEvent`**，从资产里读出的监听标签：
+
+```
+My_Attribute.Primary.Strength
+My_Attribute.Primary.Intelligence
+My_Attribute.Primary.Resilience
+My_Attribute.Primary.VIgor
+My_Attribute.Meta.IncomingXP
+```
+
+因为 `WaitGameplayEvent` 的参数是**单个** `FGameplayTag`，所以蓝图里挂了 5 个节点，
+`Event Received` 都连到同一个自定义事件，再 Apply `My_GE_EventBaseEffect`。
+
+★ 一个 GE 服务 4 个属性：`My_GE_EventBaseEffect` 里每个属性一条 modifier，
+magnitude 用 `SetByCaller`，标签就是该属性自己的 tag。
+事件带的 `EventTag` 对应哪条，哪条拿到 `EventMagnitude`，其余是 0。
+
+★ **两个坑：**
+1. `SendGameplayEventToActor` **不是 RPC**，谁调就在谁那边执行。
+   所以必须写在 `ServerUpgradeAttribute_Implementation` 里；写在客户端只会本机分发，服务器收不到。
+2. `EventMagnitude = 1.f` 是「每次加 1 点」，不是「我总共有几点」。
+
+### 82.11 AddToAttributePoint 改的是余额，不是属性
+
+```cpp
+void AAura_Character::AddToAttributePoint_Implementation(int32 InAttributePoint)
+{
+    AMy_AuraPlayerState* AuraPlayerState = GetPlayerState<AMy_AuraPlayerState>();
+    check(AuraPlayerState);
+    AuraPlayerState->AddAttributePoint(InAttributePoint);
+}
+
+void AMy_AuraPlayerState::AddAttributePoint(int32 number)
+{
+    AttributePoint += number;                            // ★ 先改数据
+    OnAttributePointChanged.Broadcast(AttributePoint);   // 再通知界面
+}
+```
+
+`AttributePoint` 是 `ReplicatedUsing = OnRep_AttributePoint` 的复制属性。
+
+★ **`Broadcast` 和 `OnRep` 都写一遍不是重复，是两个场合的入口：**
+
+| 入口 | 在哪执行 | 刷谁的 UI |
+|---|---|---|
+| `AddAttributePoint` 里的 `Broadcast` | 只在服务器 | 服务器自己的 UI |
+| `OnRep_AttributePoint` 里的 `Broadcast` | 客户端收到复制时 | 客户端 UI |
+
+服务器调 `Broadcast` 时，客户端一行代码都不会执行。客户端唯一入口就是 `OnRep`。
+这就是 PlayerState 里所有数值（XP / Level / AttributePoint / SpellPoint）都写成
+「`ReplicatedUsing` + `OnRep` 里再广播一次」的原因。
+
+★ **为什么属性点不放进 AttributeSet：**
+它不参与任何 GE 计算，不需要曲线、不需要 `BaseValue` / `CurrentValue` 双值结构，只是个计数器。
+而且放在外面还有个好处 —— **GE 改不了它**，只有明确调 `AddToAttributePoint` 的代码能改。
+
+### 82.12 坑与待办
+
+| 问题 | 说明 |
+|---|---|
+| **`Aura.Build.cs` 缺模块** | `PublicDependencyModuleNames` 里没有 `"ModelViewViewModel"`，`.uproject` 的 `AdditionalDependencies` 不参与链接，编译会报找不到 `MVVMViewModelBase.h` |
+| **World Settings 的 GameMode** | 新建地图忘了设会退回 `GlobalDefaultGameMode`（现在是 `GameModeBase`），角色没有 ASC、技能全失效。`MainMenu.umap` 走 `GameModeBase` 是刻意的 |
+| 两笔账没有事务性 | 先发事件加属性、再扣点，中间若被免疫 buff 挡掉，属性没加但点扣了。正式项目应改成同一函数内一起成功/回滚 |
+
+### 82.13 一句话总结
+
+> **MVVM 优化的是「同一个值在两处保持一致」，不是「把一次点击变成一次数据变更」。**
+> 属性加点这条链路是「点击 → 命令 → 服务器改权威数据 → 广播回显」，结构上就是对的，
+> MVVM 换不掉其中任何一环。真要减少重复劳动，改的是显示那一半（View Bindings 替掉手连委托）。
