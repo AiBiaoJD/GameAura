@@ -14871,3 +14871,201 @@ void AMy_AuraPlayerState::AddAttributePoint(int32 number)
 > **MVVM 优化的是「同一个值在两处保持一致」，不是「把一次点击变成一次数据变更」。**
 > 属性加点这条链路是「点击 → 命令 → 服务器改权威数据 → 广播回显」，结构上就是对的，
 > MVVM 换不掉其中任何一环。真要减少重复劳动，改的是显示那一半（View Bindings 替掉手连委托）。
+
+---
+
+## 八十三、读档界面的 ViewModel 装配：3 个槽位、Manual 模式与编译依赖（★）
+
+第 82 章讲的是「MVVM 是什么」，这一章讲「怎么把 3 个槽位的 VM 真正装到界面上」。
+本轮产出的是骨架：HUD 造 1 个 `LoadScreen` VM，它内部再造 3 个 `LoadSlot` VM，
+父 Widget 按 index 取出来，逐个塞给子 Widget。
+
+### 83.1 本轮产出
+
+| 文件 | 作用 |
+|---|---|
+| `My_LoadScreenHUD.h/.cpp` | 创建并持有 `LoadScreenViewModel`，创建 Widget 并调初始化钩子 |
+| `My_MVVM_LoadScreen.h/.cpp` | 持有 3 个槽位 VM，提供 `GetLoadSlotViewModelByIndex` |
+| `My_MVVM_LoadSlot.h/.cpp` | 槽位 VM（目前是空类，字段待补） |
+| `My_LoadScreenWidget.h/.cpp` | 给蓝图开一个初始化钩子 |
+| `My_BP_LoadScreenHUD` | 配 `LoadScreenWidgetClass` / `LoadScreenViewModelClass` |
+| `My_BP_LoadScreenViewModel` / `My_BP_LoadSlotViewModel` | 两个 VM 的蓝图子类 |
+| `My_WBP_LoadScreen` / `My_WBP_LoadSlot_*` | 界面资产 |
+
+### 83.2 三层装配顺序
+
+```cpp
+void AMy_LoadScreenHUD::BeginPlay()
+{
+	Super::BeginPlay();
+
+	LoadScreenViewModel = NewObject<UMy_MVVM_LoadScreen>(this, LoadScreenViewModelClass);
+	LoadScreenViewModel->InitializeLoadSlots();
+
+	LoadScreenWidget = CreateWidget<UMy_LoadScreenWidget>(GetWorld(), LoadScreenWidgetClass);
+	LoadScreenWidget->AddToViewport();
+	LoadScreenWidget->BluePrintInitializeWidget();
+}
+```
+
+顺序是硬约束：
+
+1. 先有 VM（数据容器）
+2. 再让 VM 造出 3 个子 VM（`InitializeLoadSlots`）
+3. 再创建 Widget（`AddToViewport` 会触发蓝图的 `Event Construct`）
+4. 最后调钩子，让蓝图去 `SetViewModel`
+
+**第 4 步必须在第 2 步之后**：否则蓝图调 `GetLoadSlotViewModelByIndex` 时 `LoadSlots` 还是空的，
+`FindChecked` 会直接触发 `check` 崩溃。
+
+### 83.3 为什么用 TMap 而不是数组
+
+```cpp
+UPROPERTY()
+TMap<int32, UMy_MVVM_LoadSlot*> LoadSlots;
+
+UMy_MVVM_LoadSlot* UMy_MVVM_LoadScreen::GetLoadSlotViewModelByIndex(int32 Index)
+{
+	return LoadSlots.FindChecked(Index);
+}
+```
+
+`TArray` 也能用，但 `TMap` 的 key 是「存档槽位编号」而不是「第几个元素」。
+以后槽位顺序变了（比如按最近存档时间排序），数组下标就不可靠了，key 不会。
+
+**注意 `FindChecked` 的代价**：index 越界会触发 `check`，编辑器里直接崩。
+蓝图那边如果传了 `3` 就会炸。想稳一点可以换成：
+
+```cpp
+UMy_MVVM_LoadSlot* UMy_MVVM_LoadScreen::GetLoadSlotViewModelByIndex(int32 Index) const
+{
+	if (UMy_MVVM_LoadSlot* const* Found = LoadSlots.Find(Index))
+	{
+		return *Found;
+	}
+	return nullptr;
+}
+```
+
+教程版也是 `FindChecked`，这里保持一致，但要知道风险在哪。
+
+### 83.4 三个槽位为什么必须三个 VM
+
+`InitializeLoadSlots` 里 `NewObject` 了三次，每次传同一个 `LoadSlotViewModelClass`：
+
+```cpp
+LoadSlot_0 = NewObject<UMy_MVVM_LoadSlot>(this, LoadSlotViewModelClass);
+LoadSlots.Add(0, LoadSlot_0);
+LoadSlot_1 = NewObject<UMy_MVVM_LoadSlot>(this, LoadSlotViewModelClass);
+LoadSlots.Add(1, LoadSlot_1);
+LoadSlot_2 = NewObject<UMy_MVVM_LoadSlot>(this, LoadSlotViewModelClass);
+LoadSlots.Add(2, LoadSlot_2);
+```
+
+**同一个类 × 3 个实例**，不是 3 个类。
+
+如果只用一个 VM 管三个槽位，字段就得是数组，而 View Bindings 面板里写不了 `PlayerNames[Index]`，
+三个槽位会显示同一份数据。拆开之后，`WBP_LoadSlot` 只写一份绑定，三个实例各读各的。
+
+这也是 MVVM 最核心的复用模式：**同一份界面蓝图 × N 个实例，每个实例绑自己的 VM 实例**。
+
+### 83.5 Manual 模式：源码里会自动生成 Setter
+
+Widget 的 MVVM 面板里 `Creation Type` 选 **Manual**，意思是「VM 实例由外部给」。
+源码 `MVVMViewBlueprintCompiler.cpp`：
+
+```cpp
+const bool bCreateSetterFunction =
+    ViewModelContext.bCreateSetterFunction
+    || ViewModelContext.CreationType == EMVVMBlueprintViewModelContextCreationType::Manual;
+```
+
+**选 Manual 会自动生成 `Set<属性名>` 函数**，这就是蓝图里能拖出 `Set My_BP_LoadSlotViewModel` 的原因。
+同时属性本身只在没有 Setter 时才被标记为只读：
+
+```cpp
+if (SourceContext.BlueprintSetter.IsEmpty())
+{
+    NewProperty->SetPropertyFlags(CPF_BlueprintReadOnly);
+}
+```
+
+所以「Manual 只能 Get 不能 Set」是错觉 —— 前提是**蓝图重新编译过**，Setter 才会生成出来。
+
+### 83.6 CreationType 四种模式
+
+| 模式 | 谁创建 | 从哪取 | 生命周期 |
+|---|---|---|---|
+| **Manual** | 你自己 | Widget 上的属性，手动 Set | 你决定 |
+| **Create Instance** | 插件 | `NewObject`，Outer 是 Widget | 跟 Widget |
+| **Global View Model Collection** | 别处注册 | `UMVVMSubsystem` 全局集合 | 注册者 |
+| **Property Path** | 别处 | 从 Widget 出发按路径求值 | 属性所属对象 |
+
+本轮的选择：
+
+- `My_WBP_LoadSlot_Vacant` → **Manual**（VM 由父 Widget 递进来）
+- `My_WBP_LoadScreen` → **PropertyPath**（路径指向 `FindLoadScreenViewModel`，从 HUD 取）
+
+两种都能用，区别是 Manual 需要一行 `Set` 节点，PropertyPath 在求值那一刻自己去拿。
+
+**不要用 Create Instance**：HUD 已经 `NewObject` 了一个 VM，
+插件再在 Widget 内部 new 一个，两边不是同一个对象，`LoadData` 填的和界面绑的会对不上。
+
+### 83.7 ★ BlueprintImplementableEvent + BlueprintCallable 的分工
+
+`My_LoadScreenWidget` 只有一行有效代码：
+
+```cpp
+UFUNCTION(BlueprintImplementableEvent, BlueprintCallable)
+void BluePrintInitializeWidget();
+```
+
+两个说明符不是重复，对应蓝图里两种不同的节点：
+
+| 说明符 | 生成的标志位 | 编辑器判定 | 蓝图里得到 |
+|---|---|---|---|
+| `BlueprintImplementableEvent` | `FUNC_BlueprintEvent` | `CanKismetOverrideFunction` | 红色「事件」节点（实现） |
+| `BlueprintCallable` | `FUNC_BlueprintCallable` | `CanUserKismetCallFunction` | 蓝色「函数」节点（调用） |
+
+生成的 UFunction 标志是 `0x0C020800`，正好包含这两个位。
+
+**C++ 为什么能调**：UHT 在 `.gen.cpp` 里生成了转发体，走反射：
+
+```cpp
+void UMy_LoadScreenWidget::BluePrintInitializeWidget()
+{
+	ProcessEvent(FindFunctionChecked(NAME_UMy_LoadScreenWidget_BluePrintInitializeWidget), NULL);
+}
+```
+
+所以头文件里只写声明、不写实现，链接也不会报错 —— 实现是 UHT 生成的。
+
+代价是**反射调用比普通虚函数慢一到两个数量级**，别放 Tick 里。
+
+### 83.8 踩坑：Build.cs 缺模块
+
+`.uproject` 的 `AdditionalDependencies` 里写了 `ModelViewViewModel`，
+但那只影响 IDE 生成工程文件，**不参与实际编译**。
+
+`Aura.Build.cs` 的 `PublicDependencyModuleNames` 必须单独加：
+
+```csharp
+PublicDependencyModuleNames.AddRange(new string[] {
+    "Core", "CoreUObject", "Engine", "InputCore",
+    "EnhancedInput", "GameplayAbilities", "ModelViewViewModel"
+});
+```
+
+不加的表现是：UHT 阶段能过（UHT 有自己的一套头文件搜索），
+但 C++ 编译时报 `Cannot open include file: 'MVVMViewModelBase.h'`。
+**UHT 过了不代表编译过了**，这是最容易误判的地方。
+
+### 83.9 待办
+
+| 项 | 说明 |
+|---|---|
+| `My_MVVM_LoadSlot` 的字段 | `PlayerName` / `PlayerLevel` / `MapName` / `LoadSlotName` / `SlotIndex` / `SlotStatus`，全部要挂 `FieldNotify, Setter, Getter` |
+| `InitializeLoadSlots` 补 `LoadSlotName` / `SlotIndex` | 现在只 Add 进 Map，槽位自己不知道自己是谁 |
+| `LoadData()` | 从 `SaveGame` 读数据搬进 VM，目前完全没有 |
+| 按钮回调 | `NewSlotButtonPressed` / `SelectSlotButtonPressed` 等 |
+| `FindChecked` 换 `Find` | 防止蓝图传越界 index 崩编辑器 |
