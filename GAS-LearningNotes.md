@@ -15069,3 +15069,150 @@ PublicDependencyModuleNames.AddRange(new string[] {
 | `LoadData()` | 从 `SaveGame` 读数据搬进 VM，目前完全没有 |
 | 按钮回调 | `NewSlotButtonPressed` / `SelectSlotButtonPressed` 等 |
 | `FindChecked` 换 `Find` | 防止蓝图传越界 index 崩编辑器 |
+
+## 八十四、BlueprintImplementableEvent：一个钩子为什么能「实现两次」（★）
+
+这一章只解决一个困惑：`BluePrintInitializeWidget()` 在蓝图里出现了好几次，
+到底是重复实现，还是别的什么。
+
+### 84.1 本轮产出
+
+| 文件 | 改动 |
+|---|---|
+| `My_MVVM_LoadScreen.h/.cpp` | 新增 `NewGameButtonPressed` / `NewSlotButtonPressed` / `TakenSlotButtonPressed` 三个蓝图入口 |
+| `My_MVVM_LoadSlot.h/.cpp` | 新增 `OnSetWidgetSwitcherIndex` 委托与 `InitializeSlot()` |
+| `My_WBP_LoadSlot_WidgetSwitcher` | `Initialize Slot(Target)` 中转函数，5 个 Sequence 分支 |
+| `My_WBP_LoadScreen` | `Blue Print Initialize Widget` 里对 3 个子控件各调一次 `Initialize Slot` |
+
+### 84.2 声明的语义
+
+```cpp
+UFUNCTION(BlueprintImplementableEvent, BlueprintCallable)
+void BluePrintInitializeWidget();
+```
+
+两个宏各管一件事，互不替代：
+
+| 宏 | 管什么 |
+|---|---|
+| `BlueprintImplementableEvent` | 告诉 UHT：**C++ 不写实现体**，函数体由蓝图提供 |
+| `BlueprintCallable` | 告诉 UHT：蓝图里也可以**主动调用**这个函数 |
+
+少了 `BlueprintCallable`，蓝图只能「实现」它，不能在别处「调用」它。
+少了 `BlueprintImplementableEvent`，C++ 就必须自己写实现体，蓝图只能覆盖，那是 `BlueprintNativeEvent`。
+
+UHT 生成的东西本质是：
+
+```cpp
+// 简化示意
+virtual void BluePrintInitializeWidget()
+{
+	ProcessEvent(FindFunctionChecked(FName("BluePrintInitializeWidget")), nullptr);
+}
+```
+
+`ProcessEvent` 会去问对象的**实际蓝图类**：「你有没有这个函数的实现？有就执行。」
+这就是它能按对象类型分派的原因。
+
+### 84.3 三种 UFUNCTION 形态对比
+
+| 写法 | C++ 实现体 | 蓝图可覆盖 | 蓝图可调用 |
+|---|---|---|---|
+| `BlueprintImplementableEvent` | 无 | 是 | 否 |
+| `BlueprintImplementableEvent, BlueprintCallable` | 无 | 是 | 是 |
+| `BlueprintNativeEvent` | 有（`XXX_Implementation`） | 是 | 否 |
+
+`BlueprintNativeEvent` 的坑：C++ 侧实现体要写成 `XXX_Implementation()`，
+蓝图没覆盖时，调 `XXX()` 会自动回落到 `_Implementation`。
+
+### 84.4 一份声明，N 份实现
+
+类关系（从 uasset 里读出来的，不是猜的）：
+
+```
+UMy_LoadScreenWidget（C++，只声明 BluePrintInitializeWidget）
+  └─ My_WBP_LoadScreen_Base（蓝图）
+       ├─ My_WBP_LoadScreen
+       ├─ My_WBP_LoadSlot_WidgetSwitcher
+       ├─ My_WBP_LoadSlot_Vacant
+       ├─ My_WBP_LoadSlot_EnterName
+       └─ My_WBP_LoadSlot_Taken
+```
+
+每个子类打开时，UE 都会自动生成一个 `Event Blue Print Initialize Widget` 节点。
+不连线等于空实现，连线就是这个子类自己的实现。
+
+C++ 只写一次调用：
+
+```cpp
+LoadScreenWidget = CreateWidget<UMy_LoadScreenWidget>(GetWorld(), LoadScreenWidgetClass);
+LoadScreenWidget->BluePrintInitializeWidget();
+```
+
+`LoadScreenWidgetClass` 配的是 `My_WBP_LoadScreen`，所以只有 LoadScreen 那一份执行。
+Vacant / EnterName / Taken 里那几份**不会**因为这句被调到。
+
+结论：不是「实现两次」，是「父类声明一次，每个子类各有一份，运行时按对象实际类型挑一份」。
+这是继承加多态，跟重复代码是两件事。
+
+### 84.5 为什么需要这个钩子，而不是用 Construct
+
+`CreateWidget` 内部就会执行蓝图的 `Event Construct`。那时候：
+
+- VM 刚 `NewObject` 出来，`InitializeLoadSlots` 可能刚跑完
+- Widget 还没 `AddToViewport`
+- 槽位控件还什么都不知道
+
+而且 `Construct` 每次 `AddToViewport` 都会重跑，不适合放装配这种一次性动作。
+
+所以需要一个明确的时刻：「C++ 这边准备好了，蓝图你可以来拿了」。这就是钩子的作用。
+
+### 84.6 最容易看错的地方：`Initialize Slot` 不是它
+
+| | `Blue Print Initialize Widget` | `Initialize Slot` |
+|---|---|---|
+| 来源 | C++ 声明 | `My_WBP_LoadSlot_WidgetSwitcher` 上的蓝图函数 |
+| 参数 | 无 | `Target`（要初始化的子控件） |
+| 谁调 | C++ HUD，1 次 | LoadScreen 的 BPIW，3 次 |
+| 干什么 | 界面初始化入口 | 给某个槽位塞 VM |
+
+判断函数归属看节点副标题：`Target is X` 里的 X 就是声明这个函数的类。
+紫色节点有两种可能：函数入口（函数体那个带 Entry 的节点），或者覆盖父类函数。
+
+### 84.7 完整链路
+
+```
+HUD 造 ScreenVM → InitializeLoadSlots 造 3 个 SlotVM → CreateWidget → AddToViewport
+  → BPIW（C++ 敲门）
+    → LoadScreen.BPIW：Switch 0/1/2 取出 3 个子控件，各调一次 Initialize Slot
+      → WidgetSwitcher.Initialize Slot(Target)：
+          Then 0  Set Target.SlotIndex
+          Then 1  Set Target.SlotViewModel
+          Then 2  Set Target.ScreenViewModel
+          Then 3  调 Target.BPIW，让子控件刷新自己
+          Then 4  设自己的 ActiveIndex
+```
+
+为什么 ScreenVM 要额外塞给子控件：按钮点击引发的动作经常跨槽位。
+例如选中槽位 0 时，槽位 1、2 的按钮状态也要跟着变，
+而槽位 0 的 SlotVM 里没有槽位 1、2 的指针，只有 ScreenVM 握着 `LoadSlots` 全表。
+
+### 84.8 顺序坑：LoadData 必须在敲门之后
+
+```cpp
+LoadScreenWidget->BluePrintInitializeWidget();  // 先敲门
+LoadScreenViewModel->LoadData();                // 再灌数据
+```
+
+`LoadData` 里调 `SetPlayerName` 会触发 FieldNotify 广播。
+如果槽位还没拿到 VM（敲门没发生），广播没有接收方，界面就是空的。
+
+### 84.9 待办
+
+| 项 | 说明 |
+|---|---|
+| `My_MVVM_LoadSlot` 字段 | `LoadSlotName` / `SlotIndex` / `SlotStatus` / `PlayerName` / `MapName` / `PlayerLevel` |
+| `InitializeLoadSlots` 补名字与索引 | 现在槽位不知道自己是谁 |
+| `LoadData()` | 读存档灌进 VM |
+| `InitializeSlot()` | 改成广播 `SlotStatus.GetValue()`，别写死 1 |
+| 选中态 | `SelectedSlot` / `SlotSelected` / `EnableSelectSlotButton` |

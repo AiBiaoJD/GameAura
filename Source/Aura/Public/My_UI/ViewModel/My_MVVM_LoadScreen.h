@@ -11,7 +11,7 @@ class UMy_MVVM_LoadSlot;
  * 
  */
 UCLASS()
-class AURA_API UMy_MVVM_LoadScreen : public UMVVMViewModelBase
+class AURA_API UMy_MVVM_LoadScreen : public UMVVMViewModelBase 
 {
 	GENERATED_BODY()
 
@@ -21,6 +21,15 @@ public:
 	UFUNCTION(BlueprintPure)
 	UMy_MVVM_LoadSlot* GetLoadSlotViewModelByIndex(int32 Index);
 
+	UFUNCTION(BlueprintCallable)
+	void NewGameButtonPressed(int32 Slot);
+	
+	UFUNCTION(BlueprintCallable)
+	void NewSlotButtonPressed(int32 Slot,const FString& EnterName);
+	
+	UFUNCTION(BlueprintCallable)
+	void TakenSlotButtonPressed(int32 Slot);
+	
 protected:
 
 	UPROPERTY(EditDefaultsOnly )
