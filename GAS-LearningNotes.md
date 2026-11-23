@@ -15216,3 +15216,287 @@ LoadScreenViewModel->LoadData();                // 再灌数据
 | `LoadData()` | 读存档灌进 VM |
 | `InitializeSlot()` | 改成广播 `SlotStatus.GetValue()`，别写死 1 |
 | 选中态 | `SelectedSlot` / `SlotSelected` / `EnableSelectSlotButton` |
+
+## 八十五、存档系统：USaveGame、序列化与 SlotName 的真实作用（★）
+
+这一章讲「保存游戏」在 UE 里到底发生了什么，以及 `SlotName` / `UserIndex` 为什么是两个参数。
+
+### 85.1 本轮产出
+
+| 文件 | 作用 |
+|---|---|
+| `My_LoadScreenSaveGame.h/.cpp` | 存档数据容器，继承 `USaveGame` |
+| `MyGameModeBase::SaveSlotData` | 造对象、填字段、调 API 落盘 |
+| `My_MVVM_LoadScreen::NewSlotButtonPressed` | 按钮入口，填 VM 后转交 GameMode |
+| `My_BP_LoadScreenSaveGame` | 存档类的蓝图子类，给 GameMode 选 |
+
+### 85.2 USaveGame 是什么
+
+`USaveGame` 没有任何逻辑，只有一项能力：能被序列化成一个文件。
+
+子类里每个 `UPROPERTY()` 都会写进文件，没标的字段不存。
+
+为什么不能直接存 Actor：Transform、组件树、网络状态都序列化不了，关卡卸载后对象就没了。存档只能存纯数据，读回来时再拿数据重建。
+
+### 85.3 序列化的完整链条
+
+`UGameplayStatics::SaveGameToSlot` 内部走 `SaveGameToMemory`（`GameplayStatics.cpp:2311`）：
+
+```cpp
+FMemoryWriter MemoryWriter(OutSaveData, true);
+
+FSaveGameHeader SaveHeader(SaveGameObject->GetClass());
+SaveHeader.Write(MemoryWriter);
+
+FObjectAndNameAsStringProxyArchive Ar(MemoryWriter, false);
+SaveGameObject->Serialize(Ar);
+```
+
+三步：
+
+1. 写 `FSaveGameHeader`（类名 + 版本），文件因此自描述
+2. `Serialize` 遍历 `Class->PropertyLink` 链表
+3. 每个属性写一个 `FPropertyTag`（名字 + 类型 + 字节数）再写数据
+
+读档时 `LoadGameFromMemory` 先读 header 拿类名，`UClass::TryFindTypeSlow` 找到类，
+`NewObject` 出一个空对象，再把字节灌进去。所以改了类名会导致旧存档读不出来。
+
+`FObjectAndNameAsStringProxyArchive` 的作用：把对象引用和 `FName` 转成字符串再写，
+跨会话、跨版本都能重新解析。普通 archive 存的是索引，不可靠。
+
+### 85.4 为什么不需要 SaveGame 标记
+
+`FProperty::ShouldSerializeValue`（`Property.cpp`）：
+
+```cpp
+// Skip non-SaveGame properties if we're saving game state
+if (!(PropertyFlags & CPF_SaveGame) && Ar.IsSaveGame())
+{
+    return false;
+}
+```
+
+关键在于 `SaveGameToMemory` 里那个 archive **没有**设 `ArIsSaveGame = true`。
+所以这条判断根本不触发，只要不是 `Transient` 之类就全部序列化。
+
+什么时候才需要 `SaveGame` 标记：存 Actor 时。
+`AuraGameModeBase::SaveWorldState` 里手动设了 `Ar.ArIsSaveGame = true`，
+那时只有 `UPROPERTY(SaveGame)` 的字段会被存——因为 Actor 字段太多，全存会爆炸。
+
+| 场景 | 需要 SaveGame 标记 |
+|---|---|
+| `USaveGame` 子类 | 不需要，全存 |
+| `AActor` / `UActorComponent` 存档 | 需要，只存标记过的 |
+
+### 85.5 按名字存储带来的兼容性
+
+| 你做的事 | 旧存档读出来会怎样 |
+|---|---|
+| 加一个新字段 | 旧存档没这个 tag，用类默认值 |
+| 改字段名 | 旧 tag 找不到匹配，字段变默认值（数据丢） |
+| 删一个字段 | 旧存档的 tag 被跳过，无害 |
+
+这是存档的兼容机制，也是发布后不能改字段名的原因。
+
+### 85.6 SlotName 与 UserIndex
+
+```cpp
+UGameplayStatics::SaveGameToSlot(SaveGameObject, SlotName, UserIndex);
+```
+
+PC 上的实际路径：
+
+```
+项目目录/Saved/SaveGames/<SlotName>.sav
+```
+
+`FGenericSaveGameSystem::GetSaveGamePath` 里 `UserIndex` 传进来了，但函数体里根本没用：
+
+```cpp
+FString GetSaveGamePath(const FString& Name, const int32 UserIndex) const
+{
+	return FString::Printf(TEXT("%sSaveGames/%s.sav"), *FPaths::ProjectSavedDir(), *Name);
+}
+```
+
+| 平台 | SlotName 的作用 | UserIndex 的作用 |
+|---|---|---|
+| Windows / PC | 就是文件名 | 被忽略，传什么都一样 |
+| PS / Xbox / Switch | 文件名 | 定位玩家账户的存储区 |
+
+结论：
+
+- **PC 上唯一键只有 `SlotName`**
+- 一台电脑两个人玩，只能靠 SlotName 区分（`PlayerA_LoadSlot_0` / `PlayerB_LoadSlot_0`）
+- `UserIndex` 不等于分屏玩家编号，后者是 `GetPlayerControllerId`，是「输入设备归属」
+
+坑：PC 上换 `UserIndex` 写的是同一个文件，会直接覆盖。
+
+### 85.7 参数 vs 内容
+
+`SaveGameToSlot(Obj, Name, Index)` 的 Name / Index **只用来算路径，不会写进文件**。
+文件内容只有 `Obj` 的字段。
+
+所以：
+
+```cpp
+LoadScreenSaveGame->PlayerName = LoadSlot->GetPlayerName();   // 必须，这才是游戏数据
+LoadScreenSaveGame->SlotName = LoadSlot->SlotName;             // 可选，让存档自证身份
+LoadScreenSaveGame->SlotIndex = LoadSlot->SlotIndex;           // 可选
+```
+
+不写 `PlayerName` 的话，文件里存的是类默认值 `"Default Name"`。
+
+### 85.8 五个 API 与两个坑
+
+| 用途 | 函数 |
+|---|---|
+| 造对象 | `CreateSaveGameObject(Class)` |
+| 存 | `SaveGameToSlot(Obj, Name, Index)` |
+| 读 | `LoadGameFromSlot(Name, Index)` |
+| 判断存在 | `DoesSaveGameExist(Name, Index)` |
+| 删除 | `DeleteGameInSlot(Name, Index)` |
+| 异步存 | `AsyncSaveGameToSlot(Obj, Name, Index, Delegate)` |
+
+坑一：`SlotName` 为空会静默失败。`SaveDataToSlot` 里有 `SlotName.Len() > 0` 判断，
+不成立就返回 false，什么都不发生也不报错。
+
+坑二：`SaveGameToSlot` 是同步的，会 `Serialize` 整个对象再写文件，阻塞主线程。
+
+### 85.9 本轮对教程代码的修正
+
+| 改动 | 理由 |
+|---|---|
+| `SaveSlotData(LoadSlot)` 去掉 index 参数 | 原来两个来源（VM 字段 + 参数）可能不一致，改成只从 VM 读 |
+| 加三重判空 | VM 无效 / 槽名空 / Cast 失败，任一都不该继续 |
+| 去掉 `DoesSaveGameExist` + `DeleteGameInSlot` | `SaveGameToSlot` 本来就是覆盖写 |
+| `TSubclassOf<USaveGame>` 收紧为 `TSubclassOf<UMy_LoadScreenSaveGame>` | 编辑器里只能选合法类，Cast 不会失败 |
+
+## 八十六、FieldNotify / Setter / Getter：MVVM 的三件套在干什么（★）
+
+### 86.1 问题
+
+VM 里要显示的数据为什么必须 private + 三个说明符，直接 public 不是更方便。
+
+### 86.2 UE 没有「属性改变」事件
+
+`PlayerName = X` 在 C++ 里就是一次内存写入，编译器生成几条 `mov` 指令，没有任何函数调用。
+
+所以 MVVM 插件没法自动监听字段变化，只能靠一套约定：
+声明通道、守住入口、手动广播。
+
+### 86.3 四个说明符
+
+| 说明符 | 作用 | 缺了会怎样 |
+|---|---|---|
+| `FieldNotify` | UHT 生成 `FFieldId` 常量并登记进字段表 | 没有 ID，`UE_MVVM_SET_PROPERTY_VALUE` 编译不过 |
+| `Setter` | 生成 `__SetterWrapper_XXX` | 蓝图 Set 节点绕过你的函数，不广播 |
+| `Getter` | 生成 `__GetterWrapper_XXX` | 功能正常，但失去「读时加工」的能力 |
+| `meta=(AllowPrivateAccess)` | 私有字段对蓝图开放 | private + `BlueprintReadWrite` 会 UHT 报错 |
+
+### 86.4 宏展开
+
+`MVVMViewModelBase.h`：
+
+```cpp
+#define UE_MVVM_BROADCAST_FIELD_VALUE_CHANGED(MemberName) \
+	BroadcastFieldValueChanged(ThisClass::FFieldNotificationClassDescriptor::MemberName)
+
+#define UE_MVVM_SET_PROPERTY_VALUE(MemberName, NewValue) \
+	SetPropertyValue(MemberName, NewValue, ThisClass::FFieldNotificationClassDescriptor::MemberName)
+```
+
+`FFieldNotificationClassDescriptor::PlayerName` 是 UHT 根据 `FieldNotify` 生成的
+`FFieldId` 常量，内部就是个 `uint16` 索引。广播时比较整数，不做字符串查找。
+
+`SetPropertyValue` 做三件事：比较（相同就返回）、赋值、广播。
+
+### 86.5 两条访问路径
+
+| | 谁在用 | 怎么访问 | 受 Setter 影响 |
+|---|---|---|---|
+| 直接访问 | 你的 C++ 代码 | 编译器生成 `mov`，直接写内存 | 否 |
+| 反射访问 | 蓝图、绑定、编辑器、序列化 | `FProperty::SetValue_InContainer()` | 是 |
+
+`SetValue_InContainer` 里的判断（`Property.cpp:965`）：
+
+```cpp
+if (HasSetter())
+{
+	CallSetter(OutContainer, InValue);
+}
+else
+{
+	CopyCompleteValue(...);
+}
+```
+
+### 86.6 哪些路径触发 Setter
+
+会触发（调用方是运行时才知道字段存在的代码）：
+
+- 蓝图 `Set Player Name` 属性节点
+- MVVM 双向绑定写回（`MVVMBindingHelper.cpp:636` 用 `SetValue_InContainer`）
+- 编辑器 Details 面板改值
+- 蓝图 `Set Members in` 节点
+- 蓝图 `Set Property Value` 节点（`MVVMViewModelBase.cpp:128`）
+
+不会触发（直接写内存）：
+
+- `PlayerName = X;`
+- `PlayerName.Append(...)` / `PlayerName += ...`（原地修改）
+- 反序列化（`SerializeItem` 直接往裸指针写）
+- 构造函数与类默认值
+- `CopyCompleteValue` 系列（memcpy 快路径）
+
+### 86.7 反序列化不广播
+
+`LoadGameFromSlot` 读回来的值不会触发 Setter，所以不会广播。
+这就是 `LoadData()` 必须手动 `SetPlayerName` 的原因——不能指望读档自动刷新界面。
+
+### 86.8 Setter 函数名不是必须 Set + 属性名
+
+`UhtClass.cs:883`：
+
+```csharp
+AddGetterSetter(gsToResolve, property.Setter ?? $"Set{property.SourceName}", property, true);
+```
+
+`property.Setter` 有值就用它，没值才回退到 `Set{属性名}`。所以三种写法都合法：
+
+```cpp
+UPROPERTY(Setter)                // 找 SetPlayerName
+UPROPERTY(Setter=ApplyPlayerName) // 找 ApplyPlayerName
+UPROPERTY(Setter=None)            // 不查找任何 setter
+```
+
+但写了 `Setter` 函数就必须存在，签名要匹配（一个参数，类型与属性一致），否则 UHT 直接报错。
+
+`BlueprintGetter` / `BlueprintSetter` 是标准 UE 说明符，和 MVVM 的 `Getter` / `Setter`
+是两套东西，写 MVVM 代码时用后者。
+
+### 86.9 三个实际会踩的坑
+
+一、原地修改不触发：
+
+```cpp
+SetPlayerName(PlayerName + TEXT("_1"));   // 正确
+PlayerName += TEXT("_1");                  // 不广播
+```
+
+二、C++ 里直接赋值能编过但不广播：
+
+```cpp
+LoadSlot->PlayerName = "ABiao";   // 同类的 private 也可见，编译通过，但 UI 不动
+```
+
+三、反序列化后忘了手动广播，界面还是旧值。
+
+### 86.10 判断标准
+
+| 字段类型 | 写法 |
+|---|---|
+| 要驱动 UI（名字、等级、地图名） | private + `FieldNotify, Setter, Getter` |
+| 纯内部数据（SlotName、SlotIndex） | public + `UPROPERTY()` |
+
+一句话：要通知的走 Setter，不要通知的随便。
