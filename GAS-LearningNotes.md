@@ -15500,3 +15500,265 @@ LoadSlot->PlayerName = "ABiao";   // 同类的 private 也可见，编译通过�
 | 纯内部数据（SlotName、SlotIndex） | public + `UPROPERTY()` |
 
 一句话：要通知的走 Setter，不要通知的随便。
+
+## 八十七、读档闭环：从磁盘到界面的一次完整往返（★）
+
+### 87.1 这一轮补的是什么
+
+上一章结束时，存档系统只能存、不能读：按下确认按钮会生成 `.sav` 文件，但重启游戏后界面上什么都看不到，因为没有任何代码去磁盘里取数据。
+
+这一轮补齐三件事：
+
+1. 存档里多一个「状态」字段，让界面知道这个槽该显示哪一页
+2. GameMode 加读档入口 `GetSaveSlotData`
+3. ScreenVM 加 `LoadData`，HUD 在装配完成后调用
+
+做完之后形成闭环：
+
+```
+存：SlotVM（内存） → SaveGame（对象） → .sav（磁盘）
+读：.sav（磁盘） → SaveGame（对象） → SlotVM（内存） → FieldNotify → UI
+```
+
+### 87.2 存档状态枚举：为什么用 enum class : uint8
+
+```cpp
+UENUM(BlueprintType)
+enum class EMy_SaveSlotStatus : uint8 { Vacant, EnterName, Taken };
+```
+
+三个值同时承担两个职责：
+
+- **存档有没有内容**：`Vacant` 表示空档
+- **界面显示哪一页**：广播出去的数字就是 WidgetSwitcher 的 ActiveIndex
+
+为什么不用教程的 `TEnumAsByte<ESaveSlotStatus>`：
+
+`TEnumAsByte` 是 UE 早期的枚举容器，内部只有一个 `uint8`（`EnumAsByte.h:110`）：
+
+```cpp
+template<class TEnum>
+class TEnumAsByte
+{
+    ...
+    uint8 Value;
+};
+```
+
+它的存在是因为早期 `UPROPERTY` 里的枚举必须包一层 UHT 才认得。但 UE 4.15 就把「`TEnumAsByte` 配 `enum class`」标记为废弃（`EnumAsByte.h:10`）：
+
+```cpp
+template <> struct UE_DEPRECATED(4.15, "TEnumAsByte is not intended for use with enum classes - please derive your enum class from uint8 instead.")
+TEnumAsByte_EnumClass<true> {};
+```
+
+所以两种正确写法二选一：
+
+| 枚举写法 | 底层大小 | UPROPERTY 写法 |
+|---|---|---|
+| `enum ESaveSlotStatus { ... }` | 4 字节 | `TEnumAsByte<ESaveSlotStatus>` |
+| `enum class E : uint8` | 1 字节 | `E` 直接写 |
+
+选后者。代价是 `enum class` 不会隐式转 int，广播时要 `static_cast`。
+
+### 87.3 顺手澄清：TObjectPtr 和 TEnumAsByte 不是一类东西
+
+| | `TEnumAsByte<E>` | `TObjectPtr<T>` |
+|---|---|---|
+| 包什么 | 枚举**值** | UObject **指针** |
+| 大小 | 1 字节 | 8 字节（同裸指针） |
+| 能为空 | 不能，是值 | 能 |
+| 参与 GC | 不参与 | 参与，是 GC 引用 |
+| 解决什么 | 早期 UPROPERTY 不认枚举类型 | UE5 编辑器重定向 + 增量 GC |
+| 现在还要吗 | 不要，直接写枚举类型 | 推荐用，替代裸指针 |
+
+一个是装数字的盒子，一个是牵着对象的绳子。
+
+### 87.4 为什么 SlotVM 和 SaveGame 字段几乎一样
+
+两个世界里的两份拷贝，不能互相替代：
+
+| | SlotVM | SaveGame |
+|---|---|---|
+| 活在哪 | 内存 | 磁盘 |
+| 生命周期 | 关界面就销毁 | 一直存在，直到被删 |
+| 字段装饰 | `FieldNotify + Setter + Getter` | 裸 `UPROPERTY()` |
+| 服务谁 | UI 绑定 | 序列化写文件 |
+| 能否直接绑控件 | 能 | 不能 |
+
+`USaveGame` 没有 FieldNotify，改了值界面不刷新；VM 是内存对象，程序关了就没。
+
+所以必须有 `SaveSlotData`（VM → SaveGame）和 `LoadData`（SaveGame → VM）两个搬运工，它们本身不含业务逻辑，只做字段对拷。
+
+### 87.5 InitializeSlot 改成状态驱动
+
+改前：
+
+```cpp
+void UMy_MVVM_LoadSlot::InitializeSlot()
+{
+    OnSetWidgetSwitcherIndex.Broadcast(1);   // 写死
+}
+```
+
+改后：
+
+```cpp
+void UMy_MVVM_LoadSlot::InitializeSlot()
+{
+    OnSetWidgetSwitcherIndex.Broadcast(static_cast<int32>(SlotStatus));
+}
+```
+
+意义：**切页不再由调用方决定，而由状态决定**。调用方只需要改 `SlotStatus`，不用记「这里该广播几」。
+
+### 87.6 GameMode 的 GetSaveSlotData：没存档也返回对象
+
+```cpp
+UMy_LoadScreenSaveGame* AMyGameModeBase::GetSaveSlotData(const FString& SlotName, int32 SlotIndex) const
+{
+    USaveGame* SaveGameObject = nullptr;
+    if (UGameplayStatics::DoesSaveGameExist(SlotName, SlotIndex))
+    {
+        SaveGameObject = UGameplayStatics::LoadGameFromSlot(SlotName, SlotIndex);
+    }
+    else
+    {
+        SaveGameObject = UGameplayStatics::CreateSaveGameObject(LoadScreenSaveGameClass);
+    }
+    return Cast<UMy_LoadScreenSaveGame>(SaveGameObject);
+}
+```
+
+`else` 分支是关键设计：没存档时造一个空对象，字段全是类默认值（`SlotStatus = Vacant`）。
+
+这样调用方不用区分「有没有存档」，拿到对象就能读字段。如果改成「没存档返回 nullptr」，`LoadData` 里每个调用点都要多一层判断。
+
+### 87.7 LoadData 的三个顺序（本轮最重要的坑）
+
+```cpp
+LoadSlot.Value->SlotStatus = LoadScreenSaveGame->SlotStatus;
+LoadSlot.Value->SetPlayerName(LoadScreenSaveGame->PlayerName);
+LoadSlot.Value->InitializeSlot();
+```
+
+**一、SlotStatus 必须在 InitializeSlot 之前**
+
+`InitializeSlot` 广播的是成员变量的**当前值**：
+
+```cpp
+OnSetWidgetSwitcherIndex.Broadcast(static_cast<int32>(SlotStatus));
+```
+
+如果先广播再赋值，广播出去的是默认值 `Vacant`（0），界面切到 Vacant 页，之后那个赋值**不会触发第二次广播**，界面就停在那儿。
+
+| 顺序 | 广播的数字 | 结果 |
+|---|---|---|
+| 赋值 → 广播 | 2 | 切到 Taken 页 |
+| 广播 → 赋值 | 0 | 停在 Vacant 页 |
+
+规律：**广播函数读的是「此刻值」，不是「最终值」**。
+
+**二、SetPlayerName 的顺序不影响切页**
+
+它只影响「切到 Taken 页那一瞬间名字有没有填好」。放后面也行，`FieldNotify` 广播会让 TextBlock 更新，最多闪一帧空白。
+
+**三、必须用 SetPlayerName，不能直接赋值**
+
+```cpp
+LoadSlot.Value->PlayerName = Save->PlayerName;    // 不广播
+LoadSlot.Value->SetPlayerName(Save->PlayerName);  // 广播
+```
+
+反序列化本身不触发 Setter（见 86.7），所以这次手动搬运是唯一的广播机会。
+
+### 87.8 HUD 的四步装配
+
+```cpp
+LoadScreenViewModel = NewObject<UMy_MVVM_LoadScreen>(this, LoadScreenViewModelClass);
+LoadScreenViewModel->InitializeLoadSlots();
+LoadScreenWidget = CreateWidget<UMy_LoadScreenWidget>(GetWorld(), LoadScreenWidgetClass);
+LoadScreenWidget->AddToViewport();
+LoadScreenWidget->BluePrintInitializeWidget();
+LoadScreenViewModel->LoadData();   // 必须最后
+```
+
+`LoadData` 必须在 `BluePrintInitializeWidget` 之后，因为 `SetPlayerName` 的广播需要有接收方，而接收方（View Binding）是敲门那一步才建立的。顺序反了，广播全丢。
+
+### 87.9 去掉硬编码：状态是唯一真相
+
+改前：
+
+```cpp
+void UMy_MVVM_LoadScreen::NewGameButtonPressed(int32 Slot)
+{
+    LoadSlots[Slot]->OnSetWidgetSwitcherIndex.Broadcast(1);
+}
+
+void UMy_MVVM_LoadScreen::NewSlotButtonPressed(int32 Slot, const FString& EnterName)
+{
+    ...
+    LoadSlots[Slot]->OnSetWidgetSwitcherIndex.Broadcast(2);
+}
+```
+
+问题不是「数字写错了」，是**状态和界面可能不一致**：界面切到 Taken 页了，但 VM 的 `SlotStatus` 还是 `Vacant`。
+
+只要之后有任何东西调 `InitializeSlot`（加返回按钮、`LoadData` 重跑），槽位就会被弹回 Vacant 页，看起来像存档丢了。
+
+改后：
+
+```cpp
+void UMy_MVVM_LoadScreen::NewGameButtonPressed(int32 Slot)
+{
+    LoadSlots[Slot]->SlotStatus = EMy_SaveSlotStatus::EnterName;
+    LoadSlots[Slot]->InitializeSlot();
+}
+
+void UMy_MVVM_LoadScreen::NewSlotButtonPressed(int32 Slot, const FString& EnterName)
+{
+    ...
+    LoadSlots[Slot]->SlotStatus = EMy_SaveSlotStatus::Taken;
+    MyGameMode->SaveSlotData(LoadSlots[Slot]);
+    LoadSlots[Slot]->InitializeSlot();
+}
+```
+
+规则：**谁想切页，改状态，别直接广播**。
+
+后续加「取消输入」时同理：
+
+```cpp
+LoadSlots[Slot]->SlotStatus = EMy_SaveSlotStatus::Vacant;
+LoadSlots[Slot]->InitializeSlot();
+```
+
+### 87.10 两处空指针风险
+
+`LoadData` 里两个指针都可能为空：
+
+```cpp
+AMyGameModeBase* AuraGameMode = Cast<AMyGameModeBase>(...);   // GameMode 类型不对 → nullptr
+UMy_LoadScreenSaveGame* LoadScreenSaveGame = ...;             // 类没配 → Cast 失败
+```
+
+判空写法不同，因为作用范围不同：
+
+| 变量 | 判空写法 | 原因 |
+|---|---|---|
+| `AuraGameMode` | `return` | 拿不到 GameMode，整个读档都没意义 |
+| `LoadScreenSaveGame` | `continue` | 某个槽位读失败，跳过它继续处理下一个 |
+
+另外 `GetLoadSlotViewModelByIndex` 用的是 `FindChecked`，蓝图里传错 index 会直接断言崩。教程这么写是为了尽早暴露错误，要稳妥就换成 `Find` 返回 nullptr。
+
+### 87.11 剩下的待办
+
+| 组 | 内容 |
+|---|---|
+| 选中 | `SelectedSlot` + `SlotSelected` 委托 + `EnableSelectSlotButton` 委托 |
+| 删除 | GameMode `DeleteSlot` + `DeleteButtonPressed` |
+| 开始 | `PlayButtonPressed` + GameInstance 记槽位信息 + `TravelToMap` |
+
+注意 `PlayButtonPressed` 会撞上继承问题：现在继承的是 `AGameModeBase`，教程的 `TravelToMap` 用不了，得自己实现。
+
+`SelectSlotButtonPressed` 里也会遇到同一个顺序坑：`SelectedSlot` 必须在 `SlotSelected.Broadcast()` 之前赋值，否则监听者读到的是旧值。

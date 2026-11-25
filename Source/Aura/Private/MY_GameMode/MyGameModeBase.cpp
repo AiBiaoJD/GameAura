@@ -18,6 +18,21 @@ void AMyGameModeBase::SaveSlotData(UMy_MVVM_LoadSlot* LoadSlot)
 	LoadScreenSaveGame->SlotName = LoadSlot->SlotName;
 	LoadScreenSaveGame->SlotIndex = LoadSlot->SlotIndex;
 	LoadScreenSaveGame->PlayerName = LoadSlot->GetPlayerName();
+	LoadScreenSaveGame->SlotStatus = EMy_SaveSlotStatus::Taken;
 
 	UGameplayStatics::SaveGameToSlot(LoadScreenSaveGame, LoadSlot->SlotName, LoadSlot->SlotIndex);
+}
+
+UMy_LoadScreenSaveGame* AMyGameModeBase::GetSaveSlotData(const FString& SlotName, int32 SlotIndex) const
+{
+	USaveGame* SaveGameObject = nullptr;
+	if (UGameplayStatics::DoesSaveGameExist(SlotName, SlotIndex))
+	{
+		SaveGameObject = UGameplayStatics::LoadGameFromSlot(SlotName, SlotIndex);
+	}
+	else
+	{
+		SaveGameObject = UGameplayStatics::CreateSaveGameObject(LoadScreenSaveGameClass);
+	}
+	return Cast<UMy_LoadScreenSaveGame>(SaveGameObject);
 }
