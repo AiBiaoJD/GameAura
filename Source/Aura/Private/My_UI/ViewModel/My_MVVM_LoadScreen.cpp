@@ -58,7 +58,49 @@ void UMy_MVVM_LoadScreen::NewSlotButtonPressed(int32 Slot, const FString& EnterN
 
 void UMy_MVVM_LoadScreen::TakenSlotButtonPressed(int32 Slot)
 {
-	/* 选中已有存档的逻辑，等做 Select/Delete/Play 时再补 */
+	if (!LoadSlots.Contains(Slot)) return;
+
+	/* 先记住选中的是谁：广播读的是「此刻值」，顺序反了监听者拿到的是旧的 SelectedSlot */
+	SelectedSlot = LoadSlots[Slot];
+	OnSlotSelected.Broadcast();
+
+	/* 遍历 3 个槽位：被点的那个禁用（它已被选中），其余恢复可点（可以改选） */
+	/* 广播的是「能不能点」，不是「是不是选中」：false = 已选中，true = 可以改选我 */
+	for (const TTuple<int32, UMy_MVVM_LoadSlot*> LoadSlot : LoadSlots)
+	{
+		LoadSlot.Value->OnEnableSelectSlotButton.Broadcast(LoadSlot.Key != Slot);
+	}
+}
+
+void UMy_MVVM_LoadScreen::DeleteButtonPressed()
+{
+	if (!IsValid(SelectedSlot)) return;
+
+	/* 先删磁盘上的文件，再清 VM 状态 */
+	AMyGameModeBase::DeleteSlot(SelectedSlot->SlotName, SelectedSlot->SlotIndex);
+
+	/* 状态回 Vacant，InitializeSlot 按它切回空档页 */
+	SelectedSlot->SlotStatus = EMy_SaveSlotStatus::Vacant;
+	SelectedSlot->SetPlayerName(FString());
+	SelectedSlot->InitializeSlot();
+
+	/* 它现在又是空档了，按钮恢复可点 */
+	SelectedSlot->OnEnableSelectSlotButton.Broadcast(true);
+
+	/* 必须清掉选中：否则删完再点 Play，会拿一个空档槽位去跳地图 */
+	SelectedSlot = nullptr;
+}
+
+void UMy_MVVM_LoadScreen::PlayButtonPressed()
+{
+	if (!IsValid(SelectedSlot)) return;
+
+	AMyGameModeBase* MyGameMode = Cast<AMyGameModeBase>(UGameplayStatics::GetGameMode(this));
+	if (!IsValid(MyGameMode)) return;
+
+	/* TODO: 把选中的槽位记进自己的 GameInstance，新关卡靠它读档 */
+
+	MyGameMode->TravelToMap();
 }
 
 void UMy_MVVM_LoadScreen::LoadData()

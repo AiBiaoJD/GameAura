@@ -36,3 +36,21 @@ UMy_LoadScreenSaveGame* AMyGameModeBase::GetSaveSlotData(const FString& SlotName
 	}
 	return Cast<UMy_LoadScreenSaveGame>(SaveGameObject);
 }
+
+void AMyGameModeBase::DeleteSlot(const FString& SlotName, int32 SlotIndex)
+{
+	/* DeleteGameInSlot 文件不存在时本来就返回 false，这里判断一下让意图更明确 */
+	if (UGameplayStatics::DoesSaveGameExist(SlotName, SlotIndex))
+	{
+		UGameplayStatics::DeleteGameInSlot(SlotName, SlotIndex);
+	}
+}
+
+void AMyGameModeBase::TravelToMap() const
+{
+	/* 没配地图就直接返回，避免打开一个空关卡 */
+	if (DefaultMap.IsNull()) return;
+
+	/* 第一个参数是 WorldContext，传 this 即可 */
+	UGameplayStatics::OpenLevelBySoftObjectPtr(this, DefaultMap);
+}

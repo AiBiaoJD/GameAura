@@ -15762,3 +15762,488 @@ UMy_LoadScreenSaveGame* LoadScreenSaveGame = ...;             // 类没配 → C
 注意 `PlayButtonPressed` 会撞上继承问题：现在继承的是 `AGameModeBase`，教程的 `TravelToMap` 用不了，得自己实现。
 
 `SelectSlotButtonPressed` 里也会遇到同一个顺序坑：`SelectedSlot` 必须在 `SlotSelected.Broadcast()` 之前赋值，否则监听者读到的是旧值。
+
+## 八十八、选中 / 删除 / Play：读档界面的三条操作链（★）
+
+### 88.1 这一轮补的是什么
+
+上一章读档闭环通了：能存、能读、能按状态切页。但界面底部三个按钮还是空的——玩家能看见存档，却选不中、删不掉、进不去。
+
+这一轮补齐：
+
+| 按钮 | 做了什么 |
+|---|---|
+| 选中 | `TakenSlotButtonPressed` 记录选中 + 广播按钮可用性 |
+| 删除 | `DeleteButtonPressed` → GameMode `DeleteSlot` → 状态回 Vacant |
+| 开始 | `PlayButtonPressed` → GameMode `TravelToMap` |
+
+### 88.2 为什么选中要遍历全部三个槽位
+
+```cpp
+for (const TTuple<int32, UMy_MVVM_LoadSlot*> LoadSlot : LoadSlots)
+{
+	LoadSlot.Value->OnEnableSelectSlotButton.Broadcast(LoadSlot.Key != Slot);
+}
+```
+
+玩家点的是槽位 0，但槽位 1、2 的按钮状态也要跟着变。因为这是**单选**语义，不是三个互不相干的开关。
+
+界面底部还有 Delete 和 Play，它们操作的是「当前选中的那个槽位」。如果三个槽位的 Select 都能同时处于选中态，`SelectedSlot` 该指向谁？玩家点 Play 到底进哪个存档？
+
+所以规则必须是：**同一时刻只能有一个槽位处于选中态**。
+
+槽位之间互相不认识——槽位 0 的 VM 里没有槽位 1 的指针。只有 ScreenVM 握着 `LoadSlots` 全表，所以「选中新项、放掉旧项」这个动作只能由它做。
+
+这就是为什么槽位除了自己的 SlotVM，还要额外握一个 ScreenVM。
+
+### 88.3 `EnableSelectSlotButton` 的命名陷阱
+
+广播的是「能不能点」，不是「是不是选中」：
+
+| 广播值 | 含义 | 界面表现 |
+|---|---|---|
+| `false` | 你已经选中了，再点没意义 | 按钮变灰 |
+| `true` | 你可以改选我 | 按钮恢复可点 |
+
+一个 bool 同时承担了两件事，这是教程命名不够好的地方，也是这一块最容易读反的原因。
+
+`LoadSlot.Key != Slot` 一行等价于教程的 if/else 两个分支：被点的那个得到 `false`，其他两个得到 `true`。
+
+### 88.4 顺序坑第二次出现
+
+```cpp
+SelectedSlot = LoadSlots[Slot];   // 先赋值
+OnSlotSelected.Broadcast();        // 再广播
+```
+
+和 `LoadData` 里 `SlotStatus` 必须先于 `InitializeSlot` 是同一类问题：
+
+> **广播函数读的是成员变量的「此刻值」，不是「最终值」。**
+
+教程原版把 `SlotSelected.Broadcast()` 写在最前面、`SelectedSlot = ...` 写在最后。监听者在广播那一刻读到的是旧值，第一次甚至是 `nullptr`。
+
+这一轮已经是第二次踩到同一个模式，记一条通用规则：
+
+**凡是「先赋值、再广播」的组合，赋值必须在广播之前。**
+
+### 88.5 DeleteButtonPressed 的三处改进
+
+```cpp
+if (!IsValid(SelectedSlot)) return;
+
+/* 先删磁盘上的文件，再清 VM 状态 */
+AMyGameModeBase::DeleteSlot(SelectedSlot->SlotName, SelectedSlot->SlotIndex);
+
+/* 状态回 Vacant，InitializeSlot 按它切回空档页 */
+SelectedSlot->SlotStatus = EMy_SaveSlotStatus::Vacant;
+SelectedSlot->SetPlayerName(FString());
+SelectedSlot->InitializeSlot();
+
+/* 它现在又是空档了，按钮恢复可点 */
+SelectedSlot->OnEnableSelectSlotButton.Broadcast(true);
+
+/* 必须清掉选中 */
+SelectedSlot = nullptr;
+```
+
+比教程多三处：
+
+**① `SetPlayerName(FString())` 清旧名字**
+
+教程没清。删了档但 VM 里还留着上一个玩家的名字，将来任何地方直接读 VM 显示都会露出来。
+
+**② `SelectedSlot = nullptr` 清选中**
+
+教程漏了这行。删完之后 `SelectedSlot` 还指着那个槽位，这时点 Play 会拿一个 `Vacant` 状态、数据已清空的槽位去跳地图——进去是一张空场景，而且不报错，很难排查。
+
+**③ 状态先于切页**
+
+`SlotStatus` 必须在 `InitializeSlot()` 之前改，否则广播的是旧状态，界面切错页。
+
+### 88.6 DeleteSlot 为什么是 static
+
+```cpp
+static void DeleteSlot(const FString& SlotName, int32 SlotIndex);
+```
+
+内部只调两个静态函数：
+
+```cpp
+if (UGameplayStatics::DoesSaveGameExist(SlotName, SlotIndex))
+{
+	UGameplayStatics::DeleteGameInSlot(SlotName, SlotIndex);
+}
+```
+
+不需要 GameMode 实例，所以做成 static。好处是调用方不用先 Cast：
+
+```cpp
+AMyGameModeBase::DeleteSlot(Name, Index);   // 直接类名调用
+```
+
+`DeleteGameInSlot` 文件不存在时本来就返回 false，外面那层判断是为了让意图更明确。
+
+### 88.7 TravelToMap 的简化版
+
+教程版依赖一张地图表：
+
+```cpp
+void AAuraGameModeBase::TravelToMap(UMVVM_LoadSlot* Slot)
+{
+	UGameplayStatics::OpenLevelBySoftObjectPtr(Slot, Maps.FindChecked(Slot->GetMapName()));
+}
+```
+
+`Maps` 是 `TMap<FString, TSoftObjectPtr<UWorld>>`，用来支持多张地图。
+
+我们的版本：
+
+```cpp
+void AMyGameModeBase::TravelToMap() const
+{
+	if (DefaultMap.IsNull()) return;
+	UGameplayStatics::OpenLevelBySoftObjectPtr(this, DefaultMap);
+}
+```
+
+因为 `AMyGameModeBase` 继承的是 `AGameModeBase` 而不是 `AAuraGameModeBase`，教程的 `Maps` 表用不了。现在只有一张主关卡，一个 `DefaultMap` 就够。
+
+什么时候需要扩成 Maps 表：多地图场景（进副本再回城），存档要记录「去过哪张图」。到那时候再补 `MapAssetName` 字段和查表逻辑。
+
+两个细节：
+
+- `OpenLevelBySoftObjectPtr` 的第一个参数是 WorldContext，传 `this`（GameMode）即可
+- 关卡切换是**异步**的，GameMode 在这之后才会销毁，所以调用栈内传它是安全的
+
+`DefaultMap.IsNull()` 那个判断必须有——没配地图时直接返回，否则会打开一个空关卡。
+
+### 88.8 GameInstance 为什么必须跨关卡
+
+`PlayButtonPressed` 要记「玩家选了哪个档」，但 LoadScreen 的所有对象在切关卡时都会销毁：
+
+| 对象 | 切关卡时 |
+|---|---|
+| `GameInstance` | **保留** |
+| `GameMode` | 销毁重建 |
+| `HUD` | 销毁重建 |
+| `Widget` | 随 HUD 销毁 |
+| `ViewModel` | Outer 是 HUD，跟着销毁 |
+
+只有 GameInstance 扛得住。它是进程启动时创建、退出时才销毁的唯一对象。
+
+教程的 `UAuraGameInstance` 就是给 `UGameInstance` 加了三个字段：
+
+| 字段 | 用途 |
+|---|---|
+| `LoadSlotName` | 记住选的是 `LoadSlot_0` 还是 `LoadSlot_1` |
+| `LoadSlotIndex` | `SaveGameToSlot` 的第二个参数 |
+| `PlayerStartTag` | 出生点 Tag，`ChoosePlayerStart_Implementation` 用 |
+
+写入必须放在 `TravelToMap()` **之前**。新关卡的 GameMode 在 `BeginPlay` 就会读这三个值去加载存档，那时候必须已经有值。
+
+### 88.9 这一轮把教程的 GameInstance 删掉了
+
+`UAuraGameInstance` 是教程的类（`// Copyright Druid Mechanics`），项目里已经通过 `DefaultEngine.ini` 配成了 `GameInstanceClass`。
+
+但我们决定不用它，后面要建自己的 `UMy_GameInstance`。所以 `PlayButtonPressed` 现在只剩：
+
+```cpp
+/* TODO: 把选中的槽位记进自己的 GameInstance，新关卡靠它读档 */
+MyGameMode->TravelToMap();
+```
+
+建自己的 GameInstance 时，三件事一件都不能漏：
+
+1. 新建 `UMy_GameInstance : UGameInstance`，加上三个字段
+2. 建蓝图子类 `My_BP_GameInstance`
+3. **改 Project Settings → Maps & Modes → GameInstance Class**
+
+第 3 步最关键。不改的话运行时实例化的还是教程那个类，`Cast<UMy_GameInstance>` 直接返回 nullptr，而且不会报错。
+
+现在的后果：点 Play 能跳进 `MyMap`，但新关卡不知道玩家选了哪个档，角色是全新的，不从存档恢复。这个缺口等 GameInstance 建好再补。
+
+### 88.10 还缺什么
+
+| 缺口 | 说明 |
+|---|---|
+| `Button_Back` 未接线 | 玩家点「新建游戏」进输入页后没有取消路径。需要单独记「正在编辑哪个槽位」，不能复用 `SelectedSlot` |
+| `PlayerLevel` / `MapName` 字段 | Taken 页的等级栏现在是空的，VM 里还没有这两个三件套字段 |
+| GameInstance | 见 88.9 |
+| 删除后按钮不解禁 | `DeleteButtonPressed` 清了 `SelectedSlot`，但 `OnSlotSelected` 是无参委托，表达不了「没选中了」。要修得在蓝图侧手动禁用两个按钮 |
+
+---
+
+## 八十九、AddToViewport 为什么全屏，以及 UMG 布局面板的分工（★）
+
+### 89.1 问题的起点
+
+做一个确认删除的弹窗 `My_WBP_AreYouSure`，根是 SizeBox，尺寸也设了，但 `AddToViewport` 之后占满整个屏幕。
+
+### 89.2 引擎注释直接给了答案
+
+`UUserWidget::AddToViewport` 的定义上面写着：
+
+```cpp
+/**
+ * Adds it to the game's viewport and fills the entire screen, unless SetDesiredSizeInViewport is called
+ * to explicitly set the size.
+ */
+```
+
+「fills the entire screen」——这是设计行为，不是 bug。
+
+### 89.3 机制：Viewport 的槽是 Fill
+
+`GameViewportClient.cpp:2835`：
+
+```cpp
+void UGameViewportClient::AddViewportWidgetContent(TSharedRef<SWidget> ViewportContent, const int32 ZOrder)
+{
+	PinnedViewportOverlayWidget->AddSlot( ZOrder )
+		[ ViewportContent ];
+}
+```
+
+`SOverlay.h:44`：
+
+```cpp
+FOverlaySlot(int32 InZOrder)
+	: TBasicLayoutWidgetSlot<FOverlaySlot>(HAlign_Fill, VAlign_Fill)
+```
+
+`HAlign_Fill` + `VAlign_Fill` = 子控件被强制拉伸填满父级。
+
+所以 Widget 的**根控件**一定拿到视口大小的尺寸。1920×1080 的屏幕，根就是 1920×1080。
+
+### 89.4 为什么 SizeBox 挡不住
+
+关键区分：
+
+- SizeBox 的 `WidthOverride` / `HeightOverride` 控制的是「**我给内容多大**」
+- 它控制不了「**我在父级里多大**」
+
+SizeBox 被 Fill 拉满之后，自己的尺寸已经由父级决定了。它只能约束里面内容的区域，无法反抗外面的拉伸。
+
+打个比方：SizeBox 是一个固定尺寸的盒子，但 UE 把它塞进一个会自动撑满的箱子里，盒子被撑变形了，里面的东西自然跟着变形。
+
+### 89.5 Canvas Panel 为什么能解决
+
+**核心概念：每个控件都活在父容器的一个「槽（Slot）」里，槽决定它怎么摆。不同容器的槽，规则完全不同。**
+
+| 容器 | 槽的规则 | 能配置吗 |
+|---|---|---|
+| `Overlay` | `HAlign_Fill` + `VAlign_Fill`，写死在构造函数里 | 完全不能 |
+| `SizeBox` | 只有一个子，自己不控制自己在父级的位置 | 不能 |
+| `Horizontal Box` | 按 `Fill` 权重或 `Auto` 分配 | 部分 |
+| `Grid Panel` | Row / Column / RowSpan | 部分 |
+| **`Canvas Panel`** | **Anchors / Alignment / Position / Size / AutoSize** | **全部** |
+
+`Canvas Panel` 是 UE 里唯一能做绝对定位的面板。
+
+注意一个容易误解的点：**Canvas Panel 自己也被拉满全屏了。** 但这没关系，因为：
+
+1. 它不渲染任何东西——没有背景、没有边框，全屏也看不见
+2. 它是容器，它给子控件的槽是可配置的
+
+所以加 Canvas Panel 的本质是：
+
+> **在「不可配置的 Fill 层」和「你的内容」之间，插一层「可配置的定位层」。**
+
+### 89.6 Anchors + Alignment 的定位公式
+
+```
+控件左上角 = 锚点位置 + Position − Alignment × 控件尺寸
+锚点位置   = 父级尺寸 × Anchors
+```
+
+代入 `Anchors(0.5, 0.5)` + `Alignment(0.5, 0.5)` + `Position(0, 0)`，父级 1920×1080，控件 560×260：
+
+```
+锚点     = (1920, 1080) × (0.5, 0.5) = (960, 540)
+左上角   = (960, 540) + (0, 0) − (0.5×560, 0.5×260)
+         = (960, 540) − (280, 130)
+         = (680, 410)
+
+控件中心 = ((680+1240)/2, (410+670)/2) = (960, 540)   ← 正好是屏幕中心
+```
+
+`Alignment` 的含义是「**控件自身哪个点对准锚点**」：
+
+| Alignment | 对准锚点的是 | 效果 |
+|---|---|---|
+| `(0, 0)` | 控件左上角 | 控件往右下方展开 |
+| `(0.5, 0.5)` | 控件中心 | 以锚点为中心对称展开 |
+| `(1, 1)` | 控件右下角 | 控件往左上方展开 |
+
+所以「设了 0.5 还是没居中」的常见原因就是 `Alignment` 没跟着设成 `(0.5, 0.5)`。
+
+一个容易混的地方：`Anchors` / `Alignment` 在 Details 面板里显示在 SizeBox 身上，但它们其实是 **Canvas Slot 的属性**，不是 SizeBox 自己的。证据是——把 SizeBox 拖到 Overlay 或 Vertical Box 下面，这两个属性就消失了。
+
+### 89.7 教程的做法：在 Viewport 层约束
+
+教程用的是四件套：
+
+```cpp
+Widget->AddToViewport();
+Widget->SetAnchorsInViewport(FAnchors(0.5f, 0.5f));        // 锚点 → 屏幕中心
+Widget->SetAlignmentInViewport(FVector2D(0.5f, 0.5f));     // 控件中心对准锚点
+Widget->SetPositionInViewport(FVector2D(0.f, 0.f));        // 无偏移
+Widget->SetDesiredSizeInViewport(FVector2D(600.f, 300.f)); // 真正改尺寸的那一行
+```
+
+`SetDesiredSizeInViewport` 直接改写 Widget 在 Viewport 槽里的尺寸，把根控件从 1920×1080 改成 600×300。根被改小之后，里面是 Overlay 还是 Canvas Panel 都不重要了。
+
+两种方案对比：
+
+| | 教程（Viewport 层） | 根改 Canvas Panel |
+|---|---|---|
+| 约束在哪 | Widget **外部**（Viewport 槽） | Widget **内部**（Canvas Slot） |
+| 根控件尺寸 | 600×300 | 仍 1920×1080 |
+| 需要改结构 | 不需要 | 需要加一层 |
+| 尺寸写在哪 | 调用处（蓝图/C++） | 组件内部 |
+| 适合 | 弹窗、提示框 | 尺寸固定的通用组件 |
+
+没有优劣。教程那种改起来快，Canvas 那种复用性好。
+
+四个 API 的分工：
+
+| API | 对应公式里的 | 作用 |
+|---|---|---|
+| `SetAnchorsInViewport` | 锚点位置 = 父级 × Anchors | 锚点在哪 |
+| `SetAlignmentInViewport` | Alignment × 尺寸 | 控件哪个点对准锚点 |
+| `SetPositionInViewport` | + Position | 额外偏移 |
+| `SetDesiredSizeInViewport` | 控件尺寸 | 控件多大 |
+
+缺了最后一行，前三个只能让一个「全屏的控件」居中——视觉上还是全屏。
+
+### 89.8 UMG 布局面板的分类
+
+按职责分五类，它们不是平级的：
+
+**定位类**
+
+| 面板 | 特点 | 适合 |
+|---|---|---|
+| `Canvas Panel` | 唯一能做绝对定位，每个子控件独立设 Anchors / Alignment / Position / Size，互不影响，可以重叠 | HUD、弹窗、需要精确摆位的界面 |
+
+**排列类**
+
+| 面板 | 特点 | 适合 |
+|---|---|---|
+| `Horizontal Box` | 从左到右，子项设 `Fill`（按权重）或 `Auto`（按内容） | 按钮行、工具栏 |
+| `Vertical Box` | 从上到下，规则同上 | 菜单列表、设置项 |
+| `Wrap Box` | 排满一行自动换行 | 标签云、数量不定的条目 |
+| `Grid Panel` | 手动指定 Row / Column / RowSpan | 不规则网格 |
+| `Uniform Grid Panel` | 等分格子，按顺序自动填 | 物品栏、技能格子 |
+
+**叠加类**
+
+| 面板 | 特点 | 适合 |
+|---|---|---|
+| `Overlay` | 所有子控件叠在一起，Z 序决定前后，槽默认 Fill | 背景图 + 内容、加载遮罩 |
+
+`Overlay` 的定位能力很弱，它的价值在「叠」不在「摆」。
+
+**约束类**（不负责排列，只改变可用空间）
+
+| 面板 | 特点 | 适合 |
+|---|---|---|
+| `Size Box` | 限制子内容的宽高（Override / Min / Max Desired） | 固定尺寸的卡片、按钮 |
+| `Scale Box` | 整体等比缩放，适配不同分辨率 | 设计稿等比缩放 |
+| `Safe Zone` | 避开屏幕边缘（刘海、圆角、overscan） | 主机、移动端 |
+
+**功能类**
+
+| 面板 | 特点 | 适合 |
+|---|---|---|
+| `Scroll Box` | 内容超出时出现滚动条 | 长列表、设置页 |
+| `Widget Switcher` | 多页叠放，一次只显示一页 | 读档界面的切页（Vacant / EnterName / Taken） |
+
+`Widget Switcher` 在读档界面里已经用到了——`OnSetWidgetSwitcherIndex` 广播的那个 index，就是它的 `Active Widget Index`。
+
+选型路径：
+
+```
+需要精确指定每个控件的坐标？
+  → 是：Canvas Panel
+  → 否：子控件要叠在一起？
+        → 是：Overlay
+        → 否：要按顺序排？
+              → 横向：Horizontal Box
+              → 纵向：Vertical Box
+              → 要换行：Wrap Box
+              → 要等分格子：Uniform Grid Panel
+              → 要不规则网格：Grid Panel
+只是要限制大小 / 缩放 / 避让？
+  → Size Box / Scale Box / Safe Zone
+```
+
+实际项目里都是**组合**的。比如那个确认删除的弹窗：
+
+```
+Canvas Panel      ← 定位：整体放屏幕中间
+└─ Size Box       ← 约束：固定 560×260
+   └─ Overlay     ← 叠加：背景图在下，内容在上
+      ├─ Image_Background
+      └─ Wrap Box ← 排列：文字和按钮自动换行
+```
+
+**一层一个职责**，这是 UMG 布局的核心思路，不要指望单个面板解决所有问题。
+
+### 89.9 顺带：ObjectRedirector
+
+移动或重命名资产时，UE 会在**原位置**留下一个 `ObjectRedirector`，记录新路径：
+
+```
+旧路径 /Game/MyBlueprints/LoadMenu/My_WBP_LoadMenu
+    ↓
+  重定向器（记录着新地址）
+    ↓
+新路径 /Game/MyBlueprints/UI/LoadMenu/My_WBP_LoadScreen
+```
+
+作用：让还写着旧路径的引用（蓝图、配置）自动找到新位置，不会因为移动资产就断掉。
+
+删除空文件夹时如果弹出 `Delete Assets` 对话框，里面显示 `Class = ObjectRedirector`，说明文件夹里还有这个跳转牌——它看着空，其实不空。
+
+**能不能直接删**，看 `Asset Referencers` 那一列：
+
+| 该列的值 | 处理方式 |
+|---|---|
+| 为空 | 没有引用者，直接删 |
+| 有数字 | 先右键文件夹 → Fix Up Redirectors in Folder，把引用改写成新路径，再删 |
+
+还有一条判断依据：**C++ 里硬编码的路径不会被重定向器救**。`FSoftObjectPath` 存的是字符串，UE 不会去改它。所以移动资产前先 grep 一下 `Source/` 和 `Config/`。
+
+养成习惯：**移动完一批资产后，先 Fix Up Redirectors，再删空文件夹。**
+
+想全项目扫一遍漏网的，Content Browser 搜索框输入 `ObjectRedirector` 就能列出来。
+
+### 89.10 顺带：RemoveFromParent
+
+`RemoveFromParent` = 把自己从父容器里摘掉。对 `AddToViewport` 加进来的 Widget 来说，就是「从屏幕上消失」。
+
+`AddToViewport` 的内部实现是 `ViewportOverlayWidget->AddSlot()[ Widget ]`，所以 Widget 的「父」就是 Viewport 那个 Overlay。
+
+移除之后：
+
+| 操作 | 对象状态 | 能重新显示吗 |
+|---|---|---|
+| `RemoveFromParent` | 活着，只是不在层级里 | 能，再 `AddToViewport` 一次 |
+| 引用清空 + GC | 销毁 | 不能，要重新 `CreateWidget` |
+
+和 `SetVisibility(Collapsed)` 的区别：
+
+| | `RemoveFromParent` | `SetVisibility(Collapsed)` |
+|---|---|---|
+| 在层级里 | 不在 | 还在 |
+| 占布局空间 | 不占 | 不占 |
+| 参与 Tick | **不参与** | **参与** |
+| 重新显示 | 要 `AddToViewport` | 改 Visibility 就行 |
+| 适合 | 用完就丢的弹窗 | 频繁开关的面板 |
+
+弹窗用 `RemoveFromParent` 更彻底——不占 Tick、不占布局、不参与绘制。
+
+一个细节：`Bind Event to On Clicked` 默认是**追加**绑定（`Add`），不是替换。如果同一个 Widget 被移除后又 `AddToViewport` 回来，`Construct` 会再跑一次，同一个事件被绑两次。点一下「取消」会执行两次 `RemoveFromParent`。
+
+第二次是空操作（已经不在父级里，UE 内部判空返回），不会崩，只是白跑一遍。对「创建 → 用一次 → 丢弃」的弹窗场景，实际不会触发，可以不管。

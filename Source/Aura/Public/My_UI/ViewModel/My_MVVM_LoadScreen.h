@@ -6,6 +6,8 @@
 #include "MVVMViewModelBase.h"
 #include "My_MVVM_LoadScreen.generated.h"
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FMy_SlotSelectedSignature);
+
 class UMy_MVVM_LoadSlot;
 /**
  * 读档界面的界面级 ViewModel
@@ -39,6 +41,18 @@ public:
 	
 	/* 从磁盘读 3 个槽位的数据灌进各自的 SlotVM，HUD 装配完界面后调用 */
 	void LoadData();
+
+	/* 有槽位被选中时广播，给 Delete / Play 按钮用来解除禁用 */
+	UPROPERTY(BlueprintAssignable)
+	FMy_SlotSelectedSignature OnSlotSelected;
+
+	/* 按钮入口：删除当前选中的存档 */
+	UFUNCTION(BlueprintCallable)
+	void DeleteButtonPressed();
+
+	/* 按钮入口：用当前选中的存档进入游戏 */
+	UFUNCTION(BlueprintCallable)
+	void PlayButtonPressed();
 protected:
 
 	/* 槽位 VM 的类，蓝图里配成 My_MVVM_LoadSlot 的蓝图子类 */
@@ -60,5 +74,9 @@ private:
 	
 	UPROPERTY()
 	TObjectPtr<UMy_MVVM_LoadSlot> LoadSlot_2;
+
+	/* 当前选中的槽位 VM。必须是 UPROPERTY，否则会被 GC 回收成野指针 */
+	UPROPERTY()
+	TObjectPtr<UMy_MVVM_LoadSlot> SelectedSlot;
 
 };

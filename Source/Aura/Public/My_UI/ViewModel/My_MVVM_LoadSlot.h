@@ -8,6 +8,7 @@
 #include "My_MVVM_LoadSlot.generated.h"
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FMy_SetWidgetSwitcherIndexSignature,int32, WidgetSwitcherIndex);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FMy_EnableSelectSlotButtonSignature, bool, bEnable);
 /**
  * 单个存档槽位的 ViewModel
  * 一个槽位一个实例，由 UMy_MVVM_LoadScreen::InitializeLoadSlots 创建
@@ -22,7 +23,11 @@ public:
 	/* 切页委托：由 ScreenVM 广播，槽位收到后切自己的 WidgetSwitcher */
 	UPROPERTY(BlueprintAssignable)
 	FMy_SetWidgetSwitcherIndexSignature OnSetWidgetSwitcherIndex;
-
+	
+	/* 按钮可用性委托：false = 已被选中（再点没意义），true = 可以改选我 */
+	UPROPERTY(BlueprintAssignable)
+	FMy_EnableSelectSlotButtonSignature OnEnableSelectSlotButton;
+	
 	/* 按当前存档状态广播切页，0=Vacant 1=EnterName 2=Taken */
 	void InitializeSlot();
 
