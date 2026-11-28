@@ -16,3 +16,9 @@ void UMy_MVVM_LoadSlot::SetPlayerName(FString InPlayerName)
 	/* 必须走宏，直接写 PlayerName = X 不会通知界面 */
 	UE_MVVM_SET_PROPERTY_VALUE(PlayerName, InPlayerName);
 }
+
+void UMy_MVVM_LoadSlot::SetMapName(FString InMapName)
+{
+	/* 和 SetPlayerName 一样：走宏才会广播，直接赋值界面不刷新 */
+	UE_MVVM_SET_PROPERTY_VALUE(MapName, InMapName);
+}

@@ -43,6 +43,14 @@ public:
 	void SetPlayerName(FString InPlayerName);
 	FString GetPlayerName() const { return PlayerName; }
 
+	/* 地图名：新建存档时从 GameMode 的 DefaultMapName 抄过来，读档时从 SaveGame 读回来 */
+	void SetMapName(FString InMapName);
+	FString GetMapName() const { return MapName; }
+
+	/* 地图资产名：如 "AuraMap"，跳关时用来反查关卡资产，界面不显示所以不需要 FieldNotify */
+	UPROPERTY()
+	FString MapAssetName;
+
 	/* 槽位状态：Vacant/EnterName/Taken，InitializeSlot 据此决定广播哪一页 */
 	/* 和 SaveGame 里的同名字段对应，存盘时写出去，读档时读回来 */
 	UPROPERTY()
@@ -53,4 +61,8 @@ private:
 	/* 存档内容：玩家名，界面不直接显示，靠 FieldNotify 通知绑定的 TextBlock */
 	UPROPERTY(BlueprintReadWrite, FieldNotify, Setter, Getter, meta=(AllowPrivateAccess="true"))
 	FString PlayerName;
+
+	/* 存档内容：地图显示名，绑定到槽位页的地图 TextBlock 上 */
+	UPROPERTY(BlueprintReadWrite, FieldNotify, Setter, Getter, meta=(AllowPrivateAccess="true"))
+	FString MapName;
 };

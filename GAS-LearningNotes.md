@@ -16247,3 +16247,352 @@ Canvas Panel      ← 定位：整体放屏幕中间
 一个细节：`Bind Event to On Clicked` 默认是**追加**绑定（`Add`），不是替换。如果同一个 Widget 被移除后又 `AddToViewport` 回来，`Construct` 会再跑一次，同一个事件被绑两次。点一下「取消」会执行两次 `RemoveFromParent`。
 
 第二次是空操作（已经不在父级里，UE 内部判空返回），不会崩，只是白跑一遍。对「创建 → 用一次 → 丢弃」的弹窗场景，实际不会触发，可以不管。
+
+---
+
+## 九十、存档里的地图名与多地图支持（★）
+
+### 90.1 为什么需要两个字段
+
+读档界面要显示地图名，但「显示的名字」和「引擎能打开的东西」是两回事：
+
+| 字段 | 内容 | 谁在用 |
+|---|---|---|
+| `MapName` | `"Aura Village"` | 界面 TextBlock 显示；同时是 `Maps` 表的 key |
+| `MapAssetName` | `"AuraMap"` | 跳关时定位 `.umap` 资产 |
+
+`DefaultMapName` 是在蓝图里手打的字符串，和磁盘上的文件名**没有任何命名约定**。引擎拿到 `"Aura Village"` 推不出该打开哪个 `.umap`。
+
+类比：`MapName` 是歌名，`MapAssetName` 是 MP3 文件名。用户只认歌名，播放器只认文件名。所以两个都得存。
+
+### 90.2 Maps 表：显示名 → 关卡资产
+
+```cpp
+/* 显示名 -> 关卡资产 */
+UPROPERTY(EditDefaultsOnly, Category="Map Defaults")
+TMap<FString, TSoftObjectPtr<UWorld>> Maps;
+```
+
+拆开看：`TMap<FString, TSoftObjectPtr<UWorld>>` = 左边是名字（字符串），右边是地图的路径（也是字符串）。**两个都不是指针**。
+
+value 为什么用 `TSoftObjectPtr` 而不是 `TObjectPtr`：
+
+- 硬引用会让「加载 GameMode」变成「加载表里所有地图」。主菜单根本不需要地图，却要为此付出几百 MB。
+- 软引用只存 `"/Game/Maps/AuraMap"` 这样的路径，点 Play 才真正打开。
+- 而且这里用软引用**零代价**：`OpenLevelBySoftObjectPtr` 内部只是取包名传给 `OpenLevel`，本来就不会先把关卡加载进内存。
+
+`BeginPlay` 里把默认图登记进表：
+
+```cpp
+void AMyGameModeBase::BeginPlay()
+{
+	Super::BeginPlay();
+
+	/* Maps 是 EditDefaultsOnly，蓝图里配的其它地图在构造时就填好了，这里只补默认图 */
+	if (!DefaultMapName.IsEmpty() && !DefaultMap.IsNull())
+	{
+		Maps.Add(DefaultMapName, DefaultMap);
+	}
+}
+```
+
+教程是无条件 `Maps.Add(DefaultMapName, DefaultMap)`。`DefaultMapName` 没配时会往表里塞一个空字符串 key，所以这里加了判空。
+
+### 90.3 TravelToMap：FindChecked 的坑
+
+教程原版：
+
+```cpp
+UGameplayStatics::OpenLevelBySoftObjectPtr(Slot, Maps.FindChecked(Slot->GetMapName()));
+```
+
+`TMap::FindChecked` 在 key 不存在时**直接断言崩溃**。蓝图里名字打错一个字符，崩在引擎内部，报错信息还看不出是哪张图。
+
+改成 `Find` + 兜底：
+
+```cpp
+void AMyGameModeBase::TravelToMap(UMy_MVVM_LoadSlot* Slot) const
+{
+	if (!IsValid(Slot)) return;
+
+	const TSoftObjectPtr<UWorld>* Map = Maps.Find(Slot->GetMapName());
+	if (Map && !Map->IsNull())
+	{
+		UGameplayStatics::OpenLevelBySoftObjectPtr(this, *Map);
+		return;
+	}
+
+	/* 兜底：表里没这张图就退回默认关卡，避免点 Play 没反应 */
+	if (!DefaultMap.IsNull())
+	{
+		UGameplayStatics::OpenLevelBySoftObjectPtr(this, DefaultMap);
+	}
+}
+```
+
+兜底的意义：`DefaultMapName` 忘了配、或者存档里存的地图名在新版本里被改名了，点 Play 至少能进游戏，而不是静默无反应。
+
+### 90.4 数据流：VM → SaveGame → 磁盘 → VM
+
+写入（`NewSlotButtonPressed`，**必须在 `SaveSlotData` 之前**）：
+
+```cpp
+LoadSlots[Slot]->SetMapName(MyGameMode->DefaultMapName);
+LoadSlots[Slot]->MapAssetName = MyGameMode->DefaultMap.ToSoftObjectPath().GetAssetName();
+```
+
+落盘（`SaveSlotData`）：
+
+```cpp
+LoadScreenSaveGame->MapName = LoadSlot->GetMapName();
+LoadScreenSaveGame->MapAssetName = LoadSlot->MapAssetName;
+```
+
+读回（`LoadData`）：
+
+```cpp
+LoadSlot.Value->SetMapName(LoadScreenSaveGame->MapName);
+LoadSlot.Value->MapAssetName = LoadScreenSaveGame->MapAssetName;
+```
+
+两者写法不同，因为用途不同：
+
+| 字段 | 写法 | 原因 |
+|---|---|---|
+| `MapName` | `SetMapName()` | 走 `UE_MVVM_SET_PROPERTY_VALUE`，广播 FieldNotify 刷新界面 |
+| `MapAssetName` | 直接赋值 | 界面不显示，不需要 FieldNotify，也就不需要 Setter |
+
+### 90.5 旧存档兼容
+
+`FPropertyTag` 按**字段名**存储。旧 `.sav` 里没有 `MapName` 这个 tag，反序列化时字段保持默认值（空串）。
+
+表现：地图名一栏空白，但点 Play 仍然能进游戏（走 90.3 的兜底）。删档重建即可恢复。
+
+对比第 85 章说过的：`FSaveGameHeader` 按**类名**存，改类名会让旧档直接失效；`FPropertyTag` 按字段名存，改字段名只是丢那一个字段的数据。
+
+### 90.6 GetMapNameFromMapAssetName 的用途
+
+世界里存盘时，`World->GetMapName()` 返回的是**资产名**（`"AuraMap"`）。要把它写回存档的 `MapName`（显示名）就得反查：
+
+```cpp
+FString AMyGameModeBase::GetMapNameFromMapAssetName(const FString& MapAssetName) const
+{
+	for (const TTuple<FString, TSoftObjectPtr<UWorld>>& Map : Maps)
+	{
+		if (Map.Value.ToSoftObjectPath().GetAssetName() == MapAssetName)
+		{
+			return Map.Key;
+		}
+	}
+	return FString();
+}
+```
+
+目前还没有调用者，等做 `SaveWorldState` / `PlayerDied` 时用上。这就是 90.1 里「两个字段都得存」的另一个理由：**资产名 → 显示名的反查需要遍历配置表，而显示名 → 资产名的查表只需要 `Find`**，方向不对等。
+
+---
+
+## 九十一、UE 的指针体系与 GC：什么时候用哪种（★）
+
+### 91.1 GC 到底在做什么
+
+垃圾回收 = 自动找出「再也没人用」的对象，销毁并释放内存。UE 用的是**可达性标记**：
+
+1. **标记**：从「根集合」出发（GameInstance、World、PlayerController、关卡里所有 Actor、`AddToRoot()` 的对象），顺着引用往下走，走到的打上「活着」标记。
+2. **清除**：没被标记的对象 = 没人能访问到 = 销毁。
+3. 内存回收。
+
+关键点：**GC 遍历引用图时只走 `UPROPERTY` 标记的成员变量**。普通 C++ 指针它完全看不见。
+
+所以：
+
+```cpp
+UPROPERTY()
+AAuraCharacter* A;   // 进引用图，GC 认为有人用，不会销毁
+
+AAuraCharacter* B;   // GC 不知道它存在
+```
+
+第二种情况下 `B` 指向的对象可能被回收，而 `B` 里的地址数值一点没变——这就是野指针的来源。
+
+### 91.2 三种持有关系
+
+| 写法 | 含义 | 对象死了会怎样 |
+|---|---|---|
+| `UPROPERTY() TObjectPtr<T>` | 强引用：我活着，你就不能死 | 不会死 |
+| `TWeakObjectPtr<T>` | 弱引用：我知道你在哪，但你的死活与我无关 | `IsValid()` 变 false，安全 |
+| 裸 `T*`（无 UPROPERTY） | 无引用：GC 根本不知道 | 变野指针，崩溃 |
+
+### 91.3 TObjectPtr
+
+UE5 里 `UPROPERTY` 的 UObject 指针一律写 `TObjectPtr<T>`。
+
+- 运行时**几乎零开销**，内部还是 8 字节地址（`ObjectPtr.h` 的 handle）
+- 多出来的是编辑器能力：资产重定向、延迟加载、访问追踪
+- 裸指针留给局部变量、函数参数、返回值
+
+### 91.4 TSoftObjectPtr：它不是指针
+
+`TSoftObjectPtr<T>` 内部**只有一个 `FSoftObjectPath`**，也就是 `"/Game/Maps/AuraMap"` 这样的路径字符串。它不存地址，谈不上「指向」谁。
+
+常用 API：
+
+| 方法 | 作用 |
+|---|---|
+| `IsNull()` | 路径是不是空（有没有配） |
+| `IsValid()` | **是否已经加载在内存里**（不是「路径有效」） |
+| `Get()` | 已加载才返回指针，不触发加载 |
+| `LoadSynchronous()` | 同步加载，返回 `T*`，会卡主线程 |
+| `ToSoftObjectPath().GetAssetName()` | `"AuraMap"` |
+| `ToSoftObjectPath().GetLongPackageName()` | `"/Game/Maps/AuraMap"` |
+
+`IsNull` 和 `IsValid` 最容易混：**`IsNull` = 有没有配路径，`IsValid` = 东西加载进来了没有**。
+
+`TravelToMap` 里用的是 `IsNull()`，意思是「这一行没配资产」；配了但还没加载也算能跳。
+
+### 91.5 TSubclassOf
+
+存的是 `UClass*`，但类型受限。用在「要拿类去创建实例」的地方：
+
+```cpp
+UPROPERTY(EditDefaultsOnly)
+TSubclassOf<UMy_LoadScreenSaveGame> LoadScreenSaveGameClass;
+
+UGameplayStatics::CreateSaveGameObject(LoadScreenSaveGameClass);
+```
+
+普通 `UClass*` 能存任何类，`TSubclassOf<T>` 只能存 `T` 及其子类，编译器帮你挡掉配错类的情况。
+
+### 91.6 TWeakObjectPtr：不阻止 GC，但知道对象死了
+
+它内部存的**不是地址**，而是两个整数：
+
+```cpp
+int32 ObjectIndex;        // 在全局对象数组 GUObjectArray 里的下标
+int32 ObjectSerialNumber; // 序列号，槽位换了新对象就 +1
+```
+
+对象销毁后槽位可能被新对象复用，这时 `ObjectIndex` 对得上、`ObjectSerialNumber` 对不上，弱指针据此判断「原来那个已经死了」。
+
+和裸指针的对比：
+
+| | 阻止 GC | 对象死了你知道吗 |
+|---|---|---|
+| 强引用 | 会 | 不需要（不会死） |
+| 弱指针 | 不会 | 知道，`IsValid()` 变 false |
+| 裸指针 | 不会 | 不知道，指针值原封不动 |
+
+「不阻止 GC」两者一样，差别在第二个维度。
+
+注意弱指针**不能**省掉 `IsValid()`：`Target->Foo()` 内部就是 `Get()`，无效时返回 `nullptr`，照样崩。它给的是**判断能力**，不是自动保护。
+
+### 91.7 裸指针的四个阶段
+
+| 阶段 | 状态 | 危险程度 |
+|---|---|---|
+| ① 对象创建 | 指针有效 | 正常 |
+| ② `Destroy()` 之后、GC 之前 | 对象已标记垃圾，内存还在 | `IsValid()` 能挡住 |
+| ③ GC 释放内存之后 | 内存还给系统 | 崩溃或读脏数据 |
+| ④ 槽位被新对象复用 | 地址有效，但已经是**别的对象** | `IsValid()` 也挡不住，最阴险 |
+
+阶段 ④ 是 UE 里最难查的 bug：`IsValid()` 返回 true，调用不崩，但操作的是另一个类的对象，逻辑莫名其妙全错。
+
+**`if (Ptr)` 对 UObject 无效**，因为指针值非空，判断恒真。必须 `IsValid(Ptr)`。
+
+想彻底避免阶段 ④：要么 `UPROPERTY()` 强引用（对象不会死），要么 `TWeakObjectPtr` 弱引用（死了自动失效）。裸指针存 UObject 属于放弃治疗。
+
+### 91.8 选择流程
+
+```
+要存一个 UObject 引用
+  → 是 UClass（要创建实例）？        → TSubclassOf<T>
+  → 是资产，且可能用不上？            → TSoftObjectPtr<T>
+  → 是我创建或拥有的？                → TObjectPtr<T>
+  → 都不是（别人的对象）              → TWeakObjectPtr<T>
+```
+
+一句话记法：**我拥有的强引用，我观察的弱引用，可能不用的软引用，要创建实例的用 TSubclassOf。**
+
+### 91.9 项目里弱引用的实际分布
+
+全项目 `TWeakObjectPtr` 只有一处是手写的，其余都在委托和引擎内部：
+
+| 位置 | 用法 | 性质 |
+|---|---|---|
+| `My_ProjectileActor.cpp:153` | `static TMap<TWeakObjectPtr<UWorld>, double>` | 手写，唯一一处 |
+| `My_PassiveNiagaraComponent.cpp:30` | `AddWeakLambda(this, ...)` | 委托弱绑定 |
+| `My_DebuffNiagaraComponent.cpp:46` | `AddWeakLambda(this, ...)` | 委托弱绑定 |
+| `DebuffNiagaraComponent.cpp:27`（教程） | `AddWeakLambda(this, ...)` | 委托弱绑定 |
+
+`My_ProjectileActor.cpp` 那处用得讲究：用 `World` 的弱指针当静态 map 的 key。World 销毁后 key 自动失效，而且 map 里存了 key 也**不会**让 World 无法回收。如果换成 `UWorld*` 做 key，PIE 多客户端反复开关会积累一堆野指针 key。
+
+HUD 和 AI 控制器里一个弱引用都没有，因为那里存的都是**自己创建的对象**：
+
+```cpp
+// My_AuraHUD —— 都是 HUD 自己 NewObject / AddToViewport 出来的
+TObjectPtr<UMy_AuraUserWidget> OverlayWidget;
+TObjectPtr<UMy_OverlayWidgetController> OverlayWidgetController;
+
+// My_AuraAIController —— 控制器自己创建的组件
+TObjectPtr<UBehaviorTreeComponent> BehaviorTreeComponent;
+```
+
+这些用强引用完全正确，改成弱引用反而会被 GC 提前回收。
+
+### 91.10 你其实一直在消费弱引用
+
+四个地方是引擎内部用了弱指针，代码只是拿到结果：
+
+**① Blackboard 的 `TargetActor`**
+
+`UBlackboardComponent::SetValueAsObject` 内部把对象存进 `FBlackboardEntry`，对象值用的是 `TWeakObjectPtr<UObject>`。所以玩家死了，行为树里 `GetValueAsObject("TargetActor")` 自动返回 `nullptr`，AI 不会因为目标销毁而崩。
+
+**② `ProjectileMovement->HomingTargetComponent`**
+
+`My_ProjectileActor.h` 里那段注释就是这个机制的直接后果：
+
+```cpp
+/*
+ * 【强引用成员】用来保住"追踪地面点"时临时造的那个虚拟组件，防止被GC回收。
+ *
+ * ProjectileMovement->HomingTargetComponent 是 TWeakObjectPtr，不构成强引用；
+ * 不自己持有的话，追踪地面点时它会被回收 —— 表现为"飞一会儿突然不追踪了"。
+ */
+UPROPERTY()
+TObjectPtr<USceneComponent> HomingTargetSceneComponent;
+```
+
+引擎故意用弱引用（追踪目标死了不该崩），代价是「你要追踪的东西得自己保住」。这是弱引用最典型的教科书案例。
+
+**③ `FGameplayEffectContext`**
+
+里面的 `Instigator` / `EffectCauser` 都是 `TWeakObjectPtr`。敌人死了，飞行中的投射物命中时不会因为读一个已销毁的施法者而崩溃。
+
+**④ `AddWeakLambda`**
+
+```cpp
+CombatInterface->GetOnASCRegistered().AddWeakLambda(this, [this](UAbilitySystemComponent* InASC) { ... });
+```
+
+内部存一个 `TWeakObjectPtr<UObject>`，广播时先 `IsValid()` 再执行。换成 `AddLambda` 的话，组件销毁后委托还挂着，一广播就崩。
+
+结论：**游戏逻辑层本来就很少出现弱引用**。它主要活在引擎内部（GAS、AI、动画、Slate）、委托绑定、跨系统的观察关系里。不要为了用而用。
+
+### 91.11 TWeakObjectPtr 与 TWeakPtr 别搞混
+
+| | 配对谁 | 管什么 |
+|---|---|---|
+| `TWeakObjectPtr<T>` | `TObjectPtr<T>` / `UPROPERTY` | UE 的 GC |
+| `TWeakPtr<T>` | `TSharedPtr<T>` | 引用计数 |
+
+前者是「UObject 世界」的弱引用，后者是「普通 C++ 世界」的弱引用，**互不通用**：`TWeakObjectPtr` 只能装 UObject 派生类，`TWeakPtr` 只能配 `TSharedPtr`。
+
+普通 C++ 类（非 UObject）在 UE 里的对应关系：
+
+```cpp
+TUniquePtr<FMyThing> A;   // 约等于 std::unique_ptr，独占，不能拷贝
+TSharedPtr<FMyThing> B;   // 约等于 std::shared_ptr，引用计数，共享
+TWeakPtr<FMyThing>   C;   // 配 TSharedPtr 用，不增加计数
+```
+
+UObject 及其子类**禁止** `new` / `delete`：用 `NewObject<>()` / `SpawnActor<>()` 创建，交给 GC 销毁。手动 `delete` 一个 UObject 会破坏 GC 的内部记录，直接崩。

@@ -46,6 +46,13 @@ void UMy_MVVM_LoadScreen::NewSlotButtonPressed(int32 Slot, const FString& EnterN
 	/* 第一步：把玩家输入写进 VM 的内存状态，界面绑定的名字会跟着刷新 */
 	LoadSlots[Slot]->SetPlayerName(EnterName);
 
+	/* 地图名从 GameMode 抄：新建档一律进 DefaultMap，显示名也用它配的 DefaultMapName */
+	/* 必须在 SaveSlotData 之前，否则存进文件的还是空字符串 */
+	LoadSlots[Slot]->SetMapName(MyGameMode->DefaultMapName);
+
+	/* 资产名同时记下来：显示名给玩家看，资产名给 TravelToMap 反查关卡用 */
+	LoadSlots[Slot]->MapAssetName = MyGameMode->DefaultMap.ToSoftObjectPath().GetAssetName();
+
 	/* 第二步：状态改成 Taken，下面 InitializeSlot 按它广播 2 */
 	LoadSlots[Slot]->SlotStatus = EMy_SaveSlotStatus::Taken;
 
@@ -100,20 +107,23 @@ void UMy_MVVM_LoadScreen::PlayButtonPressed()
 
 	/* TODO: 把选中的槽位记进自己的 GameInstance，新关卡靠它读档 */
 
-	MyGameMode->TravelToMap();
+	/* 槽位里记着地图名，GameMode 拿它去 Maps 表换出关卡资产再跳 */
+	MyGameMode->TravelToMap(SelectedSlot);
 }
 
 void UMy_MVVM_LoadScreen::LoadData()
 {
-	AMyGameModeBase* AuraGameMode = Cast<AMyGameModeBase>(UGameplayStatics::GetGameMode(this));
-	if (!IsValid(AuraGameMode)) return;
+	AMyGameModeBase* MyGameMode = Cast<AMyGameModeBase>(UGameplayStatics::GetGameMode(this));
+	if (!IsValid(MyGameMode)) return;
 	for (const TTuple<int32, UMy_MVVM_LoadSlot*> LoadSlot : LoadSlots)
 	{
-		UMy_LoadScreenSaveGame* LoadScreenSaveGame = AuraGameMode->GetSaveSlotData(LoadSlot.Value->SlotName, LoadSlot.Value->SlotIndex);
+		UMy_LoadScreenSaveGame* LoadScreenSaveGame = MyGameMode->GetSaveSlotData(LoadSlot.Value->SlotName, LoadSlot.Value->SlotIndex);
 		if (!LoadScreenSaveGame) continue;
 		
 		LoadSlot.Value->SlotStatus = LoadScreenSaveGame->SlotStatus;
 		LoadSlot.Value->SetPlayerName(LoadScreenSaveGame->PlayerName);
+		LoadSlot.Value->SetMapName(LoadScreenSaveGame->MapName);
+		LoadSlot.Value->MapAssetName = LoadScreenSaveGame->MapAssetName;
 		LoadSlot.Value->InitializeSlot();
 	}
 }

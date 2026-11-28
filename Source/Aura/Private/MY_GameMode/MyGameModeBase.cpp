@@ -18,6 +18,8 @@ void AMyGameModeBase::SaveSlotData(UMy_MVVM_LoadSlot* LoadSlot)
 	LoadScreenSaveGame->SlotName = LoadSlot->SlotName;
 	LoadScreenSaveGame->SlotIndex = LoadSlot->SlotIndex;
 	LoadScreenSaveGame->PlayerName = LoadSlot->GetPlayerName();
+	LoadScreenSaveGame->MapName = LoadSlot->GetMapName();
+	LoadScreenSaveGame->MapAssetName = LoadSlot->MapAssetName;
 	LoadScreenSaveGame->SlotStatus = EMy_SaveSlotStatus::Taken;
 
 	UGameplayStatics::SaveGameToSlot(LoadScreenSaveGame, LoadSlot->SlotName, LoadSlot->SlotIndex);
@@ -46,11 +48,47 @@ void AMyGameModeBase::DeleteSlot(const FString& SlotName, int32 SlotIndex)
 	}
 }
 
-void AMyGameModeBase::TravelToMap() const
+void AMyGameModeBase::TravelToMap(UMy_MVVM_LoadSlot* Slot) const
 {
-	/* 没配地图就直接返回，避免打开一个空关卡 */
-	if (DefaultMap.IsNull()) return;
+	if (!IsValid(Slot)) return;
 
-	/* 第一个参数是 WorldContext，传 this 即可 */
-	UGameplayStatics::OpenLevelBySoftObjectPtr(this, DefaultMap);
+	/* 槽位里记的是显示名，用它去 Maps 表里换出真正的关卡资产 */
+	/* 教程这里用 FindChecked，key 不存在会直接断言崩溃；换成 Find 后查不到就走下面的兜底 */
+	const TSoftObjectPtr<UWorld>* Map = Maps.Find(Slot->GetMapName());
+	if (Map && !Map->IsNull())
+	{
+		/* 第一个参数是 WorldContext，传 this 即可 */
+		UGameplayStatics::OpenLevelBySoftObjectPtr(this, *Map);
+		return;
+	}
+
+	/* 兜底：表里没这张图（比如 DefaultMapName 忘了配）就退回默认关卡，避免点 Play 没反应 */
+	if (!DefaultMap.IsNull())
+	{
+		UGameplayStatics::OpenLevelBySoftObjectPtr(this, DefaultMap);
+	}
+}
+
+FString AMyGameModeBase::GetMapNameFromMapAssetName(const FString& MapAssetName) const
+{
+	for (const TTuple<FString, TSoftObjectPtr<UWorld>>& Map : Maps)
+	{
+		if (Map.Value.ToSoftObjectPath().GetAssetName() == MapAssetName)
+		{
+			return Map.Key;
+		}
+	}
+	return FString();
+}
+
+void AMyGameModeBase::BeginPlay()
+{
+	Super::BeginPlay();
+
+	/* 把默认地图登记进表里：DefaultMapName 就是它的显示名 */
+	/* Maps 本身是 EditDefaultsOnly，蓝图里配的其它地图会在构造时就填好，这里只补默认图 */
+	if (!DefaultMapName.IsEmpty() && !DefaultMap.IsNull())
+	{
+		Maps.Add(DefaultMapName, DefaultMap);
+	}
 }

@@ -34,6 +34,14 @@ public:
 	UPROPERTY()
 	FString PlayerName = FString("Default Name");
 
+	/* 存档内容：地图显示名，读档后显示在槽位上 */
+	UPROPERTY()
+	FString MapName = FString();
+
+	/* 存档内容：地图资产名，和 MapName 一起记录玩家存档停在哪个关卡 */
+	UPROPERTY()
+	FString MapAssetName = FString();
+
 	/* 存档内容：槽位状态，读档时写回 SlotVM 决定切哪一页 */
 	UPROPERTY()
 	EMy_SaveSlotStatus SlotStatus = EMy_SaveSlotStatus::Vacant;
